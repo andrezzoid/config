@@ -1,0 +1,252 @@
+
+# tap repositories and their packages
+
+tap homebrew/core
+brew mas
+
+tap caskroom/cask
+
+tap rcmdnk/file
+brew brew-file
+
+##
+# Brewfile by André Jonas <andre.jonas@gmail.com>
+#
+# CAUTION: THIS IS A WORK IN PROGRESS. 
+#
+# ## Taps
+#
+# We do not use tap in this file; instead, we use full paths.
+# This is because we want to be as clear as possible about what
+# is being installed, and from what locations.
+#
+# ## Dupes
+#
+# We generaly prefer homebrew/dupes to preinstalled Mac software.
+# For example, we prefer the GNU `sed` command vs. macOS `sed` command.
+# However, we have seen this cause conflicts with macOS software that
+# isn't aware of GNU; therefore we install the dupes in parallel.
+#
+# ## Contents
+#
+# This file has a bunch of sections:
+#
+#   * Browsers: firefox, google-chrome, opera, ...
+#   * Passwords: keybase, 1password, lastpass, ...
+#   * Terminals: iterm2, tmux, screen, ...
+#   * Shells: bash, zsh, fish, mosh, ...
+#   * Editors: vim, emacs, atom, sublime, ...
+#   * Downloaders: curl, wget, cask, carthage, ...
+#   * Version control: git, hg, svn, cvs, ...
+#   * GNU command line tools
+#   * System related: TODO
+#   * File compression: zstd, unrar, unzip, ...
+#   * File synchronization: rsync, unison, syncthing, ...
+#   * Text search: ripgrep, ag, sift, ...
+#   * Operating-related
+#   * Build tools
+#   * Fonts: hundreds of fonts
+#   * JetBrains programmer tools
+#   * OmniGroup project management tools
+#   * Database servers: postgresql, redis, ...
+#   * Database searchers: sphinx, TODO
+#   * Database managers: TODO
+#   * Markup languages: pandoc, TODO
+#   * Programming languages: Java, Node, Python, ...
+#
+# ## See Also
+#
+# See also:
+#
+#   * https://www.topbug.net/blog/2013/04/14/install-and-use-gnu-command-line-tools-in-mac-os-x/
+#
+
+##
+# Browsers
+#
+# I prefer Firefox because it's open source.
+##
+
+# Firefox web browser
+cask 'firefox'
+
+# Google Chrome web browser
+cask 'google-chrome'
+
+
+##
+# Terminals
+#
+# We typically use `tmux`, `tmate`,
+# and sometimes fall back on `screen`.
+##
+
+# iTerm is our favorite terminal app.
+cask 'iterm2'
+
+# Hyper Web Terminal
+cask 'hyper'
+
+
+##
+# Shells
+#
+# We typically use bash, zsh, fish, and mosh.
+##
+
+# Bash is the Bourne Again SHell. Bash is an sh-compatible shell.
+brew 'bash'
+brew 'bash-completion'
+
+
+##
+# Editors
+#
+# We typically use command line editors (vim, emacs, etc.)
+# and sometimes use GUI editors (atom, sublime, etc.)
+##
+
+# Visual Studio Code
+cask 'visual-studio-code'
+
+
+##
+# Downloaders
+#
+# These items download files and fetch content from the network.
+##
+
+# Homebrew Cask extends Homebrew to install OS X applications and large binaries.
+#brew 'cask'
+#tap 'caskroom/cask'
+
+# curl is a command line tool for transferring data with URL syntax
+brew 'curl'
+
+# Wget is a free software package for retrieving files using HTTP and FTP.
+brew 'wget'
+
+
+##
+# Version control
+#
+# We prefer `git` version control. We also work on a wide
+# range of systems, so we also sometimes use CVS, HG, and SVN.
+##
+
+# Git is a free and open source distributed version control system.
+#
+# TODO: why do we need brew 'git' and also cask 'git'?
+brew 'git'
+#cask 'git'
+
+# Gitkraken graphic client for git
+cask 'gitkraken'
+
+
+##
+# GNU command line tools
+#
+# If you are moving onto macOS from GNU/Linux, then you would probably
+# find out that the command line tools shipped with macOS are not as
+# powerful and easy to use as the tools in Linux. The reason is that
+# macOS uses the BSD version command line tools, which are different
+# from the Linux version.
+#
+# Note: if you choose to replace the macOS commands with GNU commands,
+# then be aware that you may have some compatibility issues with shell
+# scripts written specifically for macOS.
+#
+# If you like using man pages, then you may also want to add an
+# itemto the to the MANPATH environmental variable:
+#
+#     $HOMEBREW_PREFIX/opt/coreutils/libexec/gnuman
+#
+# For more about the GNU command line tools and brew, see this:
+# https://www.topbug.net/blog/2013/04/14/install-and-use-gnu-command-line-tools-in-mac-os-x/
+##
+
+
+##
+# File compression/uncompression
+#
+# We prefer `zstd` because it is the best modern compression.
+##
+
+
+##
+# File synchronization
+#
+# We use `rsync` for our systems administration,
+# and a variety of web-based services for file sharing.
+##
+
+
+##
+# Text search
+#
+# We prefer ripgrep because it is very fast and very safe.#
+##
+
+
+##
+# Font-Related
+##
+
+
+##
+# Image-Related
+##
+
+
+## Uncategorized
+
+# TDB
+cask 'alfred'
+
+# TDB
+cask 'dash'
+
+# Flux dims the screen colors for better nighttime visibility.
+cask 'flux'
+
+# Franz multi-service messaging app
+cask 'franz'
+
+# Slack chat client
+cask 'slack'
+
+# Spotify music player
+cask 'spotify'
+
+# VLC media player
+cask 'vlc'
+
+# Karabiner remaps keyboard keys
+cask 'karabiner'
+
+# Yarn package manager
+brew 'yarn'
+
+
+## Misc
+
+cask 'zoomus'
+
+# VPN - better to install manually
+# cask 'private-internet-access'
+
+# KAP screen recorder built with web technology
+cask 'kap'
+
+## 
+# Programming languages
+##
+
+# Java language for running many applications
+cask 'java'
+
+
+# Node.js is a JavaScript platform for building fast, scalable network app.
+# Installed NVM manually
+

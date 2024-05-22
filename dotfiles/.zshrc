@@ -93,5 +93,5 @@ alias c='clear'
 
 ## Shell integrations
 eval "$(fzf --zsh)"
-eval "$(zoxide init --cmd cd zsh)"
+eval "$(zoxide init --cmd cd zsh)"  # There's also the cdi alias for interactive mode
 

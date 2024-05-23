@@ -54,7 +54,7 @@ zinit cdreplay -q
 
 
 ## Keybindings
-# bindkey -v
+bindkey -v
 bindkey '^y' autosuggest-accept # Accept items from zsh-autosuggestions
 bindkey '^p' history-search-backward
 bindkey '^n' history-search-forward

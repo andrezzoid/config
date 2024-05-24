@@ -55,10 +55,9 @@ zinit cdreplay -q
 
 ## Keybindings
 bindkey -v
-bindkey '^y' autosuggest-accept # Accept items from zsh-autosuggestions
-bindkey '^p' history-search-backward
-bindkey '^n' history-search-forward
-bindkey '^[w' kill-region
+bindkey '^y' autosuggest-accept       # Accept items from zsh-autosuggestions
+bindkey '^p' history-search-backward  # Go backwards in history
+bindkey '^n' history-search-forward   # Go forward in history
 
 
 ## Change cursor shape for different vi modes.
@@ -107,6 +106,7 @@ zstyle ':completion:*' menu no                                              # Di
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'          # Display Aloxaf/fzf-tab when navigating with cd
 zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'  # zoxide completions
 zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup                              # If using >= tmux@3.2
+zstyle ':fzf-tab:*' fzf-bindings 'ctrl-y:accept'                            # Map CTRL-y to accept fzf option, same as for the above autosuggest-accept
 
 
 ## Aliases

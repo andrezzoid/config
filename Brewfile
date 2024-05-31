@@ -11,6 +11,7 @@ brew "ffmpeg"
 brew "findutils"
 brew "fzf"
 brew "git"
+brew "git-delta"
 brew "grep"
 brew "jpeg", link: true
 brew "jq"

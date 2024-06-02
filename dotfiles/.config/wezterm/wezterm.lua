@@ -11,11 +11,12 @@ config.font_size = 13
 -- Color scheme
 -- theme from folke/tokyonight.nvim in /colors folder
 config.color_scheme = "tokyonight_storm"
+wezterm.add_to_config_reload_watch_list(wezterm.home_dir .. "colors/" .. config.color_scheme .. ".toml") -- FIXME: doesnt quite work.
 
 -- Window configuration
 config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
 config.window_background_opacity = 0.9
-config.macos_window_background_blur = 25
+config.macos_window_background_blur = 30
 config.window_padding = {
 	left = 0,
 	right = 0,

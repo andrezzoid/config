@@ -1,6 +1,6 @@
 [colors]
 foreground = "#c0caf5"
-background = "#24283b"
+background = "#1a1a25"	# Original color is "#24283b", but I want a darker background.
 cursor_bg = "#c0caf5"
 cursor_border = "#c0caf5"
 cursor_fg = "#24283b"

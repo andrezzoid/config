@@ -744,6 +744,15 @@ require('lazy').setup({
       'hrsh7th/cmp-path',
       'hrsh7th/cmp-buffer',
       'hrsh7th/cmp-cmdline',
+      { -- AI copilot https://supermaven.com/
+        'supermaven-inc/supermaven-nvim',
+        config = function()
+          require('supermaven-nvim').setup {
+            disable_inline_completion = true, -- Use nvim-cmp instead
+            disable_keymaps = true,
+          }
+        end,
+      },
     },
     config = function()
       -- See `:help cmp`
@@ -811,11 +820,15 @@ require('lazy').setup({
           -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
           --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
         },
-        sources = {
-          { name = 'nvim_lsp' },
-          { name = 'luasnip' },
-          { name = 'path' },
-        },
+        sources = cmp.config.sources(
+          {
+            { name = 'nvim_lsp' },
+            { name = 'luasnip' },
+            { name = 'path' },
+          },
+          -- The index of each entry is assigned to group_index so the above will have priority over the following.
+          { { name = 'supermaven', priority = 100 }, { name = 'buffer' } }
+        ),
       }
 
       -- Completions for search based on the current buffer
@@ -997,13 +1010,6 @@ require('lazy').setup({
       { '<c-l>', '<cmd><C-U>TmuxNavigateRight<cr>' },
       { '<c-\\>', '<cmd><C-U>TmuxNavigatePrevious<cr>' },
     },
-  },
-
-  { -- AI copilot https://supermaven.com/
-    'supermaven-inc/supermaven-nvim',
-    config = function()
-      require('supermaven-nvim').setup {}
-    end,
   },
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the

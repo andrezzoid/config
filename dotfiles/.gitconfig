@@ -3,13 +3,37 @@
 	name = André Jonas
 	signingkey = ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDOQapYiKLeONoJCwc2Xy+/twv9TEUvvmRosdYkmvx3fZlj0FOcLLMakbWw6E7xRPTCBkLTStJAEw4YvxDBLmRdOLwzUzAWammepROr/NagVNi++BXzBVQ0uwrs7OovFMFQr8U6yBxrZP8znvWOkLXCdIKi+CPA4mIb/OVVoJZgPAp7+NErSY2d4BptHQoHl5+AB5Puc416/KyZfRyqsxx1Hf+9I7XRjwNSvkgHPWsuXincZx/eYrv3ykl2+CK76dtBNh/x1XvLzuGxB5NcpUiPY/reuz+557U8zVJZUw9y42ifBYzFzJ1aEHftFurzfUinfQFEUjsByVDQAmXyUOwbdOqXkmoKvvuch7H/75BOyThVNBzEge3Ndrz0SCNtc9BOJ3FhcdYp3DnUjgP6Xy9v+Qb6cAYhMm4r2Mjxh/R9OHR6+4RsE+0k8GyB1t2HhKunw7pViHNrFPrvspFuV2rPNSjH/9M9cDJRYNXQbItKCVcmmfdqM41OSvNDhqIXPRVNduosNfNAClH+ysZlKiOiWTGP+hSDe6W6R3gLUjAZrb6/op7/EhPnNkiJchs+Bd6vzIyKNUxcJUc4ySrnn0rXmqKG2dHt53asyJK2VY5m89MPosT2q/w8ABelOjuOGsPdREl42mSYSzvE8SumFZfGZWxWSoyFb0HQOGJpb9KQ9w==
 
+[alias] 
+	# List available aliases
+	aliases = !git config --get-regexp '^alias\\.' | sed 's/alias\\.//' | sort
+	# Command shortcuts
+	ci = commit
+	co = checkout
+	st = status
+	sw = switch
+	# Display the last commit message
+	last = log -1 HEAD
+	## Useful when forgetting to commit files
+	oops = commit --amend --no-edit
+	# Go to the previous branch
+	previous = checkout @{-1}
+	# Diff all changes, including staged files
+	staged = diff --cached
+	# Undo last commit but keep  changed files in stage
+	uncommit = reset --soft HEAD^
+	# Unstage all changes
+	unstage = reset HEAD --
+	# Display tree-like logs
+	vlog = log --graph --full-history --all --color --pretty=format:"%x1b[31m%h%x09%x1b[32m%d%x1b[0m%x20%s"
+	# alternative: log --graph --date=relative --pretty=tformat:'%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%an %ad)%Creset'
+
+[commit]
+	gpgsign = true
+
 [core]
 	excludesfile = ~/.gitignore_global
-	editor = code --wait
+	editor = nvim
 	pager = delta
-
-[interactive]
-	diffFilter = delta --color-only
 
 [delta]
 	navigate = true
@@ -31,24 +55,23 @@
 	line-numbers-plus-style       = "#266d6a"
 	line-numbers-zero-style       = "#3b4261"
 
-[merge]
-	conflictstyle = diff3
-
-[alias] 
-	last = log -1 HEAD
-	uncommit = reset --soft HEAD^
-	unstage = reset HEAD --
-	staged = diff --cached
-	vlog = log --graph --full-history --all --color --pretty=format:"%x1b[31m%h%x09%x1b[32m%d%x1b[0m%x20%s"
-	previous = checkout @{-1}
-
-[commit]
-	gpgsign = true
+[fetch]
+	prune = true # delete outdated remote references
 
 [gpg]
 	format = ssh
+
 [gpg "ssh"]
 	allowedSignersFile = ~/.ssh/allowed_signers
+
+[init]
+	defaultBranch = main
+
+[interactive]
+	diffFilter = delta --color-only
+
+[merge]
+	conflictstyle = diff3
 
 [url "git@github.com:"]
 
@@ -71,5 +94,8 @@
 
 	insteadOf = "gist:"
 
+[status]
+	short = true  # Give the output in a shorter format
+	branch = true # Show the current branch name
 [tag]
 	gpgsign = true

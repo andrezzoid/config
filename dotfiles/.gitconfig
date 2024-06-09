@@ -37,7 +37,6 @@
 
 [delta]
 	navigate = true
-	side-by-side = true
 	line-numbers = true
 	dark = true
 
@@ -73,6 +72,12 @@
 [merge]
 	conflictstyle = diff3
 
+[status]
+	short = true  # Give the output in a shorter format
+	branch = true # Show the current branch name
+[tag]
+	gpgsign = true
+
 [url "git@github.com:"]
 
 	insteadOf = "gh:"
@@ -94,8 +99,3 @@
 
 	insteadOf = "gist:"
 
-[status]
-	short = true  # Give the output in a shorter format
-	branch = true # Show the current branch name
-[tag]
-	gpgsign = true

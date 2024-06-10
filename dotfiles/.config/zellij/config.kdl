@@ -217,7 +217,7 @@ simplified_ui true
 // Choose the path to the default shell that zellij will use for opening new panes
 // Default: $SHELL
 //
-// default_shell "fish"
+default_shell "/opt/homebrew/bin/zsh" // Points to the correct zsh, not the system default.
 
 // Choose the path to override cwd that zellij will use for opening new panes
 //
@@ -228,7 +228,7 @@ simplified_ui true
 //   - true (default)
 //   - false
 //
-pane_frames false
+pane_frames true
 
 // Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
 // Options:

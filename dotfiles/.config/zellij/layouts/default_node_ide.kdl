@@ -1,0 +1,17 @@
+layout {
+    pane size=1 borderless=true {
+        plugin location="tab-bar"
+    }
+    pane command="zsh" focus=true name="Editor" size="80%" {
+        args "-i" "-l" "-c" "nvim"
+    }
+    pane size="20%" split_direction="vertical" {
+        pane command="zsh" name="Terminal1" {
+            args "-i" "-l" "-c" r#"if [ -f "yarn.lock" ]; then yarn && yarn dev; else npm install && npm run dev; fi"#
+        }
+        pane name="Terminal2"
+    }
+    pane size=2 borderless=true {
+        plugin location="status-bar"
+    }
+}

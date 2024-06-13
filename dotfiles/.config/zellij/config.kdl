@@ -195,7 +195,7 @@ plugins {
         welcome_screen true
     }
     filepicker location="zellij:strider" {
-        cwd "/"
+        cwd "/Users/andrejonas/"
     }
 }
 

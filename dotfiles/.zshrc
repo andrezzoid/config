@@ -14,6 +14,7 @@ fi
 
 
 ## Exports
+export PATH=/usr/local/bin:$PATH  # NOTE: For some reason this is in path in iterm2 but not in wezterm
 export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
   [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && . "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
@@ -110,7 +111,7 @@ zstyle ':fzf-tab:*' fzf-bindings 'ctrl-y:accept'                            # Ma
 
 
 ## Aliases
-alias ls='ls --color'
+alias ls='ls --color -lah'
 alias vim='nvim'
 alias c='clear'
 

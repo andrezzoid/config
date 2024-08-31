@@ -120,3 +120,9 @@ alias c='clear'
 eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"  # There's also the cdi alias for interactive mode
 
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/andrejonas/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/andrejonas/Downloads/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/andrejonas/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/andrejonas/Downloads/google-cloud-sdk/completion.zsh.inc'; fi

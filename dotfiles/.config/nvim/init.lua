@@ -990,8 +990,18 @@ require('lazy').setup({
     end,
   },
 
-  { -- A Git wrapper that integrates Vim. Use the :Git and any commands as usual.
-    'tpope/vim-fugitive',
+  -- { -- A Git wrapper that integrates Vim. Use the :Git and any commands as usual.
+  --   'tpope/vim-fugitive',
+  -- },
+  {
+    'NeogitOrg/neogit',
+    dependencies = {
+      'nvim-lua/plenary.nvim', -- required
+      'sindrets/diffview.nvim', -- optional - Diff integration
+
+      'nvim-telescope/telescope.nvim', -- optional
+    },
+    config = true,
   },
 
   { -- Seamless navigation between nvim and tmux splits.
@@ -1021,7 +1031,7 @@ require('lazy').setup({
   --  Here are some example plugins that I've included in the Kickstart repository.
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
-  -- require 'kickstart.plugins.debug',
+  require 'kickstart.plugins.debug',
   require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
   require 'kickstart.plugins.autopairs',
@@ -1055,6 +1065,3 @@ require('lazy').setup({
     },
   },
 })
-
--- The line beneath this is called `modeline`. See `:help modeline`
--- vim: ts=2 sts=2 sw=2 et

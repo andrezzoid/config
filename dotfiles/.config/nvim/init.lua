@@ -789,15 +789,6 @@ require('lazy').setup({
       'hrsh7th/cmp-path',
       'hrsh7th/cmp-buffer',
       'hrsh7th/cmp-cmdline',
-      { -- AI copilot https://supermaven.com/
-        'supermaven-inc/supermaven-nvim',
-        config = function()
-          require('supermaven-nvim').setup {
-            disable_inline_completion = true, -- Use nvim-cmp instead
-            disable_keymaps = true,
-          }
-        end,
-      },
     },
     config = function()
       -- See `:help cmp`
@@ -865,20 +856,16 @@ require('lazy').setup({
           -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
           --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
         },
-        sources = cmp.config.sources(
+        sources = cmp.config.sources {
           {
-            {
-              name = 'lazydev',
-              -- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
-              group_index = 0,
-            },
-            { name = 'nvim_lsp' },
-            { name = 'luasnip' },
-            { name = 'path' },
+            name = 'lazydev',
+            -- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
+            group_index = 0,
           },
-          -- The index of each entry is assigned to group_index so the above will have priority over the following.
-          { { name = 'supermaven', priority = 100 }, { name = 'buffer' } }
-        ),
+          { name = 'nvim_lsp' },
+          { name = 'luasnip' },
+          { name = 'path' },
+        },
       }
 
       -- Completions for search based on the current buffer
@@ -1070,6 +1057,28 @@ require('lazy').setup({
       { '<c-l>', '<cmd><C-U>TmuxNavigateRight<cr>' },
       { '<c-\\>', '<cmd><C-U>TmuxNavigatePrevious<cr>' },
     },
+  },
+
+  { -- AI copilot https://supermaven.com/
+    'supermaven-inc/supermaven-nvim',
+    -- dependencies = {
+    --   'hrsh7th/nvim-cmp',
+    -- },
+    config = function()
+      require('supermaven-nvim').setup {
+        keymaps = {
+          accept_suggestion = '<C-A>',
+        },
+        -- condition = function()
+        --   local cmp = require 'cmp'
+        --   if cmp.visible() then
+        --     return false
+        --   else
+        --     return true
+        --   end
+        -- end,
+      }
+    end,
   },
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the

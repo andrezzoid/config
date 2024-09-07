@@ -1082,6 +1082,38 @@ require('lazy').setup({
       }
     end,
   },
+  { -- AI Chat powered by Anthropic
+    'olimorris/codecompanion.nvim',
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+      'nvim-treesitter/nvim-treesitter',
+      'nvim-telescope/telescope.nvim',
+    },
+    configz = function()
+      require('codecompanion').setup {
+        adapters = {
+          anthropic = function()
+            return require('codecompanion.adapters').extend('anthropic', {
+              env = {
+                api_key = 'cmd:op read "op://Singular Thought Lda/Anthropic API Key/credential" --no-newline',
+              },
+            })
+          end,
+        },
+        strategies = {
+          chat = {
+            adapter = 'anthropic',
+          },
+          inline = {
+            adapter = 'anthropic',
+          },
+          agent = {
+            adapter = 'anthropic',
+          },
+        },
+      }
+    end,
+  },
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and

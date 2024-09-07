@@ -617,6 +617,8 @@ require('lazy').setup({
         -- But for many setups, the LSP (`tsserver`) will work just fine
         tsserver = {},
 
+        tailwindcss = {},
+
         -- Like ESLint, but faster https://github.com/mantoni/eslint_d.js/
         eslint_d = {
           settings = {

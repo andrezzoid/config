@@ -1087,9 +1087,10 @@ require('lazy').setup({
     dependencies = {
       'nvim-lua/plenary.nvim',
       'nvim-treesitter/nvim-treesitter',
-      'nvim-telescope/telescope.nvim',
+      'hrsh7th/nvim-cmp', -- Optional: For using slash commands and variables in the chat buffer
+      'nvim-telescope/telescope.nvim', -- Optional: For using slash commands
     },
-    configz = function()
+    config = function()
       require('codecompanion').setup {
         adapters = {
           anthropic = function()

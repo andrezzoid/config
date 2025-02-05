@@ -1,0 +1,5 @@
+command = "/opt/homebrew/bin/zellij -l welcome"
+# font-family = "0xProto Nerd Font Mono"
+font-family = "JetBrains Mono"
+font-size = 13
+theme = "tokyonight"

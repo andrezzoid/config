@@ -980,6 +980,7 @@ require('lazy').setup({
           require('nvim-ts-autotag').setup()
         end,
       },
+      'nvim-treesitter/nvim-treesitter-context',
     },
     opts = {
       -- "c", "lua", "vim", "vimdoc", "query" should always be installed

@@ -3,3 +3,4 @@ command = "/opt/homebrew/bin/zellij -l welcome"
 font-family = "JetBrains Mono"
 font-size = 13
 theme = "tokyonight"
+keybind = shift+enter=text:\n

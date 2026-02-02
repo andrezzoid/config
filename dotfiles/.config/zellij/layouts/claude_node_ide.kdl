@@ -1,23 +1,24 @@
 layout {
+    pane split_direction="vertical" {
+	pane size="80%" split_direction="horizontal" {
+            pane size="70%" command="zsh" name="Editor" {
+        	args "-i" "-l" "-c" "nvim"
+            }
+	    pane command="zsh" name="Run" {
+            	args "-i" "-l" "-c" r#"if [ -f "yarn.lock" ]; then yarn && yarn dev; else npm install && npm run dev; fi"#
+        	start_suspended true
+            }
+	}	
+	pane stacked=true {
+	    pane name="Tests"
+            pane name="Claude Code" expanded=true focus=true command="zsh" {
+                args "-i" "-l" "-c" "claude --dangerously-skip-permissions 'Look for a CLAUDE_PLAN.local.md file in the current directory and use it as the plan. If not found, do nothing until you are told otherwise.'"
+            }
+	}
+    }
     pane size=1 borderless=true {
-        plugin location="tab-bar"
-    }
-    pane size="70%" split_direction="vertical" {
-        pane command="zsh" name="Editor" size="70%" {
-            args "-i" "-l" "-c" "nvim"
-        }
-        pane name="Claude Code" focus=true command="zsh" {
-            args "-i" "-l" "-c" "claude 'Look for a CLAUDE_PLAN.local.md file in the current directory and use it as the plan. If not found, do nothing until you are told otherwise.'"
-        }
-    }
-    pane size="30%" split_direction="vertical" {
-        pane command="zsh" name="Terminal1" {
-            args "-i" "-l" "-c" r#"if [ -f "yarn.lock" ]; then yarn && yarn dev; else npm install && npm run dev; fi"#
-            start_suspended true
-        }
-        pane name="Terminal2"
-    }
-    pane size=2 borderless=true {
-        plugin location="status-bar"
+	plugin location="zellij:compact-bar" {
+	    tooltip "F1"
+	}
     }
 }

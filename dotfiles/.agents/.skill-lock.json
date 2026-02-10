@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "skills": {
+    "agent-browser": {
+      "source": "vercel-labs/agent-browser",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
+      "skillPath": "skills/agent-browser/SKILL.md",
+      "skillFolderHash": "ab3d846cfeea307bf8590fe5b986af8134de11e4",
+      "installedAt": "2026-01-23T10:27:13.327Z",
+      "updatedAt": "2026-01-23T10:27:13.327Z"
+    },
+    "code-comments": {
+      "source": "petekp/claude-code-setup",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/petekp/claude-code-setup.git",
+      "skillPath": "skills/code-comments/SKILL.md",
+      "skillFolderHash": "ccb02bb96e6109fe9c73e08e6a519b100c83f65c",
+      "installedAt": "2026-02-09T22:33:36.593Z",
+      "updatedAt": "2026-02-09T22:33:36.593Z"
+    }
+  },
+  "lastSelectedAgents": [
+    "amp",
+    "codex",
+    "gemini-cli",
+    "github-copilot",
+    "kimi-cli",
+    "opencode",
+    "claude-code"
+  ],
+  "dismissed": {
+    "findSkillsPrompt": true
+  }
+}

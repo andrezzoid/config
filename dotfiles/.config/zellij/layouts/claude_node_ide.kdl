@@ -1,20 +1,25 @@
 layout {
     pane split_direction="vertical" {
-	pane size="80%" split_direction="horizontal" {
-            pane size="70%" command="zsh" name="Editor" {
-        	args "-i" "-l" "-c" "nvim"
-            }
+	pane size="40%" split_direction="horizontal" {
+	    pane size="70%" stacked=true {
+	   	pane command="zsh" {
+        	    args "-i" "-l" "-c" "lazygit"
+		}
+                pane command="zsh" name="Editor" expanded=true {
+        	    args "-i" "-l" "-c" "nvim"
+                }
+	    }
 	    pane command="zsh" name="Run" {
             	args "-i" "-l" "-c" r#"if [ -f "yarn.lock" ]; then yarn && yarn dev; else npm install && npm run dev; fi"#
         	start_suspended true
             }
 	}	
-	pane stacked=true {
-	    pane name="Tests"
-            pane name="Claude Code" expanded=true focus=true command="zsh" {
-                args "-i" "-l" "-c" "claude --dangerously-skip-permissions 'Look for a CLAUDE_PLAN.local.md file in the current directory and use it as the plan. If not found, do nothing until you are told otherwise.'"
-            }
-	}
+        pane name="Claude Code" focus=true command="zsh" {
+            args "-i" "-l" "-c" "claude --dangerously-skip-permissions"
+        }
+        pane name="Claude Code" command="zsh" {
+            args "-i" "-l" "-c" "claude --dangerously-skip-permissions"
+        }
     }
     pane size=1 borderless=true {
 	plugin location="zellij:compact-bar" {

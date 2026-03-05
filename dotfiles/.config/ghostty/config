@@ -4,3 +4,4 @@ font-family = "JetBrains Mono"
 font-size = 13
 theme = TokyoNight Moon
 keybind = shift+enter=text:\n
+macos-option-as-alt = true

@@ -6,55 +6,62 @@ A pass-through method does nothing except delegate to another method with the sa
 
 ### Before (Shallow)
 
-```python
-class UserController:
-    def __init__(self, service: UserService):
-        self.service = service
+```typescript
+class UserController {
+  constructor(private service: UserService) {}
 
-    def get_user(self, user_id: str) -> User:
-        return self.service.get_user(user_id)
+  getUser(userId: string): User {
+    return this.service.getUser(userId);
+  }
 
-    def update_user(self, user_id: str, data: dict) -> User:
-        return self.service.update_user(user_id, data)
+  updateUser(userId: string, data: Record<string, unknown>): User {
+    return this.service.updateUser(userId, data);
+  }
 
-    def delete_user(self, user_id: str) -> None:
-        return self.service.delete_user(user_id)
+  deleteUser(userId: string): void {
+    this.service.deleteUser(userId);
+  }
+}
 
+class UserService {
+  constructor(private repo: UserRepository) {}
 
-class UserService:
-    def __init__(self, repo: UserRepository):
-        self.repo = repo
+  getUser(userId: string): User {
+    return this.repo.getUser(userId);
+  }
 
-    def get_user(self, user_id: str) -> User:
-        return self.repo.get_user(user_id)
+  updateUser(userId: string, data: Record<string, unknown>): User {
+    const user = this.repo.getUser(userId);
+    user.update(data);
+    this.repo.save(user);
+    return user;
+  }
 
-    def update_user(self, user_id: str, data: dict) -> User:
-        user = self.repo.get_user(user_id)
-        user.update(data)
-        self.repo.save(user)
-        return user
-
-    def delete_user(self, user_id: str) -> None:
-        self.repo.delete(user_id)
+  deleteUser(userId: string): void {
+    this.repo.delete(userId);
+  }
+}
 ```
 
 `UserController` is pure overhead. `get_user` and `delete_user` in `UserService` are nearly pass-throughs to the repository. Three layers, but only one — the `update_user` method — does anything meaningful.
 
 ### After (Deep)
 
-```python
-class Users:
-    """Manages user lifecycle. Handles storage, validation, and business rules."""
+```typescript
+/** Manages user lifecycle. Handles storage, validation, and business rules. */
+class Users {
+  get(userId: string): User { ... }
 
-    def get(self, user_id: str) -> User: ...
+  update(userId: string, changes: Record<string, unknown>): User {
+    // Validates, applies changes, persists, returns updated user.
+    ...
+  }
 
-    def update(self, user_id: str, changes: dict) -> User:
-        # Validates, applies changes, persists, returns updated user.
-        ...
-
-    def delete(self, user_id: str) -> None:
-        # Handles cascading cleanup (sessions, related data) internally.
-        ...
+  delete(userId: string): void {
+    // Handles cascading cleanup (sessions, related data) internally.
+    ...
+  }
+}
 ```
 
 One module. No pass-throughs. Each method does something meaningful. Storage is an internal detail, not a separate layer.
@@ -127,31 +134,33 @@ A general-purpose interface is often _simpler_ than a special-purpose one, becau
 
 ### Before (Special-Purpose)
 
-```python
-class TextEditor:
-    def delete_selection(self) -> None: ...
-    def delete_next_char(self) -> None: ...
-    def delete_prev_char(self) -> None: ...
-    def delete_word(self) -> None: ...
-    def delete_line(self) -> None: ...
-    def delete_to_end_of_line(self) -> None: ...
+```typescript
+class TextEditor {
+  deleteSelection(): void { ... }
+  deleteNextChar(): void { ... }
+  deletePrevChar(): void { ... }
+  deleteWord(): void { ... }
+  deleteLine(): void { ... }
+  deleteToEndOfLine(): void { ... }
 
-    def insert_char(self, c: str) -> None: ...
-    def insert_string(self, s: str) -> None: ...
-    def insert_newline(self) -> None: ...
-    def insert_tab(self) -> None: ...
+  insertChar(c: string): void { ... }
+  insertString(s: string): void { ... }
+  insertNewline(): void { ... }
+  insertTab(): void { ... }
+}
 ```
 
 Ten methods, each for a specific editing action. Every new editing operation requires a new method.
 
 ### After (General-Purpose)
 
-```python
-class TextEditor:
-    def insert(self, position: Position, text: str) -> None: ...
-    def delete(self, start: Position, end: Position) -> None: ...
-    def selection(self) -> Range: ...
-    def move_cursor(self, position: Position) -> None: ...
+```typescript
+class TextEditor {
+  insert(position: Position, text: string): void { ... }
+  delete(start: Position, end: Position): void { ... }
+  selection(): Range { ... }
+  moveCursor(position: Position): void { ... }
+}
 ```
 
 Four methods that can express any editing operation. `delete_selection` becomes `delete(selection.start, selection.end)`. `delete_line` becomes `delete(line_start, line_end)`. The interface is both smaller and more powerful.
@@ -162,31 +171,31 @@ Four methods that can express any editing operation. `delete_selection` becomes 
 
 ### Before (Complexity Pushed Up to Caller)
 
-```python
-# Every caller must know the right configuration
-client = HttpClient(
-    timeout=30,
-    retries=3,
-    retry_backoff=ExponentialBackoff(base=1, max=30),
-    connection_pool_size=10,
-    keep_alive=True,
-    ssl_verify=True,
-    ssl_ca_bundle="/etc/ssl/certs/ca-certificates.crt",
-    follow_redirects=True,
-    max_redirects=5,
-)
+```typescript
+// Every caller must know the right configuration
+const client = new HttpClient({
+  timeout: 30,
+  retries: 3,
+  retryBackoff: new ExponentialBackoff({ base: 1, max: 30 }),
+  connectionPoolSize: 10,
+  keepAlive: true,
+  sslVerify: true,
+  sslCaBundle: "/etc/ssl/certs/ca-certificates.crt",
+  followRedirects: true,
+  maxRedirects: 5,
+});
 ```
 
 The interface exposes every implementation decision. Callers must understand connection pooling, SSL verification, backoff strategies — things they shouldn't need to care about.
 
 ### After (Complexity Pulled Down)
 
-```python
-# Sensible defaults for everything. Override only what you need.
-client = HttpClient()
+```typescript
+// Sensible defaults for everything. Override only what you need.
+const client = new HttpClient();
 
-# Or, for the rare case where you need to customize:
-client = HttpClient(timeout=60, retries=5)
+// Or, for the rare case where you need to customize:
+const client = new HttpClient({ timeout: 60, retries: 5 });
 ```
 
 The constructor still accepts all those options, but it defaults every single one to a sensible value. 95% of callers write one line. The module absorbed the complexity of knowing what good defaults look like.

@@ -10,60 +10,69 @@ Design an undo/redo system for a collaborative text editor. Users need to undo t
 
 Store each user action as a command object with `execute()` and `undo()` methods. Keep a stack per user.
 
-```python
-class InsertCommand:
-    def __init__(self, document, position, text, user_id):
-        self.document = document
-        self.position = position
-        self.text = text
-        self.user_id = user_id
+```typescript
+class InsertCommand implements Command {
+  constructor(
+    private document: Document,
+    private position: number,
+    private text: string,
+    readonly userId: string,
+  ) {}
 
-    def execute(self):
-        self.document.insert(self.position, self.text)
+  execute(): void {
+    this.document.insert(this.position, this.text);
+  }
 
-    def undo(self):
-        self.document.delete(self.position, len(self.text))
+  undo(): void {
+    this.document.delete(this.position, this.text.length);
+  }
+}
 
-class UndoManager:
-    def __init__(self):
-        self.stacks: dict[str, list[Command]] = {}
+class UndoManager {
+  private stacks = new Map<string, Command[]>();
 
-    def execute(self, command: Command):
-        command.execute()
-        self.stacks.setdefault(command.user_id, []).append(command)
+  execute(command: Command): void {
+    command.execute();
+    const stack = this.stacks.get(command.userId) ?? [];
+    stack.push(command);
+    this.stacks.set(command.userId, stack);
+  }
 
-    def undo(self, user_id: str):
-        stack = self.stacks.get(user_id, [])
-        if stack:
-            stack.pop().undo()
+  undo(userId: string): void {
+    const stack = this.stacks.get(userId);
+    stack?.pop()?.undo();
+  }
+}
 ```
 
 ### Alternative B: Operation Transform on Immutable Snapshots
 
 Store document state as immutable snapshots. Undo = compute the inverse transform and apply it to the current document state, not the previous one.
 
-```python
-@dataclass(frozen=True)
-class DocumentState:
-    content: str
-    version: int
+```typescript
+interface DocumentState {
+  readonly content: string;
+  readonly version: number;
+}
 
-class Document:
-    def __init__(self):
-        self.state = DocumentState("", 0)
-        self.history: list[Operation] = []
+class Document {
+  private state: DocumentState = { content: "", version: 0 };
+  private history: Operation[] = [];
 
-    def apply(self, op: Operation) -> DocumentState:
-        new_content = op.transform(self.state.content)
-        self.state = DocumentState(new_content, self.state.version + 1)
-        self.history.append(op)
-        return self.state
+  apply(op: Operation): DocumentState {
+    const newContent = op.transform(this.state.content);
+    this.state = { content: newContent, version: this.state.version + 1 };
+    this.history.push(op);
+    return this.state;
+  }
 
-    def undo(self, user_id: str) -> DocumentState:
-        # Find last op by this user, compute inverse, transform against
-        # all subsequent operations, then apply
-        inverse = self._compute_contextual_inverse(user_id)
-        return self.apply(inverse)
+  undo(userId: string): DocumentState {
+    // Find last op by this user, compute inverse, transform against
+    // all subsequent operations, then apply
+    const inverse = this.computeContextualInverse(userId);
+    return this.apply(inverse);
+  }
+}
 ```
 
 ### Comparison
@@ -166,38 +175,48 @@ Implement rate limiting for an API. Different endpoints have different limits. N
 
 ### Alternative A: Middleware with Per-Route Config
 
-```python
-# Caller must configure each route
-rate_limits = {
-    "/api/search": RateLimit(requests=100, window=60),
-    "/api/upload": RateLimit(requests=10, window=60),
-}
+```typescript
+// Caller must configure each route
+const rateLimits: Record<string, RateLimit> = {
+  "/api/search": new RateLimit({ requests: 100, window: 60 }),
+  "/api/upload": new RateLimit({ requests: 10, window: 60 }),
+};
 
-@app.middleware
-def rate_limit_middleware(request, next):
-    limit = rate_limits.get(request.path)
-    if limit and not limiter.allow(request.client_ip, limit):
-        return Response(429, retry_after=limit.retry_after())
-    return next(request)
+async function rateLimitMiddleware(req: Request, next: NextFunction) {
+  const limit = rateLimits[req.path];
+  if (limit && !limiter.allow(req.clientIp, limit)) {
+    return new Response(null, {
+      status: 429,
+      headers: { "Retry-After": limit.retryAfter() },
+    });
+  }
+  return next(req);
+}
 ```
 
 ### Alternative B: Token Bucket as a Transparent Layer
 
-```python
-# Rate limiting is a property of the route decorator — no separate config
-@app.route("/api/search")
-@throttle(burst=20, sustained=100, per=60)
-def search(request):
+```typescript
+// Rate limiting is a property of the route definition — no separate config
+app.get(
+  "/api/search",
+  throttle({ burst: 20, sustained: 100, per: 60 }),
+  async (req, res) => {
     ...
+  },
+);
 
-@app.route("/api/upload")
-@throttle(burst=2, sustained=10, per=60)
-def upload(request):
+app.post(
+  "/api/upload",
+  throttle({ burst: 2, sustained: 10, per: 60 }),
+  async (req, res) => {
     ...
+  },
+);
 
-# The decorator handles everything: tracking, headers, 429 responses,
-# retry-after calculation, and burst allowance via token bucket.
-# The route handler never sees rate limiting logic.
+// The middleware handles everything: tracking, headers, 429 responses,
+// retry-after calculation, and burst allowance via token bucket.
+// The route handler never sees rate limiting logic.
 ```
 
 ### Comparison

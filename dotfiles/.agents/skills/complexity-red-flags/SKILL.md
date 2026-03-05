@@ -37,10 +37,12 @@ Use this skill:
 
 **DON'T:**
 
-```python
-class TemperatureConverter:
-    def celsius_to_fahrenheit(self, c: float) -> float:
-        return c * 9/5 + 32
+```typescript
+class TemperatureConverter {
+  celsiusToFahrenheit(c: number): number {
+    return (c * 9) / 5 + 32;
+  }
+}
 ```
 
 A class for a one-line formula. The interface (constructor, method name, self parameter) is more complex than the operation.
@@ -123,13 +125,16 @@ One module owns the concept. Read, parse, validate are internal steps.
 
 **DON'T:**
 
-```python
-class UserService:
-    def get_user(self, id: str) -> User:
-        return self.repo.get_user(id)   # Just forwarding
+```typescript
+class UserService {
+  getUser(id: string): User {
+    return this.repo.getUser(id); // Just forwarding
+  }
 
-    def delete_user(self, id: str) -> None:
-        self.repo.delete_user(id)       # Just forwarding
+  deleteUser(id: string): void {
+    this.repo.deleteUser(id); // Just forwarding
+  }
+}
 ```
 
 **DO:** Either add real logic to the service layer (validation, authorization, business rules, caching) that justifies its existence, or eliminate the layer entirely and let callers use the repository directly.
@@ -146,24 +151,27 @@ class UserService:
 
 **DON'T:**
 
-```python
-def handle_request(request, config, logger, metrics):
-    user = authenticate(request, config, logger, metrics)
-    ...
+```typescript
+function handleRequest(request: Request, config: Config, logger: Logger, metrics: Metrics) {
+  const user = authenticate(request, config, logger, metrics);
+  ...
+}
 
-def authenticate(request, config, logger, metrics):
-    token = extract_token(request, config, logger)
-    ...
+function authenticate(request: Request, config: Config, logger: Logger, metrics: Metrics) {
+  const token = extractToken(request, config, logger);
+  ...
+}
 ```
 
 `logger` and `metrics` are threaded through every function but only used deep in the stack.
 
 **DO:** Use context objects, dependency injection, or module-level access to break the threading:
 
-```python
-def handle_request(request):
-    user = authenticate(request)
-    ...
+```typescript
+function handleRequest(request: Request) {
+  const user = authenticate(request);
+  ...
+}
 ```
 
 ---
@@ -176,18 +184,18 @@ def handle_request(request):
 
 **DON'T:**
 
-```python
-processor.init_batch()      # Must call before process()
-processor.process(items)    # Must call after init, before finalize
-processor.finalize_batch()  # Must call after process()
+```typescript
+processor.initBatch(); // Must call before process()
+processor.process(items); // Must call after init, before finalize
+processor.finalizeBatch(); // Must call after process()
 ```
 
 Three methods with implicit ordering requirements. Miss one, get a bug.
 
 **DO:**
 
-```python
-processor.process_batch(items)  # Handles init, processing, and finalization
+```typescript
+processor.processBatch(items); // Handles init, processing, and finalization
 ```
 
 ---
@@ -202,25 +210,25 @@ processor.process_batch(items)  # Handles init, processing, and finalization
 
 **DON'T:**
 
-```python
-cache = Cache(
-    backend="redis",
-    host="localhost",
-    port=6379,
-    serializer="json",
-    compression="gzip",
-    max_connections=10,
-    retry_policy="exponential",
-    retry_max=3,
-    ssl=False,
-    key_prefix="app:",
-)
+```typescript
+const cache = new Cache({
+  backend: "redis",
+  host: "localhost",
+  port: 6379,
+  serializer: "json",
+  compression: "gzip",
+  maxConnections: 10,
+  retryPolicy: "exponential",
+  retryMax: 3,
+  ssl: false,
+  keyPrefix: "app:",
+});
 ```
 
 **DO:**
 
-```python
-cache = Cache("redis://localhost:6379")  # Sensible defaults for everything else
+```typescript
+const cache = new Cache("redis://localhost:6379"); // Sensible defaults for everything else
 ```
 
 ---
@@ -233,25 +241,30 @@ cache = Cache("redis://localhost:6379")  # Sensible defaults for everything else
 
 **DON'T:**
 
-```python
-class QueryBuilder:
-    def build(self, params):
-        query = "SELECT * FROM " + params.table
-        if params.table == "users":
-            query += " WHERE active = true"  # Special case leaked in
-        if params.filters:
-            query += " WHERE " + self._build_filters(params.filters)
-        return query
+```typescript
+class QueryBuilder {
+  build(params: QueryParams): string {
+    let query = `SELECT * FROM ${params.table}`;
+    if (params.table === "users") {
+      query += " WHERE active = true"; // Special case leaked in
+    }
+    if (params.filters) {
+      query += ` WHERE ${this.buildFilters(params.filters)}`;
+    }
+    return query;
+  }
+}
 ```
 
 **DO:** Keep the general mechanism pure. Let callers supply the special cases:
 
-```python
-class QueryBuilder:
-    def build(self, table: str, filters: list[Filter]) -> str: ...
+```typescript
+class QueryBuilder {
+  build(table: string, filters: Filter[]): string { ... }
+}
 
-# Caller supplies the domain-specific filter
-users = qb.build("users", [Filter("active", "=", True)])
+// Caller supplies the domain-specific filter
+const users = qb.build("users", [new Filter("active", "=", true)]);
 ```
 
 ## The Audit Workflow

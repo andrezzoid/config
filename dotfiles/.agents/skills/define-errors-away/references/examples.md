@@ -4,69 +4,85 @@
 
 ### Before (Exception Soup)
 
-```python
-def handle_update_profile(request):
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return Response(400, "Invalid JSON")
+```typescript
+async function handleUpdateProfile(req: Request): Promise<Response> {
+  let body: unknown;
+  try {
+    body = JSON.parse(req.body);
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
 
-    if "email" not in body:
-        return Response(400, "Missing email field")
+  if (!body.email) {
+    return new Response("Missing email field", { status: 400 });
+  }
 
-    try:
-        email = validate_email(body["email"])
-    except InvalidEmailError:
-        return Response(400, "Invalid email format")
+  let email: string;
+  try {
+    email = validateEmail(body.email);
+  } catch {
+    return new Response("Invalid email format", { status: 400 });
+  }
 
-    if "name" not in body:
-        return Response(400, "Missing name field")
+  if (!body.name) {
+    return new Response("Missing name field", { status: 400 });
+  }
 
-    if len(body["name"]) > 100:
-        return Response(400, "Name too long")
+  if (body.name.length > 100) {
+    return new Response("Name too long", { status: 400 });
+  }
 
-    try:
-        user = db.get_user(request.user_id)
-    except UserNotFoundError:
-        return Response(404, "User not found")
+  let user: User;
+  try {
+    user = await db.getUser(req.userId);
+  } catch (e) {
+    if (e instanceof UserNotFoundError)
+      return new Response("User not found", { status: 404 });
+    throw e;
+  }
 
-    try:
-        user.update(email=email, name=body["name"])
-        db.save(user)
-    except DuplicateEmailError:
-        return Response(409, "Email already taken")
-    except DatabaseError:
-        return Response(500, "Internal error")
+  try {
+    user.update({ email, name: body.name });
+    await db.save(user);
+  } catch (e) {
+    if (e instanceof DuplicateEmailError)
+      return new Response("Email already taken", { status: 409 });
+    return new Response("Internal error", { status: 500 });
+  }
 
-    return Response(200, user.to_dict())
+  return Response.json(user.toJSON(), { status: 200 });
+}
 ```
 
 Seven error handling branches. More error code than business logic. Each branch is a separate path that needs testing.
 
 ### After (Errors Defined Away)
 
-```python
-# A schema that parses and validates in one step — no exceptions for bad input
-ProfileUpdate = Schema({
-    "email": Email(required=True),
-    "name": String(max_length=100, required=True),
-})
+```typescript
+// A schema that parses and validates in one step — no exceptions for bad input
+const ProfileUpdate = z.object({
+  email: z.string().email(),
+  name: z.string().max(100),
+});
 
-def handle_update_profile(request):
-    # Schema.parse returns (parsed, errors) — no exceptions
-    data, errors = ProfileUpdate.parse(request.body)
-    if errors:
-        return Response(400, errors)
+async function handleUpdateProfile(req: Request): Promise<Response> {
+  // Schema.safeParse returns { success, data, error } — no exceptions
+  const parsed = ProfileUpdate.safeParse(JSON.parse(req.body));
+  if (!parsed.success) {
+    return Response.json(parsed.error.issues, { status: 400 });
+  }
 
-    # update_profile handles "user must exist" internally (this is an
-    # authenticated route — missing user is a bug, not a user error).
-    # Email uniqueness is enforced at the DB level and surfaced as a
-    # validation error, not an exception.
-    user, errors = users.update_profile(request.user_id, data)
-    if errors:
-        return Response(errors.status, errors.detail)
+  // updateProfile handles "user must exist" internally (this is an
+  // authenticated route — missing user is a bug, not a user error).
+  // Email uniqueness is enforced at the DB level and surfaced as a
+  // validation error, not an exception.
+  const result = await users.updateProfile(req.userId, parsed.data);
+  if (!result.ok) {
+    return Response.json(result.error.detail, { status: result.error.status });
+  }
 
-    return Response(200, user.to_dict())
+  return Response.json(result.data, { status: 200 });
+}
 ```
 
 The JSON parsing, field validation, and type checking are all defined away by the schema. The database layer handles uniqueness constraints as validation errors rather than exceptions. The handler has two paths: success and validation error.
@@ -171,70 +187,85 @@ The file loader defines away all file-related errors by handling them internally
 
 ### Before (Callers Handle Cache Misses)
 
-```python
-def get_user_profile(user_id: str) -> UserProfile:
-    try:
-        cached = cache.get(f"profile:{user_id}")
-        if cached is not None:
-            try:
-                return UserProfile.from_json(cached)
-            except DeserializationError:
-                cache.delete(f"profile:{user_id}")  # Stale/corrupt entry
-    except CacheConnectionError:
-        pass  # Cache is down, fall through
+```typescript
+async function getUserProfile(userId: string): Promise<UserProfile> {
+  try {
+    const cached = await cache.get(`profile:${userId}`);
+    if (cached != null) {
+      try {
+        return UserProfile.fromJSON(cached);
+      } catch {
+        await cache.delete(`profile:${userId}`); // Stale/corrupt entry
+      }
+    }
+  } catch {
+    // Cache is down, fall through
+  }
 
-    try:
-        profile = db.query_user_profile(user_id)
-    except DatabaseError as e:
-        raise ServiceError(f"Could not fetch profile: {e}")
+  let profile: UserProfile;
+  try {
+    profile = await db.queryUserProfile(userId);
+  } catch (e) {
+    throw new ServiceError(`Could not fetch profile: ${e}`);
+  }
 
-    try:
-        cache.set(f"profile:{user_id}", profile.to_json(), ttl=300)
-    except CacheConnectionError:
-        pass  # Best effort caching
+  try {
+    await cache.set(`profile:${userId}`, profile.toJSON(), { ttl: 300 });
+  } catch {
+    // Best effort caching
+  }
 
-    return profile
+  return profile;
+}
 ```
 
 The caller is managing cache hits, cache misses, cache corruption, cache connection failures, serialization errors, and database errors. Caching is supposed to be an optimization, but it's tripled the code complexity.
 
 ### After (Cache Masks Its Own Errors)
 
-```python
-class ProfileCache:
-    """Cache with transparent fallback. Never throws — worst case, it's a no-op."""
+```typescript
+/** Cache with transparent fallback. Never throws — worst case, it's a no-op. */
+class ProfileCache {
+  async getOrLoad(
+    userId: string,
+    loader: () => Promise<UserProfile>,
+  ): Promise<UserProfile> {
+    const cached = await this.tryGet(`profile:${userId}`);
+    if (cached != null) return cached;
 
-    def get_or_load(self, user_id: str, loader: Callable) -> UserProfile:
-        cached = self._try_get(f"profile:{user_id}")
-        if cached is not None:
-            return cached
+    const profile = await loader();
+    await this.trySet(`profile:${userId}`, profile, 300);
+    return profile;
+  }
 
-        profile = loader()
-        self._try_set(f"profile:{user_id}", profile, ttl=300)
-        return profile
+  /** Returns deserialized value or undefined. Never throws. */
+  private async tryGet(key: string): Promise<UserProfile | undefined> {
+    try {
+      const raw = await this.client.get(key);
+      return raw ? UserProfile.fromJSON(raw) : undefined;
+    } catch {
+      return undefined; // Cache miss, corruption, connection error — all the same
+    }
+  }
 
-    def _try_get(self, key: str):
-        """Returns deserialized value or None. Never throws."""
-        try:
-            raw = self.client.get(key)
-            return UserProfile.from_json(raw) if raw else None
-        except Exception:
-            return None  # Cache miss, corruption, connection error — all the same
+  /** Best-effort write. Never throws. */
+  private async trySet(
+    key: string,
+    value: UserProfile,
+    ttl: number,
+  ): Promise<void> {
+    try {
+      await this.client.set(key, value.toJSON(), { ttl });
+    } catch {
+      // Cache is an optimization, not a requirement
+    }
+  }
+}
 
-    def _try_set(self, key: str, value, ttl: int):
-        """Best-effort write. Never throws."""
-        try:
-            self.client.set(key, value.to_json(), ttl=ttl)
-        except Exception:
-            pass  # Cache is an optimization, not a requirement
-
-
-# Caller code:
-def get_user_profile(user_id: str) -> UserProfile:
-    return profile_cache.get_or_load(
-        user_id,
-        loader=lambda: db.query_user_profile(user_id),
-    )
+// Caller code:
+async function getUserProfile(userId: string): Promise<UserProfile> {
+  return profileCache.getOrLoad(userId, () => db.queryUserProfile(userId));
+}
 ```
 
 The cache masks all of its own errors. Connection failures, corruption, serialization bugs — all handled internally. The caller's code went from 15 lines with 5 exception handlers to 1 line with zero.
@@ -245,47 +276,47 @@ The cache masks all of its own errors. Connection failures, corruption, serializ
 
 ### Before (Guard Against "Invalid" Transitions)
 
-```python
-class Order:
-    def ship(self):
-        if self.status == "shipped":
-            raise AlreadyShippedError()
-        if self.status == "cancelled":
-            raise OrderCancelledError()
-        if self.status != "paid":
-            raise InvalidStateError(f"Cannot ship from {self.status}")
-        self.status = "shipped"
-        self.shipped_at = now()
+```typescript
+class Order {
+  ship(): void {
+    if (this.status === "shipped") throw new AlreadyShippedError();
+    if (this.status === "cancelled") throw new OrderCancelledError();
+    if (this.status !== "paid")
+      throw new InvalidStateError(`Cannot ship from ${this.status}`);
+    this.status = "shipped";
+    this.shippedAt = new Date();
+  }
 
-    def cancel(self):
-        if self.status == "cancelled":
-            raise AlreadyCancelledError()
-        if self.status == "shipped":
-            raise CannotCancelShippedError()
-        self.status = "cancelled"
+  cancel(): void {
+    if (this.status === "cancelled") throw new AlreadyCancelledError();
+    if (this.status === "shipped") throw new CannotCancelShippedError();
+    this.status = "cancelled";
+  }
+}
 ```
 
 Every state transition throws for "invalid" previous states, forcing every caller to handle multiple error cases.
 
 ### After (Idempotent Transitions)
 
-```python
-class Order:
-    def ship(self) -> bool:
-        """Mark as shipped. Returns True if state changed, False if already shipped
-        or not in a shippable state. Never throws for state reasons."""
-        if self.status != "paid":
-            return False
-        self.status = "shipped"
-        self.shipped_at = now()
-        return True
+```typescript
+class Order {
+  /** Mark as shipped. Returns true if state changed, false if already shipped
+      or not in a shippable state. Never throws for state reasons. */
+  ship(): boolean {
+    if (this.status !== "paid") return false;
+    this.status = "shipped";
+    this.shippedAt = new Date();
+    return true;
+  }
 
-    def cancel(self) -> bool:
-        """Cancel the order if possible. Returns True if state changed."""
-        if self.status in ("cancelled", "shipped"):
-            return False
-        self.status = "cancelled"
-        return True
+  /** Cancel the order if possible. Returns true if state changed. */
+  cancel(): boolean {
+    if (this.status === "cancelled" || this.status === "shipped") return false;
+    this.status = "cancelled";
+    return true;
+  }
+}
 ```
 
 "Ship an already-shipped order" isn't an error — it's a no-op. "Cancel a shipped order" isn't an error — it's a request that can't be fulfilled. The caller gets a boolean signal and decides what to do with it, no exception handling required.

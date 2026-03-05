@@ -34,7 +34,7 @@ There are three strategies for defining errors out of existence, in order of pre
 
 Change what the operation does so the "error" case becomes a valid, expected outcome.
 
-> "The overall simplification from defining away exceptions is significant: servers with this behavior require no special crash-recovery code."
+> "The exceptions thrown by a class are part of its interface; classes with lots of exceptions have complex interfaces, and they are shallower than classes with fewer exceptions."
 
 **The key insight**: Most "errors" are only errors because we defined the operation too narrowly. Widen the definition, and the error disappears.
 
@@ -81,31 +81,35 @@ When you encounter a potential error condition:
 
 ### DON'T: Throw on edge cases the caller can't control
 
-```python
-def substring(s: str, start: int, end: int) -> str:
-    if start < 0 or end > len(s) or start > end:
-        raise IndexError("Invalid range")
-    return s[start:end]
+```typescript
+function substring(s: string, start: number, end: number): string {
+  if (start < 0 || end > s.length || start > end) {
+    throw new RangeError("Invalid range");
+  }
+  return s.slice(start, end);
+}
 
-# Every caller must now guard against IndexError
-try:
-    result = substring(text, pos, pos + length)
-except IndexError:
-    result = ""  # What they wanted in the first place
+// Every caller must now guard against RangeError
+let result: string;
+try {
+  result = substring(text, pos, pos + length);
+} catch {
+  result = ""; // What they wanted in the first place
+}
 ```
 
 ### DO: Redefine to handle edge cases naturally
 
-```python
-def substring(s: str, start: int, end: int) -> str:
-    start = max(0, start)
-    end = min(len(s), end)
-    if start >= end:
-        return ""
-    return s[start:end]
+```typescript
+function substring(s: string, start: number, end: number): string {
+  start = Math.max(0, start);
+  end = Math.min(s.length, end);
+  if (start >= end) return "";
+  return s.slice(start, end);
+}
 
-# Callers just use it. No error handling needed.
-result = substring(text, pos, pos + length)
+// Callers just use it. No error handling needed.
+const result = substring(text, pos, pos + length);
 ```
 
 ### DON'T: Force callers to check before acting
@@ -137,39 +141,40 @@ async function sendNotification(userId: string, message: string) {
 
 ### DON'T: Return errors for predictable conditions
 
-```go
-func GetUser(id string) (*User, error) {
-    user, ok := cache[id]
-    if !ok {
-        return nil, ErrNotFound
-    }
-    return user, nil
+```typescript
+function getUser(id: string): User {
+  const user = cache.get(id);
+  if (!user) {
+    throw new NotFoundError(`User not found: ${id}`);
+  }
+  return user;
 }
 
 // Every single caller:
-user, err := GetUser(id)
-if err != nil {
-    // Handle "not found"... but what does that even mean here?
+try {
+  const user = getUser(id);
+} catch (e) {
+  // Handle "not found"... but what does that even mean here?
 }
 ```
 
 ### DO: Use the type system to express absence
 
-```go
-func FindUser(id string) *User {
-    // Returns nil if not found — callers who need a user
-    // that must exist call a different, clearly named method.
-    return cache[id]
+```typescript
+function findUser(id: string): User | undefined {
+  // Returns undefined if not found — callers who need a user
+  // that must exist call a different, clearly named method.
+  return cache.get(id);
 }
 
-func GetUser(id string) *User {
-    // For contexts where the user must exist (e.g., authenticated routes).
-    // Panics if not found — this is a programming error, not a runtime condition.
-    user := cache[id]
-    if user == nil {
-        panic("invariant: authenticated user must exist: " + id)
-    }
-    return user
+function getUser(id: string): User {
+  // For contexts where the user must exist (e.g., authenticated routes).
+  // Throws if not found — this is a programming error, not a runtime condition.
+  const user = cache.get(id);
+  if (!user) {
+    throw new Error(`invariant: authenticated user must exist: ${id}`);
+  }
+  return user;
 }
 ```
 

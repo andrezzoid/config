@@ -37,7 +37,7 @@ Before generating any solution, articulate:
 
 Write this down as a comment or interface description. This is the "comments-first" technique — by describing the abstraction in words before writing code, you force clarity about what you're actually designing.
 
-> "If a user has to read the code of a method in order to use it, there is no abstraction."
+> "If users must read the code of a method in order to use it, then there is no abstraction: all of the complexity of the method is exposed."
 
 ### Step 2: Generate Alternative A
 
@@ -76,34 +76,42 @@ Pick the better design and state _why_ in one or two sentences. If the choice is
 
 **DON'T: Cosmetic variations** — Same structure with different names or minor API tweaks.
 
-```
-# These are NOT genuinely different designs:
-# Alternative A
-class EventBus:
-    def subscribe(self, event_type, handler): ...
-    def publish(self, event_type, data): ...
+```typescript
+// These are NOT genuinely different designs:
+// Alternative A
+class EventBus {
+  subscribe(eventType: string, handler: EventHandler): void { ... }
+  publish(eventType: string, data: unknown): void { ... }
+}
 
-# Alternative B (just renamed methods — same design)
-class EventBus:
-    def on(self, event_type, handler): ...
-    def emit(self, event_type, data): ...
+// Alternative B (just renamed methods — same design)
+class EventBus {
+  on(eventType: string, handler: EventHandler): void { ... }
+  emit(eventType: string, data: unknown): void { ... }
+}
 ```
 
 **DO: Fundamentally different approaches** — Different decomposition, data flow, or abstraction.
 
-```
-# Alternative A: Observer pattern — publishers don't know subscribers
-class EventBus:
-    def subscribe(self, event_type, handler): ...
-    def publish(self, event_type, data): ...
+```typescript
+// Alternative A: Observer pattern — publishers don't know subscribers
+class EventBus {
+  subscribe(eventType: string, handler: EventHandler): void { ... }
+  publish(eventType: string, data: unknown): void { ... }
+}
 
-# Alternative B: Direct dependency injection — explicit wiring, no runtime dispatch
-class OrderProcessor:
-    def __init__(self, inventory: InventoryService, notifications: NotificationService):
-        ...
-    def process(self, order):
-        self.inventory.reserve(order.items)
-        self.notifications.send_confirmation(order)
+// Alternative B: Direct dependency injection — explicit wiring, no runtime dispatch
+class OrderProcessor {
+  constructor(
+    private inventory: InventoryService,
+    private notifications: NotificationService,
+  ) {}
+
+  process(order: Order): void {
+    this.inventory.reserve(order.items);
+    this.notifications.sendConfirmation(order);
+  }
+}
 ```
 
 These differ in a real way: decoupled-but-implicit vs. coupled-but-explicit. Each has genuine tradeoffs worth evaluating.
@@ -118,4 +126,4 @@ See `references/examples.md` for extended examples showing the full design-it-tw
 
 **"I'll just pick the one with more features."** More features means a more complex interface. The best design is often the one that does _less_ but does it deeply and cleanly.
 
-> "The most important consideration in designing a module is to be selective about what to expose and what to hide. The best modules are those whose external interface is much simpler than their implementation."
+> "The best modules are deep: they have a lot of functionality hidden behind a simple interface. A deep module is a good abstraction because only a small fraction of its internal complexity is visible to its users."

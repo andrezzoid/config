@@ -31,7 +31,7 @@ Use this skill whenever you're:
 
 The interface is the cost users pay. The implementation is the value they get. Maximize the ratio.
 
-> "If a module has a simple interface, we can change its implementation without affecting the rest of the system. If a module's interface is much simpler than its implementation, there must be important information hidden within the module."
+> "The best modules are deep: they have a lot of functionality hidden behind a simple interface. A deep module is a good abstraction because only a small fraction of its internal complexity is visible to its users."
 
 **The test**: Can someone use your module by reading only the function signatures and a one-line description? If they need to read the implementation to use it correctly, the abstraction is leaking.
 
@@ -79,28 +79,29 @@ When designing a module:
 
 **DON'T: Expose every operation as a separate method.**
 
-```python
-class FileStore:
-    def check_path_exists(self, path: str) -> bool: ...
-    def create_directory(self, path: str) -> None: ...
-    def open_file(self, path: str, mode: str) -> FileHandle: ...
-    def write_bytes(self, handle: FileHandle, data: bytes) -> None: ...
-    def close_file(self, handle: FileHandle) -> None: ...
-    def set_permissions(self, path: str, mode: int) -> None: ...
+```typescript
+class FileStore {
+  checkPathExists(path: string): boolean { ... }
+  createDirectory(path: string): void { ... }
+  openFile(path: string, mode: string): FileHandle { ... }
+  writeBytes(handle: FileHandle, data: Buffer): void { ... }
+  closeFile(handle: FileHandle): void { ... }
+  setPermissions(path: string, mode: number): void { ... }
+}
 
-# Caller must orchestrate 6 calls in the right order
+// Caller must orchestrate 6 calls in the right order
 ```
 
 **DO: Provide one deep method that handles the common case.**
 
-```python
-class FileStore:
-    def save(self, path: str, data: bytes) -> None:
-        """Save data to path. Creates directories, handles permissions,
-        writes atomically. Just works."""
-        ...
+```typescript
+class FileStore {
+  /** Save data to path. Creates directories, handles permissions,
+      writes atomically. Just works. */
+  save(path: string, data: Buffer): void { ... }
+}
 
-# Caller writes one line. All orchestration is internal.
+// Caller writes one line. All orchestration is internal.
 ```
 
 ### Over-Decomposition: User Registration
@@ -163,22 +164,22 @@ One class, deep interface. Validation rules, hashing strategy, storage mechanism
 
 **DON'T: Expose internal data formats.**
 
-```python
-# Callers must know the exact JSON structure
-config = json.loads(open("config.json").read())
-db_url = config["database"]["connections"]["primary"]["url"]
+```typescript
+// Callers must know the exact JSON structure
+const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
+const dbUrl = config.database.connections.primary.url;
 
-# Every caller embeds knowledge of the JSON structure.
-# Change the structure → change every caller.
+// Every caller embeds knowledge of the JSON structure.
+// Change the structure → change every caller.
 ```
 
 **DO: Hide the format behind the module.**
 
-```python
-config = AppConfig.load()  # Reads and parses internally
-db_url = config.db_url     # Typed, flat, format-agnostic
+```typescript
+const config = AppConfig.load(); // Reads and parses internally
+const dbUrl = config.dbUrl; // Typed, flat, format-agnostic
 
-# Callers don't know or care whether it's JSON, YAML, or env vars.
+// Callers don't know or care whether it's JSON, YAML, or env vars.
 ```
 
 See `references/examples.md` for extended before/after examples including pass-through methods, temporal decomposition, and general-purpose vs. special-purpose design.

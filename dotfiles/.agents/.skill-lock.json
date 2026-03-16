@@ -6,9 +6,10 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
       "skillPath": "skills/agent-browser/SKILL.md",
-      "skillFolderHash": "ab3d846cfeea307bf8590fe5b986af8134de11e4",
+      "skillFolderHash": "e81e77232443f0b2d70f152a671c6581850db856",
+      "pluginName": "agent-browser",
       "installedAt": "2026-01-23T10:27:13.327Z",
-      "updatedAt": "2026-01-23T10:27:13.327Z"
+      "updatedAt": "2026-03-13T11:16:50.970Z"
     },
     "code-comments": {
       "source": "petekp/claude-code-setup",
@@ -18,11 +19,31 @@
       "skillFolderHash": "ccb02bb96e6109fe9c73e08e6a519b100c83f65c",
       "installedAt": "2026-02-09T22:33:36.593Z",
       "updatedAt": "2026-02-09T22:33:36.593Z"
+    },
+    "linear-cli": {
+      "source": "schpet/linear-cli",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/schpet/linear-cli.git",
+      "skillPath": "skills/linear-cli/SKILL.md",
+      "skillFolderHash": "7a10bc152c02efa7c8d895359495979e1633245c",
+      "installedAt": "2026-02-23T15:22:13.776Z",
+      "updatedAt": "2026-02-23T15:22:13.776Z"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/mattpocock/skills.git",
+      "skillPath": "tdd/SKILL.md",
+      "skillFolderHash": "28d7822c112f22cf499099881856fdec07bc83a8",
+      "installedAt": "2026-02-25T09:21:39.840Z",
+      "updatedAt": "2026-02-25T09:21:39.840Z"
     }
   },
   "lastSelectedAgents": [
     "amp",
+    "cline",
     "codex",
+    "cursor",
     "gemini-cli",
     "github-copilot",
     "kimi-cli",

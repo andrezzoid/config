@@ -1,4 +1,3 @@
-tap "homebrew/bundle"
 tap "schpet/tap"
 tap "sst/tap"
 brew "bash"

@@ -14,11 +14,6 @@ fi
 
 
 ## Exports
-export PATH=/usr/local/bin:$PATH  # NOTE: For some reason this is in path in iterm2 but not in wezterm
-export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
-export NVM_DIR="$HOME/.nvm"
-  [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && . "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
-  [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && . "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 export PATH="$HOME/.local/bin:$PATH"
 
 
@@ -44,6 +39,7 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light Aloxaf/fzf-tab
 
 # Load completions
+fpath=("$HOME/.zsh/completions" $fpath)
 autoload -Uz compinit && compinit
 
 
@@ -87,17 +83,15 @@ preexec() { echo -ne '\e[5 q' ;} # Use beam shape cursor for each new prompt.
 
 
 ## History
-HISTSIZE=5000
+HISTSIZE=50000
 HISTFILE=~/.zsh_history
 SAVEHIST=$HISTSIZE
-HISTDUP=erase                 # Erase duplicates inside history
 setopt appendhistory          # Append to history rather than override
 setopt sharehistory           # Share history across sessions
 setopt hist_ignore_space      # Prevent command from being added to history by adding a trailing space
 # Prevent duplicate commands from being saved in history
 setopt hist_ignore_all_dups
 setopt hist_save_no_dups
-setopt hist_ignore_dups
 setopt hist_find_no_dups      # Prevent duplicates from being shown in historical search
 
 
@@ -107,7 +101,7 @@ zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"                     # En
 zstyle ':completion:*' menu no                                              # Disable default menu, use Aloxaf/fzf-tab
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'          # Display Aloxaf/fzf-tab when navigating with cd
 zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'  # zoxide completions
-zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup                              # If using >= tmux@3.2
+# zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup                              # If using >= tmux@3.2
 zstyle ':fzf-tab:*' fzf-bindings 'ctrl-y:accept'                            # Map CTRL-y to accept fzf option, same as for the above autosuggest-accept
 
 
@@ -120,10 +114,3 @@ alias c='clear'
 ## Shell integrations
 eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"  # There's also the cdi alias for interactive mode
-
-
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/andrejonas/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/andrejonas/Downloads/google-cloud-sdk/path.zsh.inc'; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f '/Users/andrejonas/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/andrejonas/Downloads/google-cloud-sdk/completion.zsh.inc'; fi

@@ -11,7 +11,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Completions
 fpath=("$HOME/.zsh/completions" $HOMEBREW_PREFIX/share/zsh-completions $fpath)
-autoload -Uz compinit && compinit
+autoload -Uz compinit && compinit -u
 
 
 ## Plugins (installed via Homebrew)

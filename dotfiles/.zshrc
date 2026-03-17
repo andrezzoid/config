@@ -83,4 +83,5 @@ alias c='clear'
 ## Shell integrations
 eval "$(fzf --zsh)"
 eval "$(zoxide init zsh)"  # Use z/zi commands, don't override cd (breaks Claude Code shell snapshots)
+eval "$(mise activate zsh)"
 eval "$(starship init zsh)"

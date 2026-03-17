@@ -68,19 +68,19 @@ setopt hist_find_no_dups      # Prevent duplicates from being shown in historica
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'                      # Case insensitive completions
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"                     # Enable ls --color
 zstyle ':completion:*' menu no                                              # Disable default menu, use Aloxaf/fzf-tab
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'          # Display Aloxaf/fzf-tab when navigating with cd
-zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'  # zoxide completions
+zstyle ':fzf-tab:complete:*:*' fzf-preview 'bat --color=always --style=numbers --line-range=:200 $realpath 2>/dev/null || eza --icons --color=always $realpath'
 # zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup                              # If using >= tmux@3.2
 zstyle ':fzf-tab:*' fzf-bindings 'ctrl-y:accept'                            # Map CTRL-y to accept fzf option, same as for the above autosuggest-accept
 
 
 ## Aliases
-alias ls='ls --color -lah'
+alias ls='eza -lah --icons --git'
+alias tree='eza --tree --icons'
 alias vim='nvim'
 alias c='clear'
 
 
 ## Shell integrations
 eval "$(fzf --zsh)"
-eval "$(zoxide init --cmd cd zsh)"  # There's also the cdi alias for interactive mode
+eval "$(zoxide init zsh)"  # Use z/zi commands, don't override cd (breaks Claude Code shell snapshots)
 eval "$(starship init zsh)"

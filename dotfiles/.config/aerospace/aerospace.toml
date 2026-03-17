@@ -3,8 +3,6 @@
 
 config-version = 2
 start-at-login = true
-auto-reload-config = true
-
 # Prevents cmd-h (hide app) from breaking tiling layout
 automatically-unhide-macos-hidden-apps = true
 

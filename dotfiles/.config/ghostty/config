@@ -3,5 +3,5 @@ command = "/opt/homebrew/bin/zellij -l welcome"
 font-family = "JetBrains Mono"
 font-size = 13
 theme = TokyoNight Moon
-keybind = shift+enter=text:\n
+keybind = shift+enter=text:\x1b\r
 macos-option-as-alt = true

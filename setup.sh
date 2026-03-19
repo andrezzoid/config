@@ -18,6 +18,18 @@ brew bundle install
 echo "Linking dotfiles..."
 stow dotfiles/ -t ~
 
+# Launch agents
+echo "Loading launch agents..."
+for plist in dotfiles/Library/LaunchAgents/*.plist; do
+  label=$(/usr/libexec/PlistBuddy -c "Print :Label" "$plist")
+  if ! launchctl list "$label" &>/dev/null; then
+    launchctl load "$HOME/Library/LaunchAgents/$(basename "$plist")"
+    echo "  Loaded $label"
+  else
+    echo "  $label already loaded"
+  fi
+done
+
 # macOS preferences
 if [ -f defaults.sh ]; then
   echo "Applying macOS preferences..."

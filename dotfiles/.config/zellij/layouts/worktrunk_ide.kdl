@@ -1,0 +1,21 @@
+layout {
+    pane split_direction="vertical" {
+	pane size="40%" stacked=true {
+	    pane command="zsh" name="Lazygit" {
+		args "-i" "-l" "-c" "lazygit"
+	    }
+	    pane command="zsh" name="Editor" expanded=true {
+		args "-i" "-l" "-c" "nvim"
+	    }
+	    pane name="Terminal"
+	}
+        pane name="Claude Code" focus=true command="zsh" {
+            args "-i" "-l" "-c" r#"wt switch -c "$WT_BRANCH" -x claude -- "$WT_PROMPT""#
+        }
+    }
+    pane size=1 borderless=true {
+	plugin location="zellij:compact-bar" {
+	    tooltip "F1"
+	}
+    }
+}

@@ -80,6 +80,12 @@ alias vim='nvim'
 alias c='clear'
 
 
+## Functions
+lfg() {
+    WT_BRANCH="$1" WT_PROMPT="$2" zellij action new-tab --layout worktrunk_ide
+}
+
+
 ## Shell integrations
 eval "$(fzf --zsh)"
 eval "$(zoxide init zsh)"  # Use z/zi commands, don't override cd (breaks Claude Code shell snapshots)

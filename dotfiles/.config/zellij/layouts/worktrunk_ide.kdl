@@ -10,7 +10,7 @@ layout {
 	    pane name="Terminal"
 	}
         pane name="Claude Code" focus=true command="zsh" {
-            args "-i" "-l" "-c" r#"wt switch -c "$WT_BRANCH" -x claude -- "$WT_PROMPT""#
+            args "-i" "-l" "-c" r#"claude --dangerously-skip-permissions "$WT_PROMPT""#
         }
     }
     pane size=1 borderless=true {

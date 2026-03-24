@@ -82,7 +82,20 @@ alias c='clear'
 
 ## Functions
 lfg() {
-    WT_BRANCH="$1" WT_PROMPT="$2" zellij action new-tab --layout worktrunk_ide
+    local branch="$1"
+    local prompt="$2"
+
+    # Create worktree (--no-cd keeps current tab in place)
+    wt switch -c "$branch" --no-cd
+    # Resolve worktree path in a subshell
+    local wt_path
+    wt_path="$(wt switch "$branch" -y >&2 && pwd)"
+
+    local tmpfile=$(mktemp /tmp/lfg-XXXXXX.kdl)
+    WT_PROMPT="$prompt" envsubst '$WT_PROMPT' \
+        < "${XDG_CONFIG_HOME:-$HOME/.config}/zellij/layouts/worktrunk_ide.kdl" > "$tmpfile"
+    zellij action new-tab --layout "$tmpfile" --cwd "$wt_path" --name "$branch"
+    rm -f "$tmpfile"
 }
 
 
@@ -93,3 +106,6 @@ eval "$(mise activate zsh)"
 eval "$(starship init zsh)"
 
 if command -v wt >/dev/null 2>&1; then eval "$(command wt config shell init zsh)"; fi
+
+# Vite+ bin (https://viteplus.dev)
+. "$HOME/.vite-plus/env"

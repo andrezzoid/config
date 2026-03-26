@@ -78,6 +78,8 @@ alias ls='eza -lah --icons --git'
 alias tree='eza --tree --icons'
 alias vim='nvim'
 alias c='clear'
+alias docker='podman'
+alias docker-compose='podman compose'
 
 
 ## Functions

@@ -36,6 +36,12 @@ if [ -f defaults.sh ]; then
   bash defaults.sh
 fi
 
+# Podman machine setup
+if command -v podman &>/dev/null; then
+  podman machine init 2>/dev/null
+  podman machine start 2>/dev/null
+fi
+
 echo ""
 echo "=== Done! Manual steps remaining ==="
 echo "  1. Sign into 1Password"

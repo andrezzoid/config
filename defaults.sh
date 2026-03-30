@@ -6,3 +6,5 @@
 # Window management
 defaults write -g NSWindowShouldDragOnGesture -bool true          # Drag windows from anywhere with Ctrl+Cmd+drag
 defaults write -g NSAutomaticWindowAnimationsEnabled -bool false   # Disable window opening animations
+# Disable the press-and-hold popup (so regular key repeat works)
+defaults write -g ApplePressAndHoldEnabled -bool false

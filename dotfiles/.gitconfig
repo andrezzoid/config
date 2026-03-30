@@ -71,7 +71,7 @@
 	diffFilter = delta --color-only
 
 [merge]
-	conflictstyle = diff3
+	conflictstyle = zdiff3
 
 [status]
 	short = true  # Give the output in a shorter format

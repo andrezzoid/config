@@ -36,6 +36,14 @@ if [ -f defaults.sh ]; then
   bash defaults.sh
 fi
 
+# NAS automount
+echo "Configuring NAS automount..."
+sudo cp etc/auto_magicnas /etc/auto_magicnas
+if ! grep -q "auto_magicnas" /etc/auto_master; then
+  echo '/Users/andrejonas/magicnas    auto_magicnas' | sudo tee -a /etc/auto_master
+fi
+sudo automount -vc
+
 # Podman machine setup
 if command -v podman &>/dev/null; then
   podman machine init 2>/dev/null

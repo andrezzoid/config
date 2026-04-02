@@ -1,0 +1,3 @@
+home       -fstype=smbfs,soft    ://andre@magicnas._smb._tcp.local/home
+Family     -fstype=smbfs,soft    ://andre@magicnas._smb._tcp.local/Family
+Singular   -fstype=smbfs,soft    ://andre@magicnas._smb._tcp.local/Singular

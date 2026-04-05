@@ -6,7 +6,6 @@
 
 ```
 Usage:   linear label
-Version: 1.10.0      
 
 Description:
 
@@ -14,8 +13,8 @@ Description:
 
 Options:
 
-  -h, --help               - Show this help.                      
-  -w, --workspace  <slug>  - Target workspace (uses credentials)  
+  -h, --help           - Show this help.                      
+  --workspace  <slug>  - Target workspace (uses credentials)  
 
 Commands:
 
@@ -32,7 +31,6 @@ Commands:
 
 ```
 Usage:   linear label list
-Version: 1.10.0           
 
 Description:
 
@@ -53,7 +51,6 @@ Options:
 
 ```
 Usage:   linear label create
-Version: 1.10.0             
 
 Description:
 
@@ -62,7 +59,7 @@ Description:
 Options:
 
   -h, --help                        - Show this help.                                              
-  -w, --workspace    <slug>         - Target workspace (uses credentials)                          
+  --workspace        <slug>         - Target workspace (uses credentials)                          
   -n, --name         <name>         - Label name (required)                                        
   -c, --color        <color>        - Color hex code (e.g., #EB5757)                               
   -d, --description  <description>  - Label description                                            
@@ -76,7 +73,6 @@ Options:
 
 ```
 Usage:   linear label delete <nameOrId>
-Version: 1.10.0                        
 
 Description:
 
@@ -84,8 +80,8 @@ Description:
 
 Options:
 
-  -h, --help                  - Show this help.                                 
-  -w, --workspace  <slug>     - Target workspace (uses credentials)             
-  -t, --team       <teamKey>  - Team key to disambiguate labels with same name  
-  -f, --force                 - Skip confirmation prompt
+  -h, --help              - Show this help.                                 
+  --workspace  <slug>     - Target workspace (uses credentials)             
+  -t, --team   <teamKey>  - Team key to disambiguate labels with same name  
+  -f, --force             - Skip confirmation prompt
 ```

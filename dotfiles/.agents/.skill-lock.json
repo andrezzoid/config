@@ -6,10 +6,9 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
       "skillPath": "skills/agent-browser/SKILL.md",
-      "skillFolderHash": "e81e77232443f0b2d70f152a671c6581850db856",
-      "pluginName": "agent-browser",
+      "skillFolderHash": "068bc465a3f22625f98a7996817feefcd18d772f",
       "installedAt": "2026-01-23T10:27:13.327Z",
-      "updatedAt": "2026-03-13T11:16:50.970Z"
+      "updatedAt": "2026-04-05T09:20:32.545Z"
     },
     "code-comments": {
       "source": "petekp/claude-code-setup",
@@ -25,9 +24,9 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/schpet/linear-cli.git",
       "skillPath": "skills/linear-cli/SKILL.md",
-      "skillFolderHash": "7a10bc152c02efa7c8d895359495979e1633245c",
+      "skillFolderHash": "6f29c4345b675d4787e82ded44b90dd78625d50a",
       "installedAt": "2026-02-23T15:22:13.776Z",
-      "updatedAt": "2026-02-23T15:22:13.776Z"
+      "updatedAt": "2026-04-05T09:20:35.241Z"
     },
     "tdd": {
       "source": "mattpocock/skills",

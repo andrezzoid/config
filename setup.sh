@@ -18,17 +18,14 @@ brew bundle install
 echo "Linking dotfiles..."
 stow dotfiles/ -t ~
 
-# Launch agents
-echo "Loading launch agents..."
-for plist in dotfiles/Library/LaunchAgents/*.plist; do
-  label=$(/usr/libexec/PlistBuddy -c "Print :Label" "$plist")
-  if ! launchctl list "$label" &>/dev/null; then
-    launchctl load "$HOME/Library/LaunchAgents/$(basename "$plist")"
-    echo "  Loaded $label"
-  else
-    echo "  $label already loaded"
-  fi
-done
+# Brew autoupdate
+echo "Configuring brew autoupdate..."
+if ! brew autoupdate status 2>/dev/null | grep -q "installed and running"; then
+  brew autoupdate start 86400 --upgrade --cleanup --sudo
+  echo "  Started"
+else
+  echo "  Already running"
+fi
 
 # macOS preferences
 if [ -f defaults.sh ]; then

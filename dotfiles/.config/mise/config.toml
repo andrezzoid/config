@@ -1,5 +1,7 @@
 [tools]
+bun = "latest"
 node = "lts"
+rust = "latest"
 
 [settings]
 experimental = true

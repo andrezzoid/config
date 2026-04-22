@@ -39,6 +39,21 @@ sudo cp etc/auto_magicnas /etc/auto_magicnas
 if ! grep -q "auto_magicnas" /etc/auto_master; then
   echo '/Users/andrejonas/magicnas    auto_magicnas' | sudo tee -a /etc/auto_master
 fi
+
+# Seed SMB credentials into login keychain so automountd can mount unattended.
+# `-r "smb "` is the FourCC Finder uses; automountd launches mount_smbfs, hence the -T grant.
+if ! security find-internet-password -a andre -s magicnas.local -r "smb " &>/dev/null; then
+  echo "Enter SMB password for andre@magicnas.local (stored in login keychain):"
+  security add-internet-password \
+    -a andre \
+    -s magicnas.local \
+    -r "smb " \
+    -l "magicnas.local (andre)" \
+    -T /sbin/mount_smbfs \
+    -U \
+    -w
+fi
+
 sudo automount -vc
 
 # Podman machine setup
@@ -52,6 +67,6 @@ echo "=== Done! Manual steps remaining ==="
 echo "  1. Sign into 1Password"
 echo "  2. Enable 1Password SSH agent (Settings > Developer > SSH Agent)"
 echo "  3. Sign into: browsers, Slack, Discord, Figma, Notion, etc."
-echo "  4. Set default apps"
-echo "  5. Install tooling:"
-echo "		mise use --global node@lts"
+echo "  4. Sign into CLIs: td login, etc."
+echo "  5. Set default apps"
+echo "  6. Grant Ghostty 'Local Network' permission (System Settings > Privacy & Security > Local Network) — required for NAS access from the terminal"

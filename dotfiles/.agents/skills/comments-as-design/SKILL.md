@@ -1,29 +1,29 @@
 ---
 name: comments-as-design
 description: |
-  Use comments as a design tool to capture abstractions, intent, and decisions code can't express. Based on John Ousterhout's A Philosophy of Software Design (Chs. 12–15). Trigger when writing, reviewing, or refactoring any module, interface, class, public function, or data structure — and when the user asks to "add comments", "document this", or "explain this code". Especially critical for LLM-generated code, which consistently parrots code in English, over-comments the obvious, ignores the non-obvious, and treats comments as decoration.
+  Use comments as a design tool to capture abstractions, intent, and decisions code can't express. Use when writing, reviewing, or refactoring any module, interface, class, public function, or data structure — and when the user asks to "add comments", "document this", or "explain this code".
 ---
 
 # Comments as Design
 
 ## Overview
 
-Comments capture what code alone cannot: the abstraction, the intent, the invariants, the reasoning. Ousterhout frames the job as **precision** (units, ranges, nullability the code can't carry) and **intuition** (the mental model behind the code, so readers don't reverse-engineer it).
+> "If you want to use abstractions to hide complexity, comments are essential."
+> — John Ousterhout, _A Philosophy of Software Design_
 
-LLMs default to the opposite: parroting code in English, restating names, ignoring fields, bolting comments on after the design is locked. Every comment must earn its place by adding information that isn't already in the code.
+Comments capture what code alone cannot: the abstraction, the intent, the invariants, the reasoning. Ousterhout's treatment (Chs. 12–15) frames their job as **precision** (units, ranges, nullability the code can't carry) and **intuition** (the mental model behind the code, so readers don't have to reverse-engineer it). Every comment must add information that isn't already in the code.
 
 ## When to Use
 
-- Writing a new module, class, function, public API, or data structure.
-- Reviewing or refactoring code with module boundaries, non-obvious logic, or shared invariants.
+- Writing, reviewing, or refactoring any module, class, function, public API, or data structure.
+- About to write any interface that other code will call.
 - The user asks to "add comments", "document this", or "explain this code".
-- About to write any interface that another piece of code will call.
 
 ## When NOT to Use
 
 - Trivial getters/setters where a precise name carries the full meaning.
 - Throwaway scripts and one-off prototypes.
-- Generated code (move the explanation to whatever generates it).
+- Generated boilerplate (move the explanation to whatever generates it).
 - Cases where a better name would make the comment redundant — rename instead.
 
 ## Core Process

@@ -1,39 +1,59 @@
 ---
 name: complexity-red-flags
 description: |
-  Detect and fix complexity red flags from A Philosophy of Software Design. Use this skill when reviewing code, refactoring, doing code review, or auditing code quality. Also trigger after implementing any significant feature — run a red flag check before considering the work done. Trigger when the user says "review", "audit", "simplify", "clean up", or asks "is this code good?" This is especially critical for LLM-generated code, which frequently produces the exact anti-patterns these red flags detect: shallow modules, unnecessary wrappers, pass-through methods, and over-decomposed architectures.
+  Detect and fix complexity creep — shallow modules, information leakage,
+  pass-through methods/variables, temporal decomposition, conjoined methods,
+  overexposure, special-general mixture. Use after implementing any feature
+  before declaring it done, when reviewing PRs or diffs, when refactoring,
+  or when the user says "review", "audit", "simplify", "clean up", or "is
+  this code good?", or code "feels complex".
 ---
 
 # Complexity Red Flags
 
+## Overview
+
 > "Complexity is anything related to the structure of a software system that makes it hard to understand and modify the system."
 > — John Ousterhout, _A Philosophy of Software Design_
 
-Complexity rarely arrives all at once. It creeps in one small decision at a time — a shallow wrapper here, a leaked abstraction there, a pass-through method because "separation of concerns." Each one seems harmless. Together, they make a system incomprehensible.
+Complexity creeps in one small decision at a time — a shallow wrapper, a leaked format, a pass-through method. Each looks harmless; together they make a system incomprehensible. This skill is a diagnostic checklist with an audit workflow: detect specific patterns, cite file:line, propose concrete fixes.
 
-This skill is a diagnostic checklist. Use it to audit code — your own or someone else's — against the specific red flags Ousterhout identifies. LLM-generated code is especially prone to these patterns because LLMs optimize for what _looks_ organized rather than what actually manages complexity.
-
-## When to Trigger
-
-Use this skill:
+## When to Use
 
 - After implementing a feature, before calling it done
-- When reviewing a pull request or code diff
-- When the user asks you to review, audit, or simplify code
-- When refactoring and you need to decide what to change
-- When code "feels complex" but you can't articulate why
+- Reviewing a pull request or code diff
+- The user asks to review, audit, or simplify code
+- Refactoring and you need to decide what to change
+- Code "feels complex" but you can't articulate why
 
-## The Red Flags
+## When NOT to Use
+
+- Single-line fixes or typo corrections
+- Throwaway scripts and one-off prototypes
+- Generated code (fix the generator, not the output)
+
+## The Audit Workflow
+
+For each of the eight flags below, in order:
+
+1. **Read the Signal.** Know the shape you're looking for.
+2. **Run the Find.** Execute the flag's specific detector — `grep`, signature listing, parameter trace — to surface candidates.
+3. **Apply the Test.** Confirm each candidate; reject false positives.
+4. **Write the Fix** using the DON'T → DO pattern. Cite file:line and the concrete edit — "inline `OrderValidator.validate` into `Order.create` (validators/order-validator.ts:18)", not "simplify validators".
+
+Don't stop at the first hit — the same code often violates multiple flags. Report findings grouped by flag.
+
+## The Eight Red Flags
 
 ### 1. Shallow Modules
 
-**What it looks like**: A class or module whose interface is nearly as complex as its implementation. Many small classes with one or two methods each. Files that are mostly boilerplate.
-
 > "A shallow module is one whose interface is complicated relative to the functionality it provides. Shallow modules don't help much in the battle against complexity, because the benefit they provide (not having to learn about how they work internally) is negated by the cost of learning and using their interfaces."
 
-**The test**: Count the concepts in the interface (methods, parameters, types, exceptions) versus the concepts in the implementation. If they're close to equal, the module is shallow.
+**Signal:** A class/module whose interface is nearly as complex as its body. Files that are mostly boilerplate. Many small classes with one or two methods each.
 
-**Common LLM pattern**: Generating a `Validator` class with one `validate()` method, a `Formatter` class with one `format()` method, a `Sender` class with one `send()` method — each with more setup than logic.
+**Find:** List public classes/modules with ≤2 public methods. List files where >50% of lines are imports, types, and ceremony.
+
+**Test:** Count concepts in the interface (methods + parameters + types + exceptions) vs concepts in the implementation. Close to equal = shallow.
 
 **DON'T:**
 
@@ -45,21 +65,21 @@ class TemperatureConverter {
 }
 ```
 
-A class for a one-line formula. The interface (constructor, method name, self parameter) is more complex than the operation.
+A class for a one-line formula. The interface is more complex than the operation.
 
-**DO:** Inline it, or make it a plain function if reused. Better yet, fold it into the module that needs the conversion.
+**DO:** Inline it, make it a plain function if reused, or fold it into the module that needs the conversion.
 
 ---
 
 ### 2. Information Leakage
 
-**What it looks like**: The same knowledge encoded in multiple modules. Change one, and you must change the others. Often manifests as parallel class hierarchies, duplicated validation, or shared format assumptions.
-
 > "Information leakage occurs when a design decision is reflected in multiple modules. This creates a dependency between the modules: any change to that design decision will require changes to all of the involved modules."
 
-**The test**: If you changed an internal data format (e.g., JSON to YAML, MySQL to Postgres, REST to GraphQL), how many files would need to change? More than one means leakage.
+**Signal:** Same knowledge — format, mapping, constant — encoded in multiple modules. Change one, must change the others.
 
-**Common LLM pattern**: Generating a `Reader` class and a `Writer` class for the same file format, each independently knowing the format details.
+**Find:** `grep` for duplicated field mappings, format strings, magic constants, parallel hierarchies (`Reader` + `Writer` for the same format).
+
+**Test:** If you changed an internal data format (JSON→YAML, MySQL→Postgres, REST→GraphQL), how many files would need to change? More than one = leakage.
 
 **DON'T:**
 
@@ -76,7 +96,7 @@ Same field mapping repeated. Change the DB schema, break two files.
 **DO:**
 
 ```typescript
-// models/user.ts — single source of truth for mapping
+// models/user.ts — single source of truth
 class User {
   static fromRow(row: DbRow): User { ... }
 }
@@ -86,13 +106,13 @@ class User {
 
 ### 3. Temporal Decomposition
 
-**What it looks like**: Code organized by the order things happen (read, then parse, then validate, then save) rather than by what information each piece encapsulates.
-
 > "In temporal decomposition, the structure of a system corresponds to the time order in which operations will occur... this results in information leakage: the knowledge required for each operation is split across multiple modules."
 
-**The test**: Are your modules named after verbs/phases (Reader, Parser, Validator, Saver) rather than nouns/concepts (Document, DataSource, User)?
+**Signal:** Code organized by the order things happen rather than by what each piece encapsulates.
 
-**Common LLM pattern**: Generating pipeline-style architectures where each step is its own class, each needing to know about the data format from the previous step.
+**Find:** List module/class names. Flag verb-phase names: `Reader`, `Parser`, `Validator`, `Saver`, `Loader`, `Sender` (when standalone, not as an internal step within a deeper module).
+
+**Test:** Are modules named after phases (verbs) or concepts (nouns)? Phased pipelines where each step knows the previous step's format = temporal decomposition plus information leakage.
 
 **DON'T:**
 
@@ -100,7 +120,7 @@ class User {
 FileReader → DataParser → DataValidator → DataWriter
 ```
 
-Each class knows about the data format. Change the format, change all four.
+Each class knows the data format. Change the format, change all four.
 
 **DO:**
 
@@ -115,13 +135,13 @@ One module owns the concept. Read, parse, validate are internal steps.
 
 ### 4. Pass-Through Methods
 
-**What it looks like**: A method whose body does nothing except call another method with the same or similar arguments. Adds a layer of abstraction without adding any abstraction.
-
 > "A pass-through method is one that does little except invoke another method, whose signature is similar or identical to that of the calling method. This typically indicates that there is not a clean division of responsibility between the classes."
 
-**The test**: Remove the method. Does the caller's code get simpler or more complex? If it gets simpler (just call the underlying method directly), the pass-through was pure overhead.
+**Signal:** A method body that does nothing except call another method with the same or similar arguments.
 
-**Common LLM pattern**: Controller → Service → Repository layers where the Service just delegates to the Repository with no additional logic.
+**Find:** `grep -rE 'return this\.\w+\.\w+\([^)]*\);?\s*}'` and equivalents — methods whose body is one delegation.
+
+**Test:** Remove the method. Does the caller's code get simpler? If yes, the pass-through was pure overhead.
 
 **DON'T:**
 
@@ -137,17 +157,19 @@ class UserService {
 }
 ```
 
-**DO:** Either add real logic to the service layer (validation, authorization, business rules, caching) that justifies its existence, or eliminate the layer entirely and let callers use the repository directly.
+**DO:** Either add real logic to the layer (validation, authorization, business rules, caching) that justifies it, or eliminate the layer entirely and let callers use the underlying module directly.
 
 ---
 
 ### 5. Pass-Through Variables
 
-**What it looks like**: A variable passed through multiple layers of methods, most of which don't use it — they just forward it to the next layer.
-
 > "Pass-through variables add complexity because they force all of the intermediate methods to be aware of their existence, even though the methods have no use for the variables."
 
-**The test**: Does this parameter exist in a function signature only because a function it calls needs it? That's a pass-through variable.
+**Signal:** A variable threaded through multiple function signatures, untouched until deep in the stack.
+
+**Find:** Pick suspect parameters (`logger`, `config`, `metrics`, `ctx`). Trace each through its call chain — flag any function that accepts but doesn't read it before forwarding.
+
+**Test:** Does this parameter exist in the signature only because something it calls needs it? That's a pass-through variable.
 
 **DON'T:**
 
@@ -163,8 +185,6 @@ function authenticate(request: Request, config: Config, logger: Logger, metrics:
 }
 ```
 
-`logger` and `metrics` are threaded through every function but only used deep in the stack.
-
 **DO:** Use context objects, dependency injection, or module-level access to break the threading:
 
 ```typescript
@@ -178,35 +198,39 @@ function handleRequest(request: Request) {
 
 ### 6. Conjoined Methods
 
-**What it looks like**: Two or more methods that can't be understood independently — you must read both to understand either. They share implicit assumptions about order of calls, internal state, or data formats.
+**Signal:** Two or more methods that can't be understood independently — they share implicit assumptions about call order, internal state, or data formats.
 
-**The test**: Can you read this method's signature and documentation and understand how to use it, without reading any other method? If not, it's conjoined.
+**Find:** Look for `init*`/`begin*`/`open*` paired with `finalize*`/`end*`/`close*`, or methods whose docs say "must be called after". Search for runtime errors of the form "X must be called before Y".
+
+**Test:** Can you read this method's signature and use it correctly without reading any other method? If not, it's conjoined.
 
 **DON'T:**
 
 ```typescript
-processor.initBatch(); // Must call before process()
-processor.process(items); // Must call after init, before finalize
-processor.finalizeBatch(); // Must call after process()
+processor.initBatch();         // Must call before process()
+processor.process(items);      // Must call after init, before finalize
+processor.finalizeBatch();     // Must call after process()
 ```
 
-Three methods with implicit ordering requirements. Miss one, get a bug.
+Three methods with implicit ordering. Miss one, get a bug.
 
 **DO:**
 
 ```typescript
-processor.processBatch(items); // Handles init, processing, and finalization
+processor.processBatch(items); // Handles init, processing, finalization internally
 ```
 
 ---
 
 ### 7. Overexposure (Verbose Interfaces)
 
-**What it looks like**: An interface that exposes details the caller rarely or never needs. Every configuration option, every internal state, every intermediate result is available.
-
 > "If the API for a commonly used feature forces users to learn about other features that are rarely used, this increases the cognitive load on users who don't need the rarely used features."
 
-**Common LLM pattern**: Generating constructors with 8+ parameters, or APIs with many optional flags that expose internal implementation choices.
+**Signal:** An interface that exposes details the caller rarely needs — every option, every internal state, every intermediate result.
+
+**Find:** List constructor and public-method signatures. Flag any with >3-4 required parameters, or 6+ total parameters with optional flags exposing implementation choices.
+
+**Test:** Could the caller use sensible defaults for most of these? If yes, the interface is overexposing.
 
 **DON'T:**
 
@@ -228,16 +252,18 @@ const cache = new Cache({
 **DO:**
 
 ```typescript
-const cache = new Cache("redis://localhost:6379"); // Sensible defaults for everything else
+const cache = new Cache("redis://localhost:6379"); // Sensible defaults internally
 ```
 
 ---
 
 ### 8. Special-General Mixture
 
-**What it looks like**: General-purpose mechanism code tangled with special-case business logic in the same module.
+**Signal:** General-purpose mechanism code tangled with special-case business logic in the same module.
 
-**The test**: Is there code in this module that only applies to one specific use case, mixed in with code that applies to all use cases?
+**Find:** `grep -rE "if \(\w+\.(table|name|type|kind) === ['\"]"` — string-equality switches inside generic code. Look for hardcoded domain names inside utility/builder modules.
+
+**Test:** Is there code in this module that only applies to one specific use case, mixed with code that applies to all use cases?
 
 **DON'T:**
 
@@ -246,7 +272,7 @@ class QueryBuilder {
   build(params: QueryParams): string {
     let query = `SELECT * FROM ${params.table}`;
     if (params.table === "users") {
-      query += " WHERE active = true"; // Special case leaked in
+      query += " WHERE active = true"; // Special case leaked into general builder
     }
     if (params.filters) {
       query += ` WHERE ${this.buildFilters(params.filters)}`;
@@ -256,30 +282,44 @@ class QueryBuilder {
 }
 ```
 
-**DO:** Keep the general mechanism pure. Let callers supply the special cases:
+**DO:** Keep the general mechanism pure. Let callers supply the specialization:
 
 ```typescript
 class QueryBuilder {
   build(table: string, filters: Filter[]): string { ... }
 }
 
-// Caller supplies the domain-specific filter
 const users = qb.build("users", [new Filter("active", "=", true)]);
 ```
 
-## The Audit Workflow
+## Common Rationalizations
 
-When reviewing code, work through each red flag systematically:
+| Rationalization | Reality |
+| --- | --- |
+| "Splitting into more classes is cleaner." | More classes = more interface surface. Cleanliness is fewer concepts, not more files. |
+| "Each class should have one responsibility." | SRP doesn't mean one method per class. A deep module owns one responsibility *fully*. |
+| "We need the layer for testability." | If the layer has no logic, there's nothing meaningful to test in isolation. |
+| "I might need to swap the implementation later." | Add the seam when you actually need it. Speculative abstraction is shallow today, guaranteed. |
+| "The framework requires controller/service/repository." | The framework requires a request handler. Empty pass-through layers are not a framework requirement. |
+| "Pass-through variables are explicit dependency injection." | Threading four functions of unused parameters isn't DI — it's noise. |
+| "It's only one extra parameter." | Each pass-through param adds cognitive load on every reader of every function in the chain. |
+| "I'll inline it later if it stays small." | Later doesn't come. The cost of removal grows with each new caller. |
 
-1. **Scan module boundaries.** List every class/module and its public interface. Flag any whose interface complexity approaches their implementation complexity (shallow).
-2. **Check for duplicated knowledge.** Grep for the same constants, formats, or logic appearing in multiple files (leakage).
-3. **Look at module names.** Verb-phase names (Reader, Parser, Validator) suggest temporal decomposition.
-4. **Read method bodies.** Methods that just call another method with the same args are pass-throughs.
-5. **Trace parameters.** Variables that flow through multiple layers untouched are pass-through variables.
-6. **Check method independence.** Methods that require specific call ordering are conjoined.
-7. **Count constructor/factory parameters.** More than 3-4 required parameters suggests overexposure.
-8. **Look for `if type ==` or `if name ==` patterns.** Special-case checks inside general mechanisms.
+## Verification
 
-Report findings grouped by red flag, with specific file/line references and a suggested fix for each.
+Before declaring an audit done:
 
-See `references/examples.md` for an extended example showing how to run a full audit on a real codebase and fix every red flag found.
+- [ ] Listed every public class/module — flagged any whose interface concept count ≈ implementation concept count.
+- [ ] Grepped for duplicated formats, mappings, constants — none span >1 file unless intentional.
+- [ ] Module names are nouns/concepts, not verbs/phases.
+- [ ] No method body is just `return other.sameMethod(...args)`.
+- [ ] No parameter is forwarded through ≥2 functions without being read.
+- [ ] No method requires another to be called first/after — sequencing is internal.
+- [ ] No constructor or factory takes >3-4 required parameters.
+- [ ] No `if name === ...` / `if type === ...` branches inside general code.
+- [ ] For every flag found: file:line cited and a concrete fix proposed.
+
+## References
+
+- [references/examples.md](references/examples.md) — full audit on a real codebase, fixing every red flag found, plus a quick-reference table for common patterns.
+- Sibling skill: **deep-module-design** — the positive form of the same principles. Use it when *designing* modules; use this skill when *auditing* them.

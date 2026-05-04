@@ -1,7 +1,7 @@
 ---
 name: comments-as-design
 description: |
-  Use comments as a design tool to capture abstractions, intent, and decisions code can't express. Use when writing, reviewing, or refactoring any module, interface, class, public function, or data structure — and when the user asks to "add comments", "document this", or "explain this code".
+  Use comments as a design tool to capture abstractions, intent, and decisions code can't express. Mandatory use when writing, reviewing, or refactoring any module, interface, class, public function, or data structure — and when the user asks to "add comments", "document this", or "explain this code".
 ---
 
 # Comments as Design
@@ -30,7 +30,7 @@ Comments capture what code alone cannot: the abstraction, the intent, the invari
 
 A workflow, in order. Each step describes what to do at the corresponding point in the code.
 
-### Step 1 — Write the interface comment first *(during design)*
+### Step 1 — Write the interface comment first _(during design)_
 
 > "If users must read the code of a method in order to use it, then there is no abstraction." — Ousterhout
 
@@ -63,7 +63,7 @@ function submitOrder(order: Order): Result {
 
 Writing the comment forced explicit decisions before any implementation — atomicity, failure mode, the caller's surface. The clearer name `submitOrder` emerged from describing the abstraction.
 
-### Step 2 — Categorize each comment by audience *(during interface authoring)*
+### Step 2 — Categorize each comment by audience _(during interface authoring)_
 
 "Explain why, not what" is too coarse. Each comment type has a different audience and content rule (see **Comment Categories** below). Two axes:
 
@@ -92,7 +92,7 @@ function findUser(id: string): User | undefined {
 }
 ```
 
-### Step 3 — Sweep the data structures *(during type definition)*
+### Step 3 — Sweep the data structures _(during type definition)_
 
 Every field gets a comment covering **units, valid range, invariants, relationships, nullability**. Names carry ~5 words; everything else lives in the comment.
 
@@ -102,8 +102,8 @@ Every field gets a comment covering **units, valid range, invariants, relationsh
 interface CacheEntry {
   key: string;
   value: unknown;
-  timestamp: number;  // created? expired? units?
-  weight: number;     // bytes? priority?
+  timestamp: number; // created? expired? units?
+  weight: number; // bytes? priority?
 }
 ```
 
@@ -125,7 +125,7 @@ interface CacheEntry {
 
 Renaming `timestamp` → `lastAccessedMs` and `weight` → `weightBytes` halved the comment burden — names now carry the units.
 
-### Step 4 — Sweep the non-obvious logic *(during/after implementation)*
+### Step 4 — Sweep the non-obvious logic _(during/after implementation)_
 
 Every magic number, surprising ordering, deliberate tradeoff, or non-obvious algorithm earns a `why` comment. Test: would a reviewer ask "why?" If yes, answer it inline.
 
@@ -139,9 +139,9 @@ const users = await this.http.get("/users");
 const MAX_RETRIES = 7;
 ```
 
-The code says *what*; the comment preserves the reasoning that would otherwise be lost the moment the author moves on.
+The code says _what_; the comment preserves the reasoning that would otherwise be lost the moment the author moves on.
 
-### Step 5 — Document cross-module relationships *(at module boundaries)*
+### Step 5 — Document cross-module relationships _(at module boundaries)_
 
 Cross-module comments describe protocols, ordering requirements, and where the other half of a contract lives. Easiest to forget because no single file feels responsible — place them in the module most likely to be read first.
 
@@ -173,7 +173,7 @@ export function attachUser(req, res, next) {
 
 Three modules participate (middleware, types, routes). Without this comment, anyone adding routes elsewhere has no way to discover the ordering requirement.
 
-### Step 6 — Run the different-words test *(final quality pass)*
+### Step 6 — Run the different-words test _(final quality pass)_
 
 A check, not a design move. **If a comment uses the same words as the entity it describes, it adds nothing — delete or rewrite it.** If you can't describe the concept in different vocabulary, either the code is self-explanatory (delete the comment) or you don't understand it well enough yet (fix the design or name).
 
@@ -195,12 +195,12 @@ isActive(): boolean;
 
 ## Comment Categories
 
-| Type            | Describes          | Audience      | Must contain                                |
-| --------------- | ------------------ | ------------- | ------------------------------------------- |
-| Interface       | what + contract    | caller        | behavior, returns, side effects, edge cases |
-| Implementation  | why                | maintainer    | reasoning, tradeoffs, non-obvious choices   |
-| Field/variable  | what it represents | reader        | units, range, invariants, relationships     |
-| Cross-module    | relationships      | system reader | ordering, protocols, shared assumptions     |
+| Type           | Describes          | Audience      | Must contain                                |
+| -------------- | ------------------ | ------------- | ------------------------------------------- |
+| Interface      | what + contract    | caller        | behavior, returns, side effects, edge cases |
+| Implementation | why                | maintainer    | reasoning, tradeoffs, non-obvious choices   |
+| Field/variable | what it represents | reader        | units, range, invariants, relationships     |
+| Cross-module   | relationships      | system reader | ordering, protocols, shared assumptions     |
 
 ## Names as Comments
 
@@ -212,14 +212,14 @@ Names are the smallest comments. A precise name removes the need for a sentence;
 
 ## Common Rationalizations
 
-| Rationalization | Reality |
-| --- | --- |
-| "The code is self-documenting." | If you can't write the interface comment, the abstraction isn't right yet. |
-| "I'll add comments later." | Comments-first is the design tool. Later means after the design is locked in — too late. |
-| "The name says it all." | Names carry ~5 words. Units, edge cases, invariants need a comment. |
-| "It's obvious." | Obvious to you, now. Not to the next reader, including future-you. |
-| "Comments get out of date." | Stale comments are a maintenance failure, not a reason to skip them. |
-| "Adding comments would bloat the file." | Bloat is repeating the code in English. Real comments compress understanding. |
+| Rationalization                         | Reality                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- |
+| "The code is self-documenting."         | If you can't write the interface comment, the abstraction isn't right yet.               |
+| "I'll add comments later."              | Comments-first is the design tool. Later means after the design is locked in — too late. |
+| "The name says it all."                 | Names carry ~5 words. Units, edge cases, invariants need a comment.                      |
+| "It's obvious."                         | Obvious to you, now. Not to the next reader, including future-you.                       |
+| "Comments get out of date."             | Stale comments are a maintenance failure, not a reason to skip them.                     |
+| "Adding comments would bloat the file." | Bloat is repeating the code in English. Real comments compress understanding.            |
 
 ## Red Flags
 
@@ -231,7 +231,7 @@ Self-monitoring signals — if any of these appear, stop and fix.
 - A field whose units, range, or meaning aren't documented.
 - A `// why?` question a reviewer would ask, with no comment answering it.
 - A cross-file ordering or protocol assumption documented nowhere.
-- A comment written *after* the code that paraphrases what the code already says.
+- A comment written _after_ the code that paraphrases what the code already says.
 - A generic name (`data`, `process`, `timestamp`, `manager`) where a precise one would remove the comment.
 
 ## Verification

@@ -18,6 +18,10 @@ brew bundle install
 echo "Linking dotfiles..."
 stow dotfiles/ -t ~
 
+# Mise tools
+echo "Installing mise tools..."
+mise install
+
 # Brew autoupdate
 echo "Configuring brew autoupdate..."
 if ! brew autoupdate status 2>/dev/null | grep -q "installed and running"; then

@@ -1,10 +1,18 @@
 # Design It Twice — Extended Examples
 
+Each example follows the SKILL.md workflow: **Frame** → **Alternative A** → **Alternative B** → **Comparison** → **Decision**. Alternative B opens with a `Differs on:` callout naming which dimension(s) from the Step 3 dimensions table the alternatives split on.
+
+---
+
 ## Example 1: Undo System for a Text Editor
 
-### Problem
+### Frame
 
-Design an undo/redo system for a collaborative text editor. Users need to undo their own operations without affecting other users' changes.
+**What:** Track user actions on a shared document so each user can undo their own work without disturbing others'.
+
+**Who:** Editor commands (insert, delete) call into the system; a UI undo button calls undo for a specific user.
+
+**Constraints:** Multiple users edit concurrently. Undo must operate against the *current* document state, not a stale snapshot.
 
 ### Alternative A: Command Pattern
 
@@ -47,7 +55,9 @@ class UndoManager {
 
 ### Alternative B: Operation Transform on Immutable Snapshots
 
-Store document state as immutable snapshots. Undo = compute the inverse transform and apply it to the current document state, not the previous one.
+**Differs on:** State ownership (mutable per-user stack vs. immutable document state) and data flow (replay past command vs. compute contextual inverse against current state).
+
+Store document state as immutable snapshots. Undo = compute the inverse transform and apply it to the *current* document state, not the previous one.
 
 ```typescript
 interface DocumentState {
@@ -77,24 +87,28 @@ class Document {
 
 ### Comparison
 
-| Axis                      | Command Pattern                                | Operation Transform                                 |
-| ------------------------- | ---------------------------------------------- | --------------------------------------------------- |
-| Interface simplicity      | Simpler — execute/undo is intuitive            | More complex — transforms require understanding     |
-| Collaborative correctness | Broken — undo positions shift when others edit | Correct — inverse is computed against current state |
-| Information hiding        | Low — each command knows document internals    | Higher — operations are self-contained transforms   |
-| Cognitive load            | Easy to implement initially                    | Harder upfront, but handles edge cases correctly    |
+| Axis                 | Command Pattern                                | Operation Transform                                 |
+| -------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| Interface simplicity | Simpler — execute/undo is intuitive            | More complex — transforms require understanding     |
+| Error surface        | Silently corrupts when users edit concurrently | Inverse computed against current state — correct    |
+| Information hiding   | Low — each command knows document internals    | Higher — operations are self-contained transforms   |
+| Cognitive load       | Easy to implement initially                    | Harder upfront, but handles edge cases correctly    |
 
 ### Decision
 
-For a collaborative editor, Alternative B wins despite higher initial complexity. Alternative A silently corrupts document state when multiple users edit simultaneously — the "simpler" design creates bugs that are hard to diagnose.
+Alternative B wins despite higher initial complexity. **Error surface** is the decisive axis — Alternative A silently corrupts document state when multiple users edit simultaneously, creating bugs that are hard to diagnose. The lower upfront cognitive load of A loses to the soundness of B.
 
 ---
 
 ## Example 2: Configuration System
 
-### Problem
+### Frame
 
-Design a configuration system for a web application that needs to read from multiple sources (env vars, config files, CLI args) with type safety.
+**What:** Provide typed configuration assembled from env vars, config files, and CLI args.
+
+**Who:** App startup code reads config; downstream modules consume the typed result.
+
+**Constraints:** Type safety required. Missing required values must fail loudly, not silently default.
 
 ### Alternative A: Layered Reader
 
@@ -130,6 +144,8 @@ class Config {
 
 ### Alternative B: Eager Resolution to Typed Schema
 
+**Differs on:** Control flow (lazy/runtime lookup vs. eager/startup resolution) and abstraction level (generic key-value reader vs. typed domain schema).
+
 Resolve all configuration once at startup into a typed, immutable object. No runtime lookups.
 
 ```typescript
@@ -163,15 +179,19 @@ app.listen(config.port);
 
 ### Decision
 
-Alternative B defines configuration errors out of existence — if the app starts, all config is valid. Alternative A scatters potential failures throughout the codebase wherever `getRequired()` is called. The typed schema also makes the configuration self-documenting.
+**Error surface** drives this. Alternative B defines configuration errors out of existence — if the app starts, all config is valid. Alternative A scatters potential failures throughout the codebase wherever `getRequired()` is called. The typed schema is a bonus that makes the configuration self-documenting.
 
 ---
 
 ## Example 3: API Rate Limiter
 
-### Problem
+### Frame
 
-Implement rate limiting for an API. Different endpoints have different limits. Need to handle bursts gracefully.
+**What:** Apply per-endpoint rate limits with burst tolerance.
+
+**Who:** HTTP route handlers; clients receive 429 responses when over budget.
+
+**Constraints:** Different routes have different limits. Configuration shouldn't drift from the routes it governs.
 
 ### Alternative A: Middleware with Per-Route Config
 
@@ -195,6 +215,8 @@ async function rateLimitMiddleware(req: Request, next: NextFunction) {
 ```
 
 ### Alternative B: Token Bucket as a Transparent Layer
+
+**Differs on:** Decomposition (separate middleware + config map vs. co-located route decorator) and state ownership (config dict that can drift from routes vs. config attached to the route itself).
 
 ```typescript
 // Rate limiting is a property of the route definition — no separate config
@@ -230,4 +252,4 @@ app.post(
 
 ### Decision
 
-Alternative B is deeper — it hides the token bucket algorithm, retry-after calculation, and response handling behind a simple decorator. Configuration is co-located with the thing it configures, making it impossible for them to drift apart.
+**Information hiding** and **cognitive load** drive the decision. Alternative B is deeper — it hides the token bucket algorithm, retry-after calculation, and response handling behind a simple decorator. Co-locating configuration with the route also makes drift impossible.

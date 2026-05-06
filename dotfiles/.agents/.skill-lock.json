@@ -6,18 +6,9 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
       "skillPath": "skills/agent-browser/SKILL.md",
-      "skillFolderHash": "068bc465a3f22625f98a7996817feefcd18d772f",
+      "skillFolderHash": "121eecacd86c0aab06aef5cd4663e80c5397cd41",
       "installedAt": "2026-01-23T10:27:13.327Z",
-      "updatedAt": "2026-04-05T09:20:32.545Z"
-    },
-    "code-comments": {
-      "source": "petekp/claude-code-setup",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/petekp/claude-code-setup.git",
-      "skillPath": "skills/code-comments/SKILL.md",
-      "skillFolderHash": "ccb02bb96e6109fe9c73e08e6a519b100c83f65c",
-      "installedAt": "2026-02-09T22:33:36.593Z",
-      "updatedAt": "2026-02-09T22:33:36.593Z"
+      "updatedAt": "2026-05-06T14:33:09.836Z"
     },
     "linear-cli": {
       "source": "schpet/linear-cli",
@@ -28,34 +19,50 @@
       "installedAt": "2026-02-23T15:22:13.776Z",
       "updatedAt": "2026-04-05T09:20:35.241Z"
     },
-    "tdd": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/mattpocock/skills.git",
-      "skillPath": "tdd/SKILL.md",
-      "skillFolderHash": "28d7822c112f22cf499099881856fdec07bc83a8",
-      "installedAt": "2026-02-25T09:21:39.840Z",
-      "updatedAt": "2026-02-25T09:21:39.840Z"
-    },
     "test-driven-development": {
       "source": "addyosmani/agent-skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/addyosmani/agent-skills.git",
       "skillPath": "skills/test-driven-development/SKILL.md",
-      "skillFolderHash": "b93c312229b7be5c748892c3629b6928b1948c3c",
+      "skillFolderHash": "f042b13b4a85bd4e430347394adee937a7560b85",
       "installedAt": "2026-04-05T10:31:13.257Z",
-      "updatedAt": "2026-04-05T10:31:13.257Z"
+      "updatedAt": "2026-05-06T14:33:11.859Z"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "skillFolderHash": "928950704df8a8b885c03de5da626331e6f29cf8",
+      "pluginName": "example-skills",
+      "installedAt": "2026-05-06T14:33:55.469Z",
+      "updatedAt": "2026-05-06T14:33:55.469Z"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/skill-creator/SKILL.md",
+      "skillFolderHash": "3cf9a8db32597ba3e24b584a3d696f4e11c7d7b6",
+      "pluginName": "example-skills",
+      "installedAt": "2026-05-06T14:40:25.008Z",
+      "updatedAt": "2026-05-06T14:40:25.008Z"
     }
   },
   "lastSelectedAgents": [
     "amp",
+    "antigravity",
     "cline",
     "codex",
     "cursor",
+    "deepagents",
+    "dexto",
+    "firebender",
     "gemini-cli",
     "github-copilot",
     "kimi-cli",
     "opencode",
+    "warp",
     "claude-code"
   ],
   "dismissed": {

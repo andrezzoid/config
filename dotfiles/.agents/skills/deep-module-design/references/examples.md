@@ -1,136 +1,10 @@
 # Deep Module Design — Extended Examples
 
-## Example 1: Pass-Through Methods
+Before/after examples for the design-time principles in `SKILL.md`. For audit-time examples (pass-through methods, temporal decomposition, information leakage in existing code), see the **complexity-red-flags** skill.
 
-A pass-through method does nothing except delegate to another method with the same or nearly the same signature. It adds interface complexity without adding functionality — the definition of a shallow module.
+## Example 1: General-Purpose vs. Special-Purpose (Workflow step 4)
 
-### Before (Shallow)
-
-```typescript
-class UserController {
-  constructor(private service: UserService) {}
-
-  getUser(userId: string): User {
-    return this.service.getUser(userId);
-  }
-
-  updateUser(userId: string, data: Record<string, unknown>): User {
-    return this.service.updateUser(userId, data);
-  }
-
-  deleteUser(userId: string): void {
-    this.service.deleteUser(userId);
-  }
-}
-
-class UserService {
-  constructor(private repo: UserRepository) {}
-
-  getUser(userId: string): User {
-    return this.repo.getUser(userId);
-  }
-
-  updateUser(userId: string, data: Record<string, unknown>): User {
-    const user = this.repo.getUser(userId);
-    user.update(data);
-    this.repo.save(user);
-    return user;
-  }
-
-  deleteUser(userId: string): void {
-    this.repo.delete(userId);
-  }
-}
-```
-
-`UserController` is pure overhead. `get_user` and `delete_user` in `UserService` are nearly pass-throughs to the repository. Three layers, but only one — the `update_user` method — does anything meaningful.
-
-### After (Deep)
-
-```typescript
-/** Manages user lifecycle. Handles storage, validation, and business rules. */
-class Users {
-  get(userId: string): User { ... }
-
-  update(userId: string, changes: Record<string, unknown>): User {
-    // Validates, applies changes, persists, returns updated user.
-    ...
-  }
-
-  delete(userId: string): void {
-    // Handles cascading cleanup (sessions, related data) internally.
-    ...
-  }
-}
-```
-
-One module. No pass-throughs. Each method does something meaningful. Storage is an internal detail, not a separate layer.
-
----
-
-## Example 2: Temporal Decomposition
-
-Temporal decomposition means organizing code by the order in which things happen, rather than by what information they encapsulate. This often produces modules that each handle one step but share the same underlying knowledge.
-
-> "In temporal decomposition, execution order is reflected in the code structure: operations that happen at different times are in different methods or classes. If the same knowledge is used at different points in execution, it gets encoded in multiple places."
-
-### Before (Temporal)
-
-```typescript
-// Step 1: Read the file
-class FileReader {
-  read(path: string): RawData {
-    const buffer = fs.readFileSync(path);
-    return { buffer, format: detectFormat(path) };
-  }
-}
-
-// Step 2: Parse based on format
-class DataParser {
-  parse(raw: RawData): ParsedData {
-    if (raw.format === 'csv') return parseCsv(raw.buffer);
-    if (raw.format === 'json') return parseJson(raw.buffer);
-    if (raw.format === 'xml') return parseXml(raw.buffer);
-    throw new Error(`Unknown format: ${raw.format}`);
-  }
-}
-
-// Step 3: Validate the parsed data
-class DataValidator {
-  validate(data: ParsedData): ValidatedData {
-    // Must understand the structure that each parser produces
-    ...
-  }
-}
-```
-
-Three classes organized by _when_ things happen (read, parse, validate). The format knowledge leaks across all three — `FileReader` detects it, `DataParser` switches on it, `DataValidator` must understand each parser's output shape.
-
-### After (Information-Hiding)
-
-```typescript
-class DataLoader {
-  /**
-   * Load structured data from a file. Handles format detection,
-   * parsing, and validation internally. Supports CSV, JSON, and XML.
-   */
-  load(path: string): ValidatedData {
-    // All format knowledge is encapsulated here.
-    // Adding a new format means changing one module.
-    ...
-  }
-}
-```
-
-One module that owns the entire concept of "loading data from a file." Format detection, parsing, and validation are implementation details — they happen to occur in sequence, but that's not the caller's concern.
-
----
-
-## Example 3: General-Purpose vs. Special-Purpose
-
-A general-purpose interface is often _simpler_ than a special-purpose one, because it replaces many specific methods with fewer, more flexible ones.
-
-> "The most important (and perhaps surprising) benefit of the general-purpose approach is that it results in simpler and deeper interfaces than a special-purpose approach."
+A general-purpose interface is often _simpler_ than a special-purpose one because it replaces many specific methods with fewer, more flexible ones.
 
 ### Before (Special-Purpose)
 
@@ -150,7 +24,7 @@ class TextEditor {
 }
 ```
 
-Ten methods, each for a specific editing action. Every new editing operation requires a new method.
+Ten methods, each for a specific editing action. Every new editing operation requires a new method. The interface grows linearly with the feature set.
 
 ### After (General-Purpose)
 
@@ -163,16 +37,22 @@ class TextEditor {
 }
 ```
 
-Four methods that can express any editing operation. `delete_selection` becomes `delete(selection.start, selection.end)`. `delete_line` becomes `delete(line_start, line_end)`. The interface is both smaller and more powerful.
+Four methods that can express any editing operation. `deleteSelection` becomes `delete(selection.start, selection.end)`. `deleteLine` becomes `delete(lineStart, lineEnd)`. The interface is both smaller and more powerful.
+
+**Stop point:** generality fails in two directions, both worth watching for:
+
+- **Too low-level (under-bundled).** A common operation takes more than one primitive call to express. Add a convenience method or rebalance the boundary.
+- **Too general (over-parameterized).** A single primitive grows five arguments and a flags object to cover every case. Split it back into focused primitives.
+
+Aim for "somewhat general-purpose": general enough to absorb future variants, specific enough that the common case is one line.
 
 ---
 
-## Example 4: Configuration with Defaults (Pull Complexity Down)
+## Example 2: Pull Complexity Down with Defaults (Workflow step 2)
 
 ### Before (Complexity Pushed Up to Caller)
 
 ```typescript
-// Every caller must know the right configuration
 const client = new HttpClient({
   timeout: 30,
   retries: 3,
@@ -186,7 +66,7 @@ const client = new HttpClient({
 });
 ```
 
-The interface exposes every implementation decision. Callers must understand connection pooling, SSL verification, backoff strategies — things they shouldn't need to care about.
+The interface exposes every implementation decision. Callers must understand connection pooling, SSL verification, backoff strategies — things they shouldn't need to care about to make a request.
 
 ### After (Complexity Pulled Down)
 
@@ -194,15 +74,17 @@ The interface exposes every implementation decision. Callers must understand con
 // Sensible defaults for everything. Override only what you need.
 const client = new HttpClient();
 
-// Or, for the rare case where you need to customize:
+// Or, for the rare case where customization is real:
 const client = new HttpClient({ timeout: 60, retries: 5 });
 ```
 
-The constructor still accepts all those options, but it defaults every single one to a sensible value. 95% of callers write one line. The module absorbed the complexity of knowing what good defaults look like.
+The constructor still accepts all those options, but defaults every single one. 95% of callers write one line. The module absorbed the complexity of knowing what good defaults look like — that knowledge belongs with the people who maintain the module, not the people who use it.
+
+**Counter-rule:** if a caller _legitimately_ needs to make a decision (e.g., choosing between strict and lax SSL for a specific environment), keep that knob exposed. Hide implementation choices, not outcome decisions.
 
 ---
 
-## Example 5: Don't Over-Decompose Utilities
+## Example 3: Don't Over-Decompose Utilities (Workflow step 5)
 
 ### Before (Premature Abstraction)
 
@@ -225,7 +107,7 @@ export function formatDate(d: Date): string {
 
 Three files, three functions, each used once. The "utility" abstraction isn't hiding information — it's just moving code to a different file. Callers must now find and understand the utility instead of seeing the logic inline.
 
-### After (Inline Until Reuse is Real)
+### After (Inline Until Reuse Is Real)
 
 ```typescript
 // Just write it where you use it
@@ -234,4 +116,75 @@ const uniqueTags = [...new Set(tags)];
 const dateStr = date.toISOString().split("T")[0];
 ```
 
-Three lines, no indirection. Extract into a shared utility only when you have three or more call sites, and even then, only if the utility can provide a genuinely simpler interface than the raw operation.
+Three lines, no indirection. Extract into a shared utility only when you have three or more call sites, _and_ the utility provides a genuinely simpler interface than the raw operation.
+
+---
+
+## Example 4: Combining Closely Related Code (Workflow step 5)
+
+The inverse of the previous example: when code shares knowledge, splitting it creates leakage.
+
+### Before (Five Shallow Collaborators)
+
+```typescript
+class UserValidator {
+  validate(input: UserInput): ValidationResult { ... }
+}
+class PasswordHasher {
+  hash(password: string): string { ... }
+}
+class UserRepository {
+  save(user: User): void { ... }
+}
+class WelcomeEmailSender {
+  send(user: User): void { ... }
+}
+class UserRegistrationService {
+  constructor(
+    private validator: UserValidator,
+    private hasher: PasswordHasher,
+    private repo: UserRepository,
+    private emailer: WelcomeEmailSender,
+  ) {}
+
+  register(input: UserInput): User {
+    const result = this.validator.validate(input);
+    if (!result.ok) throw new ValidationError(result.errors);
+    const user = new User(input.email, this.hasher.hash(input.password));
+    this.repo.save(user);
+    this.emailer.send(user);
+    return user;
+  }
+}
+```
+
+Five classes, none of which hides meaningful information. The `UserRegistrationService` is pure orchestration. Validation rules know the user shape; hashing knows the password format; storage knows the user shape; the email sender knows the user shape. The same knowledge is encoded in four places.
+
+### After (One Deep Module)
+
+```typescript
+class Users {
+  register(email: string, password: string): User {
+    // Validates, hashes, stores, sends welcome — all internal.
+    ...
+  }
+
+  authenticate(email: string, password: string): Session { ... }
+  deactivate(userId: string): void { ... }
+}
+```
+
+One class, deep interface. Validation rules, hashing strategy, storage mechanism, and email delivery are all internal. Switch from bcrypt to argon2 — nothing outside this module changes. Switch from SQL to a document store — nothing outside this module changes.
+
+---
+
+## Quick Reference
+
+| Step | Question | Failure mode if skipped |
+| --- | --- | --- |
+| 1. Write the ideal call site | What capability does the module deliver, and what's the line of caller code I wish I could write? | Designing inside-out; interface shaped by the implementation |
+| 2. Bury implementation decisions | Would changing this decision force callers to change? | Information leakage; every internal change ripples outward |
+| 3. Make every layer earn its abstraction | Does this layer add real responsibility, or just delegate? | Pass-through layers; cognitive overhead with no benefit |
+| 4. Lean general-purpose, stop at "somewhat" | Can one method replace several special-case ones without making the common case awkward? | API bloat (too special) or unusable interfaces (too general) |
+| 5. Combine closely related, resist splitting unrelated | Does each piece make sense alone? Do callers always use them together? | God-modules (over-combined) or shallow collaborators (over-split) |
+| 6. Verify depth | Call-site match? Concept ratio reasonable? Swap test passes? | Shipping a shallow module disguised as a deep one |

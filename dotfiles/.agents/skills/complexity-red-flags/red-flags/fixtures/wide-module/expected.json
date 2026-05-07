@@ -1,0 +1,5 @@
+{
+  "findings": [
+    { "flag": "wideModule", "file": "case.ts", "line": 1 }
+  ]
+}

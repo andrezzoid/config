@@ -1,0 +1,5 @@
+{
+  "findings": [
+    { "flag": "catchRethrow", "file": "case.ts", "line": 8 }
+  ]
+}

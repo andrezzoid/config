@@ -34,10 +34,38 @@ Complexity creeps in one small decision at a time — a shallow wrapper, a leake
 
 ## The Audit Workflow
 
+### Phase 0 — Run the deterministic pre-scanner (TypeScript only)
+
+For TypeScript projects, run `red-flags` first. It surfaces high-recall candidates for 7 of the 8 flags so you can spend judgment on the candidates instead of grep-walking the tree. Each finding is `severity: "candidate"` — never a verdict. You apply the per-flag test below to decide.
+
+```bash
+# Whole project
+bash <skill-dir>/red-flags/red-flags <project-path> --format json > /tmp/red-flags.json
+
+# Just files changed since a git ref (committed + working-tree + untracked)
+bash <skill-dir>/red-flags/red-flags <project-path> --diff <git-ref> --format json > /tmp/red-flags.json
+```
+
+`<skill-dir>` is the directory containing this SKILL.md.
+
+The scanner covers: `shallowModule`, `passThroughMethod`, `genericNaming`, `tsEscapeHatch`, `emptyCatch`, `catchRethrow`, `wideModule`. Read `/tmp/red-flags.json`'s `findings[]` and `summary.topFiles[]` — start the audit at the highest-density files.
+
+The scanner does **not** cover (you must scan manually for these):
+
+- Information leakage (cross-module duplication of mappings/formats)
+- Temporal decomposition (verb-phase module names)
+- Conjoined methods (implicit ordering between calls)
+- Special-general mixture (string-equality switches in generic code)
+- Pass-through variables (params threaded through unread)
+
+For non-TypeScript projects, skip Phase 0 — the rest of the workflow still applies.
+
+### Phase 1 — Audit each flag
+
 For each of the eight flags below, in order:
 
 1. **Read the Signal.** Know the shape you're looking for.
-2. **Run the Find.** Execute the flag's specific detector — `grep`, signature listing, parameter trace — to surface candidates.
+2. **Run the Find.** Either consume the corresponding `flag` from `/tmp/red-flags.json`, or run the flag's manual detector (`grep`, signature listing, parameter trace) for flags the scanner doesn't cover.
 3. **Apply the Test.** Confirm each candidate; reject false positives.
 4. **Write the Fix** using the DON'T → DO pattern. Cite file:line and the concrete edit — "inline `OrderValidator.validate` into `Order.create` (validators/order-validator.ts:18)", not "simplify validators".
 

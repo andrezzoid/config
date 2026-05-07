@@ -1,0 +1,8 @@
+{
+  "findings": [
+    { "flag": "tsEscapeHatch", "file": "case.ts", "line": 6 },
+    { "flag": "tsEscapeHatch", "file": "case.ts", "line": 7 },
+    { "flag": "tsEscapeHatch", "file": "case.ts", "line": 9 },
+    { "flag": "tsEscapeHatch", "file": "case.ts", "line": 12 }
+  ]
+}

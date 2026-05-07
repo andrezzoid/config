@@ -1,0 +1,8 @@
+{
+  "findings": [
+    { "flag": "genericNaming", "file": "case.ts", "line": 2 },
+    { "flag": "genericNaming", "file": "case.ts", "line": 3 },
+    { "flag": "genericNaming", "file": "case.ts", "line": 4 },
+    { "flag": "genericNaming", "file": "case.ts", "line": 5 }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "findings": [
+    { "flag": "emptyCatch", "file": "case.ts", "line": 8 },
+    { "flag": "emptyCatch", "file": "case.ts", "line": 12 }
+  ]
+}

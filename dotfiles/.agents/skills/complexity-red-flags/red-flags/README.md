@@ -7,42 +7,45 @@ Deterministic candidate-flagger for PoSD-style complexity smells in TypeScript c
 - **It is** a high-recall, fast pre-scanner. Every finding is `severity: "candidate"`. False positives are accepted; the LLM filters them in audit.
 - **It is not** a verdict tool. It does not decide whether a candidate is a real smell — that's the job of `/complexity-red-flags`.
 
-## Detectors (v1)
+## Detectors (v1.1)
 
-| Flag | Method | Catches |
-| --- | --- | --- |
-| `shallowModule` | rg + awk | Files with `exports / body_lines > 0.3` (interface-heavy modules). |
-| `wideModule` | rg | Files with > 10 top-level exports. |
-| `passThroughMethod` | ast-grep | Methods/functions whose body is one delegating call. |
-| `genericNaming` | rg | Class/interface/type names ending in `Manager`, `Helper`, `Utils`, `Wrapper`, `Container`, `Holder`, `Util`, `Misc`, `Common`, `Processor`, `Handler`. |
-| `tsEscapeHatch` | rg | `as any`, `@ts-ignore`, `@ts-expect-error`. |
-| `emptyCatch` | ast-grep | `catch` clauses with no executable statement (truly empty or comment-only). |
-| `catchRethrow` | ast-grep | `catch (e) { throw e }` — pure rethrow with no enrichment. |
+| Flag | Catches |
+| --- | --- |
+| `shallowModule` | Files with `(top-level exports + public class members) / body_lines > 0.3`. Class-member-aware — catches single-class shallow files (e.g., the temperature converter pattern). |
+| `wideModule` | Files with > 10 top-level exports. |
+| `passThroughMethod` | Methods/functions whose body is one delegating call where the inner call's args match the outer params 1:1 by name. |
+| `passThroughVariable` | A param whose every body reference is in argument position of a call. Guarded by ≥3 params + ≥2 body statements to keep noise down. |
+| `genericNaming` | Class/interface/type names ending in generic suffixes (`Manager`, `Helper`, `Utils`, `Wrapper`, `Container`, `Holder`, `Util`, `Misc`, `Common`, `Processor`, `Handler`). `Service` is intentionally excluded — too prevalent in legit code. |
+| `tsEscapeHatch` | `as any` (AST-precise, won't match strings) plus `@ts-ignore` / `@ts-expect-error`. |
+| `emptyCatch` | `catch` clauses with no executable statement (truly empty or comment-only). |
+| `catchRethrow` | `catch (e) { throw e }` — pure rethrow with no enrichment. Enforces same identifier on both sides. |
 
-## Not yet covered (require manual audit or v1.1)
+## Not yet covered (require manual audit or v2)
 
-- Information leakage (cross-module duplication of mappings/formats)
-- Temporal decomposition (verb-phase module names)
-- Conjoined methods (implicit ordering between calls)
-- Special-general mixture (string-equality switches in generic code)
-- Pass-through variables (params threaded through unread)
+- Information leakage (cross-module duplication of mappings/formats) — needs cross-file analysis.
+- Temporal decomposition (verb-phase module names) — heuristic too noisy in v1.
+- Conjoined methods (implicit ordering between calls) — needs runtime/protocol knowledge.
+- Special-general mixture (string-equality switches in generic code) — heuristic in scope but deferred.
+- Type-aware leakage (internal types exposed in public APIs) — needs a type checker (TypeScript compiler API).
 
 ## Dependencies
 
-`bash`, `ast-grep`, `ripgrep`, `jq`, `git`. All are pre-built single binaries — no compilation step at any point.
+`bun` (runtime) + `oxc-parser` (npm dep). Bun is a single binary; oxc-parser is Rust-backed and ~few MB.
 
 ```bash
-brew install bash ast-grep ripgrep jq git
+brew install oven-sh/bun/bun       # or curl -fsSL https://bun.sh/install | bash
+cd <skill-dir>/red-flags
+bun install                        # one-time, after pulling
 ```
 
 ## Usage
 
 ```bash
-red-flags [PATH]                    # Scan PATH (default: cwd)
-red-flags [PATH] --diff <git-ref>   # Scan only files changed vs <git-ref>
-                                    # (committed + working-tree + untracked)
-red-flags [PATH] --format json      # JSON (default)
-red-flags [PATH] --format text      # Human digest
+bun red-flags.ts [PATH]                    # Scan PATH (default: cwd)
+bun red-flags.ts [PATH] --diff <git-ref>   # Scan only files changed vs <git-ref>
+                                           # (committed + working-tree + untracked)
+bun red-flags.ts [PATH] --format json      # JSON (default)
+bun red-flags.ts [PATH] --format text      # Human digest
 ```
 
 ## Output schema
@@ -60,7 +63,7 @@ red-flags [PATH] --format text      # Human digest
       "severity": "candidate",
       "file": "src/UserService.ts",
       "line": 8,
-      "message": "method body is a single delegating call",
+      "message": "method body delegates with same args (true pass-through)",
       "metadata": {}
     }
   ]
@@ -79,9 +82,22 @@ Each fixture in `fixtures/<flag>/` has a `case.ts` with the smell + an `expected
 
 ## Tunables
 
-In `red-flags`:
+In `red-flags.ts`:
 
-- `SHALLOW_RATIO_X10` — exports/body threshold * 10 (default 3 = ratio > 0.3)
+- `SHALLOW_RATIO` — surface/body threshold (default 0.3)
 - `SHALLOW_MIN_BODY` — min body lines to consider (default 3)
-- `SHALLOW_MIN_EXPORTS` — min exports to consider (default 2)
+- `SHALLOW_MIN_SURFACE` — min surface elements to consider (default 2)
 - `WIDE_MIN_EXPORTS` — wide-module threshold (default 10)
+- `GENERIC_SUFFIXES` — generic-name suffix list
+
+## v1.1 vs v1
+
+v1 was bash + ast-grep + ripgrep + jq. v1.1 is Bun + oxc-parser. Why we moved:
+
+- **Pass-through method now checks arg=param matching properly** (ast-grep's text-based meta-var equality broke on TypeScript-typed params).
+- **Shallow module now counts public class members**, not just top-level `export` lines — catches the canonical shallow class.
+- **`as any` is AST-precise** — no false positives on string literals.
+- **`catchRethrow` enforces identifier match** between catch param and the rethrown identifier.
+- **New detector: `passThroughVariable`** — needs parent-context analysis ast-grep can't easily express.
+
+Performance is comparable (oxc-parser is Rust-backed). No compile step in either version — Bun runs `red-flags.ts` directly.

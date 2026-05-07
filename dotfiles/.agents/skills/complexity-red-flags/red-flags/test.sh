@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RED_FLAGS="$SCRIPT_DIR/red-flags"
+RED_FLAGS=(bun "$SCRIPT_DIR/red-flags.ts")
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
 
 pass=0
@@ -21,7 +21,7 @@ for fixture in "$FIXTURES_DIR"/*/; do
 
   # Run red-flags. On any error, fall back to empty findings so the test fails
   # with a clear diff rather than an opaque shell error.
-  actual=$("$RED_FLAGS" "$fixture" --format json 2>/dev/null || echo '{"findings":[]}')
+  actual=$("${RED_FLAGS[@]}" "$fixture" --format json 2>/dev/null || echo '{"findings":[]}')
 
   flag=$(jq -r '.findings[0].flag' "$expected_file")
   expected_set=$(jq -r '.findings[] | "\(.flag)\t\(.file)\t\(.line)"' "$expected_file" | sort)

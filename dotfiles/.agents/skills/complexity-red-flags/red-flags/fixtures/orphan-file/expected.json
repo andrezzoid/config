@@ -1,0 +1,5 @@
+{
+  "findings": [
+    { "flag": "orphanFile", "file": "orphan.ts", "line": 1 }
+  ]
+}

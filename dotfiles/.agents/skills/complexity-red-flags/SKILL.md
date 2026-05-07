@@ -56,11 +56,12 @@ bun <skill-dir>/red-flags/red-flags.ts <project-path> --diff <git-ref> --format 
 
 `<skill-dir>` is the directory containing this SKILL.md.
 
-The scanner covers: `shallowModule`, `passThroughMethod`, `passThroughVariable`, `genericNaming`, `tsEscapeHatch`, `emptyCatch`, `catchRethrow`, `wideModule`, `duplicateSymbol` (cross-file, targets agent-recreation pattern). Read `/tmp/red-flags.json`'s `findings[]` and `summary.topFiles[]` — start the audit at the highest-density files.
+The scanner covers: `shallowModule`, `wideModule`, `wideSignature`, `passThroughMethod`, `passThroughVariable`, `genericNaming`, `tsEscapeHatch`, `emptyCatch`, `catchRethrow`, `duplicateSymbol` (cross-file, agent-recreation pattern), `uniqueImplementation` (cross-file, speculative abstraction), `orphanFile` (cross-file, dead code). Read `/tmp/red-flags.json`'s `findings[]` and `summary.topFiles[]` — start the audit at the highest-density files.
 
 The scanner does **not** cover (you must scan manually for these):
 
 - Type-aware leakage (internal types exposed in public APIs) — needs a type checker
+- Multi-representation duplication within one file (TS type + JSON schema + runtime parser encoding the same shape) — different AST shapes
 - Temporal decomposition (verb-phase module names)
 - Conjoined methods (implicit ordering between calls)
 - Special-general mixture (string-equality switches in generic code)

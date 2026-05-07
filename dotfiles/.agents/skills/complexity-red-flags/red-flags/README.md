@@ -7,26 +7,31 @@ Deterministic candidate-flagger for PoSD-style complexity smells in TypeScript c
 - **It is** a high-recall, fast pre-scanner. Every finding is `severity: "candidate"`. False positives are accepted; the LLM filters them in audit.
 - **It is not** a verdict tool. It does not decide whether a candidate is a real smell — that's the job of `/complexity-red-flags`.
 
-## Detectors (v1.3)
+## Detectors (v1.4)
 
 | Flag | Scope | Catches |
 | --- | --- | --- |
 | `shallowModule` | per-file | Files with `(top-level exports + public class members) / body_lines > 0.3`. Class-member-aware — catches single-class shallow files (e.g., the temperature converter pattern). |
 | `wideModule` | per-file | Files with > 10 top-level exports. |
+| `wideSignature` | per-file | Functions/methods/constructors with > 4 required params. Optional, default, and rest params don't count — they're explicit signals the param is incidental to most callers. |
 | `passThroughMethod` | per-file | Methods/functions whose body is one delegating call where the inner call's args match the outer params 1:1 by name. |
 | `passThroughVariable` | per-file | A param whose every body reference is in argument position of a call. Guarded by ≥3 params + ≥2 body statements to keep noise down. |
 | `genericNaming` | per-file | Class/interface/type names ending in generic suffixes (`Manager`, `Helper`, `Utils`, `Wrapper`, `Container`, `Holder`, `Util`, `Misc`, `Common`, `Processor`, `Handler`). `Service` is intentionally excluded — too prevalent in legit code. |
 | `tsEscapeHatch` | per-file | `as any` (AST-precise, won't match strings) plus `@ts-ignore` / `@ts-expect-error`. |
 | `emptyCatch` | per-file | `catch` clauses with no executable statement (truly empty or comment-only). |
 | `catchRethrow` | per-file | `catch (e) { throw e }` — pure rethrow with no enrichment. Enforces same identifier on both sides. |
-| `duplicateSymbol` | **cross-file** | Top-level declarations with identical shape across N+ files: `const` (by value), `function`/arrow (by param count + normalized body), `class`/`interface`/`type`/`enum` (by structural shape). Targets the agent-recreation pattern — agent rebuilt something that already exists. Skips test files, generated paths, re-exports, and bare-primitive type aliases (those are nominal, intentionally distinct). Threshold is ≥2 files for `const`/`function`, ≥3 for `class`/`interface`/`type` (higher coincidence rate). |
+| `duplicateSymbol` | **cross-file** | Top-level declarations with identical shape across N+ files: `const` (by value), `function`/arrow (by param count + normalized body), `class`/`interface`/`type`/`enum` (by structural shape). Targets the agent-recreation pattern. Skips test files, generated paths, re-exports, and bare-primitive type aliases. Threshold ≥2 files for `const`/`function`, ≥3 for `class`/`interface`/`type`. One finding per group with full `occurrences` in metadata. |
+| `uniqueImplementation` | **cross-file** | Interface or abstract class with ≤ 1 implementer/subclass. The whole purpose of these constructs is polymorphism; if only one type satisfies them, callers pay the cost (read both abstraction and impl) for zero polymorphism payoff. Cross-file matching is by name. |
+| `orphanFile` | **cross-file** | Files imported by zero other files. Skips test files, `*.d.ts`, generated code, and common entrypoint patterns (`index.ts`/`main.ts`/`app.ts`/`server.ts`/`cli.ts`/`bin.ts`, plus `pages/`, `routes/`, `api/`, `app/`, `bin/` directories). Catches dead code and exploration files the agent forgot to delete. |
 
 ## Not yet covered (require manual audit)
 
 - Type-aware leakage (internal types exposed in public APIs) — needs a TypeScript compiler API. Deferred to v2.
 - Layer-boundary enforcement (Sheriff-style architectural rules) — needs a config schema. Deferred.
-- Temporal decomposition, conjoined methods, special-general mixture — LLM territory. Adding heuristics here adds noise without precision; the audit pass catches them in context.
-- Structural code-clone detection (same body shape, different bodies) — use `jscpd` as a sibling tool when needed. The `duplicateSymbol` cross-file detector already catches the high-signal slice (re-declarations of named symbols).
+- Multi-representation duplication within one file (e.g., TS type + JSON schema + runtime parser all encoding the same shape) — different AST shapes, hard to detect statically. LLM audit territory.
+- Temporal decomposition, conjoined methods, special-general mixture — LLM territory. Adding heuristics here adds noise without precision.
+- Structural code-clone detection (same body shape, different bodies) — use `jscpd` as a sibling tool when needed. `duplicateSymbol` already catches the high-signal slice (re-declarations of named symbols).
+- Length-based "long function" detection — explicitly NOT included. PoSD Ch. 9 argues against length-based splitting; long deep functions are fine.
 
 ## Dependencies
 
@@ -88,12 +93,14 @@ In `red-flags.ts`:
 - `SHALLOW_MIN_BODY` — min body lines to consider (default 3)
 - `SHALLOW_MIN_SURFACE` — min surface elements to consider (default 2)
 - `WIDE_MIN_EXPORTS` — wide-module threshold (default 10)
+- `WIDE_SIGNATURE_MAX` — max required params before flagging (default 4)
 - `GENERIC_SUFFIXES` — generic-name suffix list
 - `DUP_MIN_FILES_DEFAULT` / `DUP_MIN_FILES_BY_KIND` — distinct-file thresholds (default 2; class/interface/type at 3)
 - `DUP_CONST_MIN_STRING_LENGTH` — min string length for `const` value tracking (default 5)
 - `DUP_CONST_TRIVIAL_NUMBERS` — bare numbers always skipped (default −1, 0, 1, 2)
 - `DUP_FN_MAX_PARAMS` / `DUP_FN_MAX_STATEMENTS` — utility-function size band (defaults 8, 12)
-- `DUP_TEST_FILE_PATTERN` / `DUP_GENERATED_PATH` — paths skipped by `duplicateSymbol`
+- `DUP_TEST_FILE_PATTERN` / `DUP_GENERATED_PATH` — paths skipped by `duplicateSymbol` (and `orphanFile`)
+- `ORPHAN_ENTRYPOINT_PATTERNS` — file patterns excluded from orphan check (entrypoints, file-based routes, type declarations)
 
 ## Version history
 
@@ -108,6 +115,11 @@ In `red-flags.ts`:
 
 **v1.2** (skipped/reverted) — `duplicateLiteral` shipped briefly but was too noisy. Real-world hit rate was dominated by error messages, library-API arg strings, and schema keys — none of which are PoSD info-leakage. Reverted in favor of v1.3's narrower approach.
 
-**v1.3** — added `duplicateSymbol`, the first cross-file detector that actually targets the agent-recreation pattern. Tracks **declarations**, not usages: a `const`/`function`/`class`/`interface`/`type`/`enum` with identical shape declared in N+ files is the static signal for "agent rebuilt something it didn't know existed." Per-kind fingerprinting + per-kind thresholds keep the noise floor low.
+**v1.3** — added `duplicateSymbol`, the first cross-file detector that actually targets the agent-recreation pattern. Tracks **declarations**, not usages: a `const`/`function`/`class`/`interface`/`type`/`enum` with identical shape declared in N+ files is the static signal for "agent rebuilt something it didn't know existed." Per-kind fingerprinting + per-kind thresholds keep the noise floor low. Findings consolidated to one per group with full `occurrences[]` in metadata.
+
+**v1.4** — three new detectors aligned with PoSD chapters explicitly:
+- `wideSignature` — PoSD Ch. 6 overexposure: > 4 required params (excluding optional/default/rest).
+- `uniqueImplementation` — PoSD Ch. 6 cost-benefit: interface or abstract class with ≤ 1 implementer means polymorphism payoff isn't real.
+- `orphanFile` — PoSD-adjacent dead-code signal targeting agent-exploration leftovers. Skips entrypoints by file-name pattern.
 
 Performance is comparable across versions (oxc-parser is Rust-backed). No compile step at any point — Bun runs `red-flags.ts` directly.

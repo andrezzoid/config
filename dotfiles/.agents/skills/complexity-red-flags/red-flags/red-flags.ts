@@ -25,6 +25,7 @@ const SHALLOW_RATIO = 0.3;        // surface / body_lines; > this is shallow
 const SHALLOW_MIN_BODY = 3;       // skip trivially small files
 const SHALLOW_MIN_SURFACE = 2;    // skip single-export files
 const WIDE_MIN_EXPORTS = 10;      // > this exports = wide barrel
+const WIDE_SIGNATURE_MAX = 4;     // > this required params = wide signature
 const GENERIC_SUFFIXES = [
   "Manager", "Helper", "Wrapper", "Container", "Holder",
   "Utils", "Util", "Misc", "Common", "Processor", "Handler",
@@ -394,6 +395,55 @@ function detectWideModule({ file, ast }: Ctx): Finding[] {
     message: `${exports} top-level exports — wide module surface`,
     metadata: { exports },
   }];
+}
+
+// PoSD's "overexposure" (Ch. 6): functions/constructors with too many required
+// parameters force every caller to learn the entire surface even when they
+// only care about one knob. Optional, default, and rest params don't count —
+// they're explicit signals that the parameter is incidental to most callers.
+function detectWideSignature({ file, ast, lineOf }: Ctx): Finding[] {
+  const findings: Finding[] = [];
+  walk(ast, (node) => {
+    let fn: Node | null = null;
+    let nameForMsg = "";
+    if (node.type === "FunctionDeclaration") {
+      fn = node;
+      nameForMsg = node.id?.name ?? "<anonymous>";
+    } else if (node.type === "MethodDefinition") {
+      fn = node.value;
+      const k = node.key?.name ?? node.key?.value ?? "<anonymous>";
+      nameForMsg = node.kind === "constructor" ? "constructor" : `method ${k}`;
+    } else {
+      return;
+    }
+    if (!fn?.params) return;
+
+    let required = 0;
+    for (const p of fn.params) {
+      // Required: bare Identifier without `optional: true`, plus TS parameter
+      // properties (constructor's `private readonly x: T`).
+      if (p.type === "Identifier" && !p.optional) required += 1;
+      else if (p.type === "TSParameterProperty") {
+        const inner = p.parameter;
+        if (inner?.type === "Identifier" && !inner.optional) required += 1;
+        // If the inner is an AssignmentPattern, it has a default — skip.
+      }
+      // AssignmentPattern (default), RestElement (variadic), Identifier with
+      // optional: true (TS `x?: T`), and ObjectPattern/ArrayPattern (destructure
+      // is one knob even if it unpacks many fields) — none count toward required.
+    }
+
+    if (required <= WIDE_SIGNATURE_MAX) return;
+    findings.push({
+      flag: "wideSignature",
+      severity: "candidate",
+      file,
+      line: lineOf(node.start),
+      message: `${nameForMsg} takes ${required} required parameters — wide surface, consider an options object or splitting`,
+      metadata: { name: nameForMsg, requiredParams: required },
+    });
+  });
+  return findings;
 }
 
 // -------- Cross-file detectors --------
@@ -794,6 +844,211 @@ function detectDuplicateSymbol(ctxs: Ctx[]): Finding[] {
   return findings;
 }
 
+// Interface or abstract class with ≤ 1 implementer/subclass — speculative
+// abstraction. The whole point of these constructs is polymorphism; if only
+// one type satisfies them, callers pay the cost (read both the abstraction
+// and the impl) for zero polymorphism payoff. PoSD Ch. 6 cost-benefit.
+//
+// Cross-file matching is by NAME (not full type resolution). False positives
+// from same-named-but-different abstractions in unrelated modules are rare —
+// when they do happen, the LLM filters at audit.
+function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
+  type AbstractionDecl = {
+    kind: "interface" | "abstractClass";
+    name: string;
+    file: string;
+    line: number;
+    methodCount: number;
+  };
+  const decls: AbstractionDecl[] = [];
+  // name → [{ implementerName, file, line }]
+  const implementersByName = new Map<string, Array<{ implementer: string; file: string; line: number }>>();
+
+  for (const ctx of ctxs) {
+    if (DUP_TEST_FILE_PATTERN.test(ctx.file)) continue;
+
+    for (const stmt of ctx.ast.body ?? []) {
+      const decl =
+        stmt.type === "ExportNamedDeclaration" || stmt.type === "ExportDefaultDeclaration"
+          ? stmt.declaration
+          : stmt;
+      if (!decl?.id?.name) continue;
+
+      // Interface declaration — count its body members (skip property
+      // signatures with no method shape, but include all named members for
+      // the surface count).
+      if (decl.type === "TSInterfaceDeclaration") {
+        const memberCount = decl.body?.body?.length ?? 0;
+        decls.push({
+          kind: "interface",
+          name: decl.id.name,
+          file: ctx.file,
+          line: ctx.lineOf(decl.start),
+          methodCount: memberCount,
+        });
+        continue;
+      }
+
+      // Abstract class declaration — count public members the same way as
+      // shallowModule (non-private methods + properties).
+      if (decl.type === "ClassDeclaration" && decl.abstract) {
+        let publicMembers = 0;
+        for (const m of decl.body?.body ?? []) {
+          if (m.type !== "MethodDefinition" && m.type !== "PropertyDefinition" && m.type !== "TSAbstractMethodDefinition") continue;
+          const isPrivate =
+            m.accessibility === "private" ||
+            (typeof m.key?.name === "string" && m.key.name.startsWith("_"));
+          if (!isPrivate) publicMembers += 1;
+        }
+        decls.push({
+          kind: "abstractClass",
+          name: decl.id.name,
+          file: ctx.file,
+          line: ctx.lineOf(decl.start),
+          methodCount: publicMembers,
+        });
+        continue;
+      }
+
+      // Concrete class — record what it implements/extends so we can count
+      // implementers downstream.
+      if (decl.type === "ClassDeclaration" && decl.id?.name && !decl.abstract) {
+        const implName = decl.id.name;
+        const implLine = ctx.lineOf(decl.start);
+
+        for (const impl of decl.implements ?? []) {
+          // ESTree shape: TSClassImplements -> { expression: { name } } or
+          // TSExpressionWithTypeArguments -> { expression: { name } }
+          const interfaceName = impl.expression?.name ?? impl.expression?.expression?.name ?? null;
+          if (!interfaceName) continue;
+          const list = implementersByName.get(interfaceName) ?? [];
+          list.push({ implementer: implName, file: ctx.file, line: implLine });
+          implementersByName.set(interfaceName, list);
+        }
+
+        if (decl.superClass?.type === "Identifier") {
+          const superName = decl.superClass.name;
+          const list = implementersByName.get(superName) ?? [];
+          list.push({ implementer: implName, file: ctx.file, line: implLine });
+          implementersByName.set(superName, list);
+        }
+      }
+    }
+  }
+
+  const findings: Finding[] = [];
+  for (const d of decls) {
+    const impls = implementersByName.get(d.name) ?? [];
+    if (impls.length > 1) continue;
+
+    const kindWord = d.kind === "interface" ? "interface" : "abstract class";
+    const status =
+      impls.length === 0
+        ? `no implementers found`
+        : `only one implementer: ${impls[0].implementer} at ${impls[0].file}:${impls[0].line}`;
+
+    findings.push({
+      flag: "uniqueImplementation",
+      severity: "candidate",
+      file: d.file,
+      line: d.line,
+      message: `${kindWord} '${d.name}' has ${status} — speculative abstraction (no polymorphism payoff)`,
+      metadata: {
+        kind: d.kind,
+        name: d.name,
+        memberCount: d.methodCount,
+        implementerCount: impls.length,
+        implementers: impls,
+      },
+    });
+  }
+  return findings;
+}
+
+// Files that nothing imports. PoSD adjacent (dead code is a maintenance
+// burden), but more pragmatically: agents create exploratory files they
+// forget to delete. Skips test files, type declarations, and common
+// entrypoint patterns (file-based routing, CLI entrypoints, package main).
+const ORPHAN_ENTRYPOINT_PATTERNS = [
+  /^(src\/)?(index|main|app|server|cli|bin)\.tsx?$/,
+  /^(src\/)?(pages|routes|api|app|bin)\//,
+  /\.d\.ts$/,
+  /\.config\.tsx?$/,
+];
+
+function detectOrphanFile(ctxs: Ctx[]): Finding[] {
+  const eligibleFiles = ctxs.filter(c =>
+    !DUP_TEST_FILE_PATTERN.test(c.file) &&
+    !DUP_GENERATED_PATH.test(c.file) &&
+    !ORPHAN_ENTRYPOINT_PATTERNS.some(re => re.test(c.file))
+  );
+  if (eligibleFiles.length === 0) return [];
+
+  // Build the set of all files we know about (canonical, no extension) so
+  // resolution can match either `./foo`, `./foo.ts`, or `./foo/index.ts`.
+  const fileSet = new Set(ctxs.map(c => c.file));
+  const incoming = new Map<string, number>();
+
+  for (const ctx of ctxs) {
+    for (const stmt of ctx.ast.body ?? []) {
+      // Cover: ImportDeclaration, ExportNamedDeclaration with source,
+      // ExportAllDeclaration. All three carry a `source` literal.
+      const source = stmt.source?.value;
+      if (typeof source !== "string") continue;
+      // Only relative imports — package imports are out of scope and aliases
+      // (`@/foo`) require tsconfig parsing which we don't do.
+      if (!source.startsWith(".")) continue;
+
+      const resolved = resolveRelativeImport(ctx.file, source, fileSet);
+      if (!resolved) continue;
+      incoming.set(resolved, (incoming.get(resolved) ?? 0) + 1);
+    }
+  }
+
+  const findings: Finding[] = [];
+  for (const ctx of eligibleFiles) {
+    if ((incoming.get(ctx.file) ?? 0) > 0) continue;
+    findings.push({
+      flag: "orphanFile",
+      severity: "candidate",
+      file: ctx.file,
+      line: 1,
+      message: `file is not imported by any other file — possible dead code or forgotten exploration`,
+      metadata: {},
+    });
+  }
+  return findings;
+}
+
+// Resolve `./foo` from `src/bar/baz.ts` to one of `src/bar/foo.ts`,
+// `src/bar/foo.tsx`, or `src/bar/foo/index.ts(x)`. Returns the canonical
+// file path used in `fileSet`, or null if none match.
+function resolveRelativeImport(fromFile: string, importPath: string, fileSet: Set<string>): string | null {
+  const fromDir = fromFile.split("/").slice(0, -1).join("/");
+  const joined = normalizePath(fromDir ? `${fromDir}/${importPath}` : importPath);
+  const candidates = [
+    joined,
+    `${joined}.ts`,
+    `${joined}.tsx`,
+    `${joined}/index.ts`,
+    `${joined}/index.tsx`,
+  ];
+  for (const c of candidates) {
+    if (fileSet.has(c)) return c;
+  }
+  return null;
+}
+
+function normalizePath(p: string): string {
+  const parts: string[] = [];
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  return parts.join("/");
+}
+
 type SingleDetector = (ctx: Ctx) => Finding[];
 type CrossDetector = (ctxs: Ctx[]) => Finding[];
 
@@ -806,10 +1061,13 @@ const SINGLE_DETECTORS: SingleDetector[] = [
   detectGenericNaming,
   detectTsEscapeHatches,
   detectWideModule,
+  detectWideSignature,
 ];
 
 const CROSS_DETECTORS: CrossDetector[] = [
   detectDuplicateSymbol,
+  detectUniqueImplementation,
+  detectOrphanFile,
 ];
 
 // -------- File collection --------

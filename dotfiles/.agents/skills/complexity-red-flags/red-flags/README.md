@@ -7,26 +7,26 @@ Deterministic candidate-flagger for PoSD-style complexity smells in TypeScript c
 - **It is** a high-recall, fast pre-scanner. Every finding is `severity: "candidate"`. False positives are accepted; the LLM filters them in audit.
 - **It is not** a verdict tool. It does not decide whether a candidate is a real smell — that's the job of `/complexity-red-flags`.
 
-## Detectors (v1.1)
+## Detectors (v1.3)
 
-| Flag | Catches |
-| --- | --- |
-| `shallowModule` | Files with `(top-level exports + public class members) / body_lines > 0.3`. Class-member-aware — catches single-class shallow files (e.g., the temperature converter pattern). |
-| `wideModule` | Files with > 10 top-level exports. |
-| `passThroughMethod` | Methods/functions whose body is one delegating call where the inner call's args match the outer params 1:1 by name. |
-| `passThroughVariable` | A param whose every body reference is in argument position of a call. Guarded by ≥3 params + ≥2 body statements to keep noise down. |
-| `genericNaming` | Class/interface/type names ending in generic suffixes (`Manager`, `Helper`, `Utils`, `Wrapper`, `Container`, `Holder`, `Util`, `Misc`, `Common`, `Processor`, `Handler`). `Service` is intentionally excluded — too prevalent in legit code. |
-| `tsEscapeHatch` | `as any` (AST-precise, won't match strings) plus `@ts-ignore` / `@ts-expect-error`. |
-| `emptyCatch` | `catch` clauses with no executable statement (truly empty or comment-only). |
-| `catchRethrow` | `catch (e) { throw e }` — pure rethrow with no enrichment. Enforces same identifier on both sides. |
+| Flag | Scope | Catches |
+| --- | --- | --- |
+| `shallowModule` | per-file | Files with `(top-level exports + public class members) / body_lines > 0.3`. Class-member-aware — catches single-class shallow files (e.g., the temperature converter pattern). |
+| `wideModule` | per-file | Files with > 10 top-level exports. |
+| `passThroughMethod` | per-file | Methods/functions whose body is one delegating call where the inner call's args match the outer params 1:1 by name. |
+| `passThroughVariable` | per-file | A param whose every body reference is in argument position of a call. Guarded by ≥3 params + ≥2 body statements to keep noise down. |
+| `genericNaming` | per-file | Class/interface/type names ending in generic suffixes (`Manager`, `Helper`, `Utils`, `Wrapper`, `Container`, `Holder`, `Util`, `Misc`, `Common`, `Processor`, `Handler`). `Service` is intentionally excluded — too prevalent in legit code. |
+| `tsEscapeHatch` | per-file | `as any` (AST-precise, won't match strings) plus `@ts-ignore` / `@ts-expect-error`. |
+| `emptyCatch` | per-file | `catch` clauses with no executable statement (truly empty or comment-only). |
+| `catchRethrow` | per-file | `catch (e) { throw e }` — pure rethrow with no enrichment. Enforces same identifier on both sides. |
+| `duplicateSymbol` | **cross-file** | Top-level declarations with identical shape across N+ files: `const` (by value), `function`/arrow (by param count + normalized body), `class`/`interface`/`type`/`enum` (by structural shape). Targets the agent-recreation pattern — agent rebuilt something that already exists. Skips test files, generated paths, re-exports, and bare-primitive type aliases (those are nominal, intentionally distinct). Threshold is ≥2 files for `const`/`function`, ≥3 for `class`/`interface`/`type` (higher coincidence rate). |
 
-## Not yet covered (require manual audit or v2)
+## Not yet covered (require manual audit)
 
-- Information leakage (cross-module duplication of mappings/formats) — needs cross-file analysis.
-- Temporal decomposition (verb-phase module names) — heuristic too noisy in v1.
-- Conjoined methods (implicit ordering between calls) — needs runtime/protocol knowledge.
-- Special-general mixture (string-equality switches in generic code) — heuristic in scope but deferred.
-- Type-aware leakage (internal types exposed in public APIs) — needs a type checker (TypeScript compiler API).
+- Type-aware leakage (internal types exposed in public APIs) — needs a TypeScript compiler API. Deferred to v2.
+- Layer-boundary enforcement (Sheriff-style architectural rules) — needs a config schema. Deferred.
+- Temporal decomposition, conjoined methods, special-general mixture — LLM territory. Adding heuristics here adds noise without precision; the audit pass catches them in context.
+- Structural code-clone detection (same body shape, different bodies) — use `jscpd` as a sibling tool when needed. The `duplicateSymbol` cross-file detector already catches the high-signal slice (re-declarations of named symbols).
 
 ## Dependencies
 
@@ -89,15 +89,25 @@ In `red-flags.ts`:
 - `SHALLOW_MIN_SURFACE` — min surface elements to consider (default 2)
 - `WIDE_MIN_EXPORTS` — wide-module threshold (default 10)
 - `GENERIC_SUFFIXES` — generic-name suffix list
+- `DUP_MIN_FILES_DEFAULT` / `DUP_MIN_FILES_BY_KIND` — distinct-file thresholds (default 2; class/interface/type at 3)
+- `DUP_CONST_MIN_STRING_LENGTH` — min string length for `const` value tracking (default 5)
+- `DUP_CONST_TRIVIAL_NUMBERS` — bare numbers always skipped (default −1, 0, 1, 2)
+- `DUP_FN_MAX_PARAMS` / `DUP_FN_MAX_STATEMENTS` — utility-function size band (defaults 8, 12)
+- `DUP_TEST_FILE_PATTERN` / `DUP_GENERATED_PATH` — paths skipped by `duplicateSymbol`
 
-## v1.1 vs v1
+## Version history
 
-v1 was bash + ast-grep + ripgrep + jq. v1.1 is Bun + oxc-parser. Why we moved:
+**v1** (bash + ast-grep + ripgrep + jq) — 7 per-file detectors via ast-grep YAML rules and ripgrep counting.
 
-- **Pass-through method now checks arg=param matching properly** (ast-grep's text-based meta-var equality broke on TypeScript-typed params).
-- **Shallow module now counts public class members**, not just top-level `export` lines — catches the canonical shallow class.
-- **`as any` is AST-precise** — no false positives on string literals.
-- **`catchRethrow` enforces identifier match** between catch param and the rethrown identifier.
-- **New detector: `passThroughVariable`** — needs parent-context analysis ast-grep can't easily express.
+**v1.1** (Bun + oxc-parser) — rewrote in TS for real AST access. Improvements:
+- `passThroughMethod` now checks arg=param matching properly (ast-grep's text-based meta-var equality broke on typed params).
+- `shallowModule` now counts public class members in surface, not just `^export` lines — catches the temperature-converter shallow class.
+- `as any` is AST-precise — no false positives on string literals.
+- `catchRethrow` enforces identifier match between catch param and the rethrown identifier.
+- New: `passThroughVariable` — needs parent-context analysis ast-grep couldn't express.
 
-Performance is comparable (oxc-parser is Rust-backed). No compile step in either version — Bun runs `red-flags.ts` directly.
+**v1.2** (skipped/reverted) — `duplicateLiteral` shipped briefly but was too noisy. Real-world hit rate was dominated by error messages, library-API arg strings, and schema keys — none of which are PoSD info-leakage. Reverted in favor of v1.3's narrower approach.
+
+**v1.3** — added `duplicateSymbol`, the first cross-file detector that actually targets the agent-recreation pattern. Tracks **declarations**, not usages: a `const`/`function`/`class`/`interface`/`type`/`enum` with identical shape declared in N+ files is the static signal for "agent rebuilt something it didn't know existed." Per-kind fingerprinting + per-kind thresholds keep the noise floor low.
+
+Performance is comparable across versions (oxc-parser is Rust-backed). No compile step at any point — Bun runs `red-flags.ts` directly.

@@ -1,0 +1,7 @@
+{
+  "findings": [
+    { "flag": "duplicateSymbol", "file": "cache.ts", "line": 4 },
+    { "flag": "duplicateSymbol", "file": "cache.ts", "line": 6 },
+    { "flag": "duplicateSymbol", "file": "cache.ts", "line": 10 }
+  ]
+}

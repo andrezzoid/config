@@ -31,6 +31,27 @@ const GENERIC_SUFFIXES = [
 ];
 // `Service` is intentionally excluded — too prevalent in legitimate code.
 
+// duplicateSymbol — agents tend to redeclare instead of reusing. Tracking
+// declarations (not usages) means signal is concentrated; per-kind thresholds
+// dampen coincidence on the noisier kinds (class/interface/type).
+const DUP_MIN_FILES_DEFAULT = 2;
+const DUP_MIN_FILES_BY_KIND: Record<string, number> = {
+  class: 3,
+  interface: 3,
+  type: 3,
+};
+// Constants smaller than this aren't worth tracking — too generic.
+const DUP_CONST_MIN_STRING_LENGTH = 5;
+const DUP_CONST_TRIVIAL_NUMBERS = new Set([-1, 0, 1, 2]);
+// Functions outside this size band are coincidence (too small) or business
+// logic (too big). Utilities cluster in [1, 12] statements.
+const DUP_FN_MAX_PARAMS = 8;
+const DUP_FN_MAX_STATEMENTS = 12;
+// Skip patterns. Test files and generated code routinely re-declare shapes
+// for legitimate reasons; flagging them buries real findings.
+const DUP_TEST_FILE_PATTERN = /(^|\/)(__tests__|__mocks__|test|tests)\/|\.(test|spec)\.tsx?$/;
+const DUP_GENERATED_PATH = /(^|\/)(generated|__generated__)\/|\.(gen|pb)\.tsx?$|_pb\.tsx?$/;
+
 // -------- Types --------
 type Severity = "candidate";
 type Finding = {
@@ -375,7 +396,408 @@ function detectWideModule({ file, ast }: Ctx): Finding[] {
   }];
 }
 
-const DETECTORS = [
+// -------- Cross-file detectors --------
+
+// A symbol that's declared in N+ files. Targets the agent-recreation pattern:
+// the agent rebuilds a constant/utility/type that already exists elsewhere
+// because it didn't search the codebase first.
+//
+// Per-kind fingerprint:
+//   const  → recursive value fingerprint (only if all leaves are primitives)
+//   function/arrow → param count + structurally normalized body
+//   class  → super-class name + sorted member fingerprints
+//   interface/type → structural shape; bare-primitive type aliases are skipped
+//                    (they're nominal types, intentionally distinct)
+//   enum   → sorted member-name list
+//
+// Skips: test files, generated code, re-exports, type aliases to a single
+// primitive keyword. Two distinct files is the default threshold; classes,
+// interfaces, and types use 3+ to dampen the higher coincidence rate of
+// structural shapes (parallel layer types, common DTO shapes).
+type SymbolKind = "const" | "function" | "class" | "interface" | "type" | "enum";
+type SymbolDecl = {
+  kind: SymbolKind;
+  name: string;
+  fingerprint: string;
+  file: string;
+  line: number;
+  // Source byte range — used to build the preview snippet shown to users/agents.
+  start: number;
+  end: number;
+};
+
+// Trimmed source slice + truncation marker. Indented snippets are easier to
+// visually separate from the message line in the text formatter.
+const PREVIEW_MAX_CHARS = 240;
+function previewSource(source: string, start: number, end: number): string {
+  let s = source.slice(start, end);
+  if (s.length > PREVIEW_MAX_CHARS) {
+    s = s.slice(0, PREVIEW_MAX_CHARS).replace(/\s+\S*$/, "") + " …";
+  }
+  return s;
+}
+
+// djb2 — non-cryptographic, just stable across runs so the agent can group
+// findings sharing the same fingerprint without seeing the raw fingerprint.
+function shortHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+// Top-level fingerprint for a `const X = <expr>`. Returns null unless the
+// initializer is a pure literal expression (so `const X = computeFoo()` is
+// ignored — its value is determined at runtime). Trivial bare primitives
+// (short strings, common numbers, booleans) are also rejected at the top
+// level only — they may still appear as nested elements of an array/object.
+function fingerprintConstValue(node: Node): string | null {
+  const fp = constValueRaw(node);
+  if (!fp) return null;
+  if (fp === "b:true" || fp === "b:false") return null;
+  if (fp.startsWith("n:")) {
+    const n = Number(fp.slice(2));
+    if (DUP_CONST_TRIVIAL_NUMBERS.has(n)) return null;
+  }
+  if (fp.startsWith("s:")) {
+    const s = JSON.parse(fp.slice(2));
+    if (typeof s !== "string" || s.length < DUP_CONST_MIN_STRING_LENGTH) return null;
+  }
+  return fp;
+}
+
+function constValueRaw(node: Node): string | null {
+  if (!node) return null;
+  if (node.type === "Literal") {
+    if (typeof node.value === "string") return `s:${JSON.stringify(node.value)}`;
+    if (typeof node.value === "number") return `n:${node.value}`;
+    if (typeof node.value === "boolean") return `b:${node.value}`;
+    return null;
+  }
+  if (node.type === "TemplateLiteral" && (node.expressions?.length ?? 0) === 0) {
+    const v = node.quasis?.[0]?.value?.cooked ?? "";
+    return `s:${JSON.stringify(v)}`;
+  }
+  if (node.type === "UnaryExpression" && (node.operator === "-" || node.operator === "+")) {
+    const inner = constValueRaw(node.argument);
+    if (!inner) return null;
+    return `${node.operator}${inner}`;
+  }
+  if (node.type === "ArrayExpression") {
+    const elements: string[] = [];
+    for (const el of node.elements ?? []) {
+      if (!el) return null;
+      const fp = constValueRaw(el);
+      if (!fp) return null;
+      elements.push(fp);
+    }
+    return `arr[${elements.join(",")}]`;
+  }
+  if (node.type === "ObjectExpression") {
+    const entries: string[] = [];
+    for (const prop of node.properties ?? []) {
+      if (prop.type !== "Property") return null;
+      let key: string;
+      if (prop.key?.type === "Identifier") key = prop.key.name;
+      else if (prop.key?.type === "Literal" && typeof prop.key.value === "string") key = prop.key.value;
+      else return null;
+      const val = constValueRaw(prop.value);
+      if (!val) return null;
+      entries.push(`${key}=${val}`);
+    }
+    entries.sort();
+    return `obj{${entries.join(",")}}`;
+  }
+  return null;
+}
+
+// Structural fingerprint for any AST sub-tree. Identifiers and literals
+// collapse to placeholders so two functions with different param/var names
+// match. Type-system nodes are skipped — they don't change runtime semantics.
+const NORMALIZE_SKIP_KEYS = new Set([
+  "loc", "range", "start", "end",
+  "decorators", "typeAnnotation", "typeParameters", "returnType",
+  "computed", "optional", "static", "async", "generator",
+  "definite", "declare", "abstract", "readonly", "accessibility",
+  "implements", "superTypeArguments",
+]);
+
+function normalizeAst(node: Node | null): string {
+  if (!node || typeof node !== "object") return "";
+  const t = node.type;
+  if (typeof t !== "string") return "";
+  if (t.startsWith("TS") && t !== "TSAsExpression" && t !== "TSNonNullExpression") return "";
+
+  if (t === "Identifier") return "$id";
+  if (t === "PrivateIdentifier") return "$pid";
+  if (t === "Literal") {
+    if (typeof node.value === "string") return "$str";
+    if (typeof node.value === "number") return "$num";
+    if (typeof node.value === "boolean") return "$bool";
+    if (node.value === null) return "$null";
+    return "$lit";
+  }
+  if (t === "TemplateLiteral") return `Tpl(${node.expressions?.length ?? 0})`;
+  if (t === "ThisExpression") return "$this";
+  if (t === "Super") return "$super";
+
+  const parts: string[] = [t, "("];
+  for (const key of Object.keys(node)) {
+    if (NORMALIZE_SKIP_KEYS.has(key)) continue;
+    if (key === "type") continue;
+    const v = node[key];
+    if (Array.isArray(v)) {
+      parts.push("[", v.map(normalizeAst).filter(Boolean).join(","), "]");
+    } else if (v && typeof v === "object") {
+      parts.push(normalizeAst(v));
+    } else if (v != null && (key === "operator" || key === "kind" || key === "prefix")) {
+      // Scalar fields that affect runtime semantics. `operator` covers binary,
+      // logical, unary, update, assignment expressions. `kind` distinguishes
+      // const/let/var and method/constructor/get/set. `prefix` separates ++x
+      // from x++.
+      parts.push(`@${key}=${v}`);
+    }
+  }
+  parts.push(")");
+  return parts.join("");
+}
+
+function fingerprintFunction(fn: Node): string | null {
+  const params = fn.params ?? [];
+  if (params.length > DUP_FN_MAX_PARAMS) return null;
+  const body = fn.body;
+  if (!body) return null;
+  if (body.type === "BlockStatement") {
+    const stmts = body.body ?? [];
+    if (stmts.length === 0 || stmts.length > DUP_FN_MAX_STATEMENTS) return null;
+    return `fn/${params.length}:${normalizeAst(body)}`;
+  }
+  // Expression-bodied arrow: `const f = x => x + 1`
+  return `fn/${params.length}=>${normalizeAst(body)}`;
+}
+
+function fingerprintClass(cls: Node): string | null {
+  const members = cls.body?.body ?? [];
+  if (members.length === 0) return null;
+  const memberFps: string[] = [];
+  for (const m of members) {
+    const name =
+      m.key?.type === "Identifier" ? m.key.name :
+      m.key?.type === "Literal" ? String(m.key.value) :
+      "?";
+    if (m.type === "MethodDefinition") {
+      const fp = fingerprintFunction(m.value);
+      if (fp) memberFps.push(`m:${name}=${fp}`);
+    } else if (m.type === "PropertyDefinition") {
+      const initFp = m.value ? (constValueRaw(m.value) ?? `expr:${normalizeAst(m.value)}`) : "uninit";
+      memberFps.push(`p:${name}=${initFp}`);
+    }
+  }
+  if (memberFps.length === 0) return null;
+  memberFps.sort();
+  const superName = cls.superClass?.type === "Identifier" ? cls.superClass.name : "";
+  return `cls(super=${superName}):[${memberFps.join("|")}]`;
+}
+
+// True iff the type alias right-hand side is a single primitive keyword,
+// with or without an intersection brand. These are nominal types and
+// duplicates are intentional — `type UserId = string` and `type OrderId = string`
+// are not the same design decision.
+function isBarePrimitiveType(node: Node): boolean {
+  if (!node) return false;
+  const primitiveKinds = new Set([
+    "TSStringKeyword", "TSNumberKeyword", "TSBooleanKeyword",
+    "TSBigIntKeyword", "TSAnyKeyword", "TSUnknownKeyword",
+    "TSNeverKeyword", "TSVoidKeyword", "TSUndefinedKeyword", "TSNullKeyword",
+  ]);
+  if (primitiveKinds.has(node.type)) return true;
+  // Covers `type X = string & { __brand: "X" }` — common branded-type pattern;
+  // the brand is what makes it nominal, but we still treat it as a primitive.
+  if (node.type === "TSIntersectionType" && Array.isArray(node.types)) {
+    return node.types.some((t: Node) => primitiveKinds.has(t.type));
+  }
+  return false;
+}
+
+function fingerprintInterface(iface: Node): string | null {
+  const members = iface.body?.body ?? [];
+  if (members.length === 0) return null;
+  const memberFps: string[] = [];
+  for (const m of members) {
+    const name =
+      m.key?.type === "Identifier" ? m.key.name :
+      m.key?.type === "Literal" ? String(m.key.value) :
+      "?";
+    memberFps.push(`${name}:${normalizeAst(m)}`);
+  }
+  memberFps.sort();
+  return `iface:[${memberFps.join("|")}]`;
+}
+
+function fingerprintTypeAlias(ta: Node): string | null {
+  const rhs = ta.typeAnnotation;
+  if (!rhs) return null;
+  if (isBarePrimitiveType(rhs)) return null;
+  return `type:${normalizeAst(rhs)}`;
+}
+
+function fingerprintEnum(enm: Node): string | null {
+  const members = enm.members ?? [];
+  if (members.length === 0) return null;
+  const names: string[] = [];
+  for (const m of members) {
+    const name =
+      m.id?.type === "Identifier" ? m.id.name :
+      m.id?.type === "Literal" ? String(m.id.value) :
+      "?";
+    const value = m.initializer ? (constValueRaw(m.initializer) ?? "expr") : "auto";
+    names.push(`${name}=${value}`);
+  }
+  names.sort();
+  return `enum:[${names.join("|")}]`;
+}
+
+// Walks top-level statements, extracting a SymbolDecl per declared identifier.
+// Re-exports are skipped — those are the *correct* sharing pattern, not duplication.
+function extractSymbols(ctx: Ctx): SymbolDecl[] {
+  const out: SymbolDecl[] = [];
+  for (const stmt of ctx.ast.body ?? []) {
+    if (stmt.type === "ExportNamedDeclaration" && stmt.source) continue;
+    if (stmt.type === "ExportAllDeclaration") continue;
+
+    let decl: Node | null = stmt;
+    if (stmt.type === "ExportNamedDeclaration" || stmt.type === "ExportDefaultDeclaration") {
+      decl = stmt.declaration ?? null;
+    }
+    if (!decl) continue;
+    handleDeclaration(decl, ctx, out);
+  }
+  return out;
+}
+
+function handleDeclaration(decl: Node, ctx: Ctx, out: SymbolDecl[]): void {
+  const line = ctx.lineOf(decl.start);
+
+  if (decl.type === "VariableDeclaration") {
+    for (const d of decl.declarations ?? []) {
+      if (d.id?.type !== "Identifier") continue;
+      const init = d.init;
+      if (!init) continue;
+      const declLine = ctx.lineOf(d.start);
+      if (init.type === "ArrowFunctionExpression" || init.type === "FunctionExpression") {
+        const fp = fingerprintFunction(init);
+        if (fp) out.push({ kind: "function", name: d.id.name, fingerprint: fp, file: ctx.file, line: declLine, start: d.start, end: d.end });
+      } else {
+        const fp = fingerprintConstValue(init);
+        if (fp) out.push({ kind: "const", name: d.id.name, fingerprint: fp, file: ctx.file, line: declLine, start: d.start, end: d.end });
+      }
+    }
+    return;
+  }
+  if (decl.type === "FunctionDeclaration" && decl.id?.name) {
+    const fp = fingerprintFunction(decl);
+    if (fp) out.push({ kind: "function", name: decl.id.name, fingerprint: fp, file: ctx.file, line, start: decl.start, end: decl.end });
+    return;
+  }
+  if (decl.type === "ClassDeclaration" && decl.id?.name) {
+    const fp = fingerprintClass(decl);
+    if (fp) out.push({ kind: "class", name: decl.id.name, fingerprint: fp, file: ctx.file, line, start: decl.start, end: decl.end });
+    return;
+  }
+  if (decl.type === "TSInterfaceDeclaration" && decl.id?.name) {
+    const fp = fingerprintInterface(decl);
+    if (fp) out.push({ kind: "interface", name: decl.id.name, fingerprint: fp, file: ctx.file, line, start: decl.start, end: decl.end });
+    return;
+  }
+  if (decl.type === "TSTypeAliasDeclaration" && decl.id?.name) {
+    const fp = fingerprintTypeAlias(decl);
+    if (fp) out.push({ kind: "type", name: decl.id.name, fingerprint: fp, file: ctx.file, line, start: decl.start, end: decl.end });
+    return;
+  }
+  if (decl.type === "TSEnumDeclaration" && decl.id?.name) {
+    const fp = fingerprintEnum(decl);
+    if (fp) out.push({ kind: "enum", name: decl.id.name, fingerprint: fp, file: ctx.file, line, start: decl.start, end: decl.end });
+  }
+}
+
+function detectDuplicateSymbol(ctxs: Ctx[]): Finding[] {
+  const decls: SymbolDecl[] = [];
+  // Source lookup keyed by file — needed to slice the preview snippet.
+  const sourceByFile = new Map<string, string>();
+  for (const ctx of ctxs) {
+    if (DUP_TEST_FILE_PATTERN.test(ctx.file)) continue;
+    if (DUP_GENERATED_PATH.test(ctx.file)) continue;
+    sourceByFile.set(ctx.file, ctx.source);
+    decls.push(...extractSymbols(ctx));
+  }
+
+  // Group by (kind, fingerprint) — different kinds with coincidentally
+  // identical fingerprints shouldn't merge.
+  const byKey = new Map<string, SymbolDecl[]>();
+  for (const d of decls) {
+    const key = `${d.kind}:${d.fingerprint}`;
+    const list = byKey.get(key);
+    if (list) list.push(d);
+    else byKey.set(key, [d]);
+  }
+
+  const findings: Finding[] = [];
+  for (const group of byKey.values()) {
+    const distinct = new Set(group.map(d => d.file));
+    const minFiles = DUP_MIN_FILES_BY_KIND[group[0].kind] ?? DUP_MIN_FILES_DEFAULT;
+    if (distinct.size < minFiles) continue;
+
+    const kind = group[0].kind;
+    const fingerprintHash = shortHash(group[0].fingerprint);
+
+    // Sort occurrences by file then position so the canonical (first) entry
+    // is stable across runs. Used both for finding placement and preview.
+    const sorted = [...group].sort((a, b) =>
+      a.file.localeCompare(b.file) || a.start - b.start
+    );
+    const canonical = sorted[0];
+    const canonicalSource = sourceByFile.get(canonical.file) ?? "";
+    const preview = previewSource(canonicalSource, canonical.start, canonical.end);
+
+    const occurrences = sorted.map(d => ({ name: d.name, file: d.file, line: d.line }));
+    const names = [...new Set(occurrences.map(o => o.name))].sort();
+
+    // Compact, single-line message that gives the agent enough to triage
+    // without opening JSON metadata. Full occurrence list lives in metadata.
+    const sampleNames = names.slice(0, 3).join(", ");
+    const moreNames = names.length > 3 ? `, +${names.length - 3} more` : "";
+    const message =
+      `${kind} re-declared ${group.length}× across ${distinct.size} files ` +
+      `(e.g. ${sampleNames}${moreNames}) — agent likely re-built an existing one ` +
+      `[group ${fingerprintHash}]`;
+
+    // ONE finding per group. The canonical declaration's location is the
+    // finding's anchor; the full set lives in `occurrences`. This shifts
+    // the unit-of-issue from "occurrence" to "shape" — the right granularity
+    // for the agent: each group is one design decision to consolidate.
+    findings.push({
+      flag: "duplicateSymbol",
+      severity: "candidate",
+      file: canonical.file,
+      line: canonical.line,
+      message,
+      metadata: {
+        symbolKind: kind,
+        fingerprintHash,
+        distinctFiles: distinct.size,
+        totalDeclarations: group.length,
+        preview,
+        previewFrom: `${canonical.file}:${canonical.line}`,
+        occurrences,
+      },
+    });
+  }
+  return findings;
+}
+
+type SingleDetector = (ctx: Ctx) => Finding[];
+type CrossDetector = (ctxs: Ctx[]) => Finding[];
+
+const SINGLE_DETECTORS: SingleDetector[] = [
   detectShallowModule,
   detectPassThroughMethod,
   detectPassThroughVariable,
@@ -384,6 +806,10 @@ const DETECTORS = [
   detectGenericNaming,
   detectTsEscapeHatches,
   detectWideModule,
+];
+
+const CROSS_DETECTORS: CrossDetector[] = [
+  detectDuplicateSymbol,
 ];
 
 // -------- File collection --------
@@ -465,7 +891,10 @@ function main(): void {
     files = collectFiles(targetAbs, diffRef);
   }
 
-  const allFindings: Finding[] = [];
+  // Two-phase: parse all files first so cross-file detectors (e.g. duplicate-
+  // symbol) see the whole tree. Files that fail to parse are dropped from
+  // both phases — partial AST trees produce false signals.
+  const ctxs: Ctx[] = [];
   for (const file of files) {
     const abs = join(root, file);
     let source: string;
@@ -476,13 +905,28 @@ function main(): void {
     }
     const parsed = parseSync(file, source);
     if (parsed.errors?.length && parsed.program?.body?.length === 0) continue;
-    const lineOf = buildLineOf(source);
-    const ctx: Ctx = { file, source, ast: parsed.program, comments: parsed.comments ?? [], lineOf };
-    for (const detect of DETECTORS) {
+    ctxs.push({
+      file,
+      source,
+      ast: parsed.program,
+      comments: parsed.comments ?? [],
+      lineOf: buildLineOf(source),
+    });
+  }
+
+  const allFindings: Finding[] = [];
+  for (const ctx of ctxs) {
+    for (const detect of SINGLE_DETECTORS) {
       try { allFindings.push(...detect(ctx)); }
       catch (e) {
-        process.stderr.write(`detector ${detect.name} failed on ${file}: ${(e as Error).message}\n`);
+        process.stderr.write(`detector ${detect.name} failed on ${ctx.file}: ${(e as Error).message}\n`);
       }
+    }
+  }
+  for (const detect of CROSS_DETECTORS) {
+    try { allFindings.push(...detect(ctxs)); }
+    catch (e) {
+      process.stderr.write(`cross-detector ${detect.name} failed: ${(e as Error).message}\n`);
     }
   }
 
@@ -494,7 +938,18 @@ function main(): void {
   for (const f of allFindings) byFlag[f.flag] = (byFlag[f.flag] ?? 0) + 1;
 
   const fileCounts: Record<string, number> = {};
-  for (const f of allFindings) fileCounts[f.file] = (fileCounts[f.file] ?? 0) + 1;
+  for (const f of allFindings) {
+    // duplicateSymbol findings are one-per-group; expand via occurrences so
+    // file ranking still reflects spread (otherwise only the canonical file
+    // would show up despite the issue affecting many).
+    if (f.flag === "duplicateSymbol" && Array.isArray(f.metadata.occurrences)) {
+      for (const occ of f.metadata.occurrences as { file: string }[]) {
+        fileCounts[occ.file] = (fileCounts[occ.file] ?? 0) + 1;
+      }
+    } else {
+      fileCounts[f.file] = (fileCounts[f.file] ?? 0) + 1;
+    }
+  }
   const topFiles = Object.entries(fileCounts)
     .map(([file, count]) => ({ file, count }))
     .sort((a, b) => b.count - a.count)
@@ -514,7 +969,25 @@ function main(): void {
     lines.push("\nTop files:");
     for (const { file, count } of topFiles) lines.push(`  ${count}  ${file}`);
     lines.push("\nFindings:");
-    for (const f of allFindings) lines.push(`  [${f.flag}] ${f.file}:${f.line} — ${f.message}`);
+    for (const f of allFindings) {
+      lines.push(`  [${f.flag}] ${f.file}:${f.line} — ${f.message}`);
+      if (f.flag === "duplicateSymbol") {
+        const preview = String(f.metadata.preview ?? "");
+        const from = String(f.metadata.previewFrom ?? "");
+        if (preview) {
+          lines.push(`      preview (from ${from}):`);
+          for (const pl of preview.split("\n")) lines.push(`        ${pl}`);
+        }
+        const occurrences = (f.metadata.occurrences as Array<{ name: string; file: string; line: number }> | undefined) ?? [];
+        if (occurrences.length > 0) {
+          lines.push(`      occurrences (${occurrences.length}):`);
+          // Show all occurrences — that's the agent's whole reason for being
+          // here. If the list is huge, the agent reads the JSON; the text
+          // mode user can scroll.
+          for (const o of occurrences) lines.push(`        ${o.file}:${o.line}  ${o.name}`);
+        }
+      }
+    }
     process.stdout.write(lines.join("\n") + "\n");
   }
 }

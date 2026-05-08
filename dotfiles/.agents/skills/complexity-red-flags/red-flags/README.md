@@ -20,7 +20,7 @@ Deterministic candidate-flagger for PoSD-style complexity smells in TypeScript c
 | `tsEscapeHatch` | per-file | `as any` (AST-precise, won't match strings) plus `@ts-ignore` / `@ts-expect-error`. |
 | `emptyCatch` | per-file | `catch` clauses with no executable statement (truly empty or comment-only). |
 | `catchRethrow` | per-file | `catch (e) { throw e }` — pure rethrow with no enrichment. Enforces same identifier on both sides. |
-| `duplicateSymbol` | **cross-file** | Top-level declarations with identical shape across N+ files: `const` (by value), `function`/arrow (by param count + normalized body), `class`/`interface`/`type`/`enum` (by structural shape). Targets the agent-recreation pattern. Skips test files, generated paths, re-exports, and bare-primitive type aliases. Threshold ≥2 files for `const`/`function`, ≥3 for `class`/`interface`/`type`. One finding per group with full `occurrences` in metadata. |
+| `duplicateSymbol` | **cross-file + within-file** | Top-level declarations with identical shape (regardless of location): `const` (by name+value for primitives, structure for objects/arrays), `function`/arrow (by param count + normalized body), `class`/`interface`/`type`/`enum` (by structural shape). Catches both cross-file *and* within-file duplicates (agents reliably duplicate within a single file too — parallel boilerplate, copy-paste, organic type growth). Skips test files, generated paths, re-exports, and bare-primitive type aliases. Threshold ≥2 occurrences for `const`/`function`, ≥3 for `class`/`interface`/`type`. One finding per group with full `occurrences` in metadata. |
 | `uniqueImplementation` | **cross-file** | Interface or abstract class with ≤ 1 implementer/subclass. The whole purpose of these constructs is polymorphism; if only one type satisfies them, callers pay the cost (read both abstraction and impl) for zero polymorphism payoff. **Scope-aware**: `implements X` is resolved through the file's imports/re-exports to a specific declaration site, so two same-named interfaces in different modules don't conflate. Re-export chains followed up to 16 hops. Path aliases and namespace imports not yet supported. |
 | `orphanFile` | **cross-file** | Files imported by zero other files. Skips test files, `*.d.ts`, generated code, and common entrypoint patterns (`index.ts`/`main.ts`/`app.ts`/`server.ts`/`cli.ts`/`bin.ts`, plus `pages/`, `routes/`, `api/`, `app/`, `bin/` directories). Catches dead code and exploration files the agent forgot to delete. |
 
@@ -95,7 +95,7 @@ In `red-flags.ts`:
 - `WIDE_MIN_EXPORTS` — wide-module threshold (default 10)
 - `WIDE_SIGNATURE_MAX` — max required params before flagging (default 4)
 - `GENERIC_SUFFIXES` — generic-name suffix list
-- `DUP_MIN_FILES_DEFAULT` / `DUP_MIN_FILES_BY_KIND` — distinct-file thresholds (default 2; class/interface/type at 3)
+- `DUP_MIN_OCCURRENCES_DEFAULT` / `DUP_MIN_OCCURRENCES_BY_KIND` — total-occurrence thresholds (default 2; class/interface/type at 3). Counts within-file and cross-file occurrences uniformly.
 - `DUP_CONST_MIN_STRING_LENGTH` — min string length for `const` value tracking (default 5)
 - `DUP_CONST_TRIVIAL_NUMBERS` — bare numbers always skipped (default −1, 0, 1, 2)
 - `DUP_FN_MAX_PARAMS` / `DUP_FN_MAX_STATEMENTS` — utility-function size band (defaults 8, 12)
@@ -131,5 +131,11 @@ In `red-flags.ts`:
 - **`passThroughMethod` restricted to `this`-rooted class methods**: PoSD Ch. 7 is specifically about layer methods delegating to instance state. Free functions wrapping library calls (`function f(x) { return arr.includes(x) }`) are naming/type abstractions PoSD favors. Receiver must be `this` or `this.<member>`.
 - **`passThroughVariable` requires ≥3 pass-through params**: PoSD's canonical example is 4 forwarded params (`request, config, logger, metrics`); the strict reading is ≥3. One- or two-param forwarding is incidental, not the plumbing-layer pattern. Emit one finding per function listing all pass-through params.
 - **`uniqueImplementation` interface flagged at exactly 1 impl**: TS overloads `interface` for both polymorphism contracts and structural type definitions. Zero-implementer interfaces in TS are overwhelmingly structural; flagging them was wrong by default. Abstract classes keep `≤ 1` (the `abstract` keyword is unambiguous polymorphism intent).
+
+**v1.7** — `duplicateSymbol` now catches **within-file duplicates** in addition to cross-file. Two changes:
+
+1. **Threshold counts total occurrences, not distinct files.** Original "≥N distinct files" assumption was flawed — agents reliably duplicate within a single file too (parallel boilerplate, copy-paste, organic type growth). One-line fix; same per-kind thresholds. Message phrasing distinguishes "3× in 1 file" from "3× across 3 files".
+
+2. **Fingerprint preserves callee identifier names + member property names.** Previously every `Identifier` collapsed to `$id`, including callees — so two functions with the same body shape but different inner-function calls would falsely group (real bug surfaced in agent-loop usage on `renderSlackResponseTurn` vs `renderSlackPostMessageResponseTurn`). Now `Member(obj, .foo)` and `Call(id:foo, [args])` keep the meaningful name. Variable/param names still normalize, so `function isEmpty(x)` and `function blank(s)` still match (same logic, different param names).
 
 Performance is comparable across versions (oxc-parser is Rust-backed). No compile step at any point — Bun runs `red-flags.ts` directly.

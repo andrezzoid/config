@@ -35,8 +35,13 @@ const GENERIC_SUFFIXES = [
 // duplicateSymbol — agents tend to redeclare instead of reusing. Tracking
 // declarations (not usages) means signal is concentrated; per-kind thresholds
 // dampen coincidence on the noisier kinds (class/interface/type).
-const DUP_MIN_FILES_DEFAULT = 2;
-const DUP_MIN_FILES_BY_KIND: Record<string, number> = {
+//
+// Threshold counts TOTAL occurrences, not distinct files — agents reliably
+// duplicate within a single file too (parallel boilerplate, copy-paste during
+// iteration, organic type growth). Cross-file matching still works (each file
+// counts as one occurrence).
+const DUP_MIN_OCCURRENCES_DEFAULT = 2;
+const DUP_MIN_OCCURRENCES_BY_KIND: Record<string, number> = {
   class: 3,
   interface: 3,
   type: 3,
@@ -617,6 +622,45 @@ function normalizeAst(node: Node | null): string {
   if (t === "ThisExpression") return "$this";
   if (t === "Super") return "$super";
 
+  // Preserve property names in dot-access — `obj.foo` and `obj.bar` access
+  // different things and should fingerprint differently. Variable/object
+  // names still normalize to $id (so `text.length` and `s.length` match).
+  // Computed access (`obj[key]`) keeps recursive normalization since the
+  // key is dynamic.
+  if (t === "MemberExpression") {
+    const obj = normalizeAst(node.object);
+    let prop: string;
+    if (node.computed) prop = `[${normalizeAst(node.property)}]`;
+    else if (node.property?.type === "Identifier") prop = `.${node.property.name}`;
+    else if (node.property?.type === "PrivateIdentifier") prop = `.#${node.property.name}`;
+    else prop = ".?";
+    return `Member(${obj}${prop})`;
+  }
+
+  // Preserve callee identifier names — calling `foo()` vs `bar()` is doing
+  // different work, so fingerprints must differ. Without this, two functions
+  // with identical body shape but different inner-function calls would
+  // collide (the v1.7 false positive on `renderSlackResponseTurn` /
+  // `renderSlackPostMessageResponseTurn`). MemberExpression callees recurse
+  // into the case above, which preserves the method name (`.foo`).
+  if (t === "CallExpression") {
+    const callee = node.callee;
+    const calleeStr =
+      callee?.type === "Identifier" ? `id:${callee.name}` : normalizeAst(callee);
+    const args = (node.arguments ?? []).map(normalizeAst).join(",");
+    return `Call(${calleeStr},[${args}])`;
+  }
+
+  // Same reasoning for `new Foo()` vs `new Bar()` — instantiating different
+  // constructors is different work.
+  if (t === "NewExpression") {
+    const callee = node.callee;
+    const calleeStr =
+      callee?.type === "Identifier" ? `id:${callee.name}` : normalizeAst(callee);
+    const args = (node.arguments ?? []).map(normalizeAst).join(",");
+    return `New(${calleeStr},[${args}])`;
+  }
+
   const parts: string[] = [t, "("];
   for (const key of Object.keys(node)) {
     if (NORMALIZE_SKIP_KEYS.has(key)) continue;
@@ -948,10 +992,10 @@ function detectDuplicateSymbol(ctxs: Ctx[]): Finding[] {
 
   const findings: Finding[] = [];
   for (const group of byKey.values()) {
-    const distinct = new Set(group.map(d => d.file));
-    const minFiles = DUP_MIN_FILES_BY_KIND[group[0].kind] ?? DUP_MIN_FILES_DEFAULT;
-    if (distinct.size < minFiles) continue;
+    const minOccurrences = DUP_MIN_OCCURRENCES_BY_KIND[group[0].kind] ?? DUP_MIN_OCCURRENCES_DEFAULT;
+    if (group.length < minOccurrences) continue;
 
+    const distinct = new Set(group.map(d => d.file));
     const kind = group[0].kind;
     const fingerprintHash = shortHash(group[0].fingerprint);
 
@@ -971,8 +1015,13 @@ function detectDuplicateSymbol(ctxs: Ctx[]): Finding[] {
     // without opening JSON metadata. Full occurrence list lives in metadata.
     const sampleNames = names.slice(0, 3).join(", ");
     const moreNames = names.length > 3 ? `, +${names.length - 3} more` : "";
+    // Phrase the location summary so within-file duplicates read naturally
+    // ("3× in 1 file") rather than claiming cross-file spread that isn't there.
+    const where = distinct.size === 1
+      ? `${group.length}× in 1 file`
+      : `${group.length}× across ${distinct.size} files`;
     const message =
-      `${kind} re-declared ${group.length}× across ${distinct.size} files ` +
+      `${kind} re-declared ${where} ` +
       `(e.g. ${sampleNames}${moreNames}) — agent likely re-built an existing one ` +
       `[group ${fingerprintHash}]`;
 

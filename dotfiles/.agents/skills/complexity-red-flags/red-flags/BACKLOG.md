@@ -101,6 +101,11 @@ Gaps, deferrals, and refinements raised during design but not yet built. Each en
 - **Trade-off**: threshold ≥ 2 methods would skip the functional-callback idiom space (`Disposable`, `Logger` single-method interfaces). Current default is stricter; tunable.
 - **Why deferred**: trust the LLM audit to filter functional idioms.
 
+### Multi-representation duplication within one file (different kinds)
+- **Idea**: a single file containing an interface, a JSON schema object, and a runtime parser function for the same concept (the `agent.service.ts` AgentResponse case). The structural fingerprint can't match across kinds (different AST shapes by definition); detection would have to be heuristic — extract field-name sets per declaration and group within file when they overlap.
+- **Cost**: ~150-200 lines + a noise-tuning loop. Library-specific schema-shape recognition (JSON Schema, Zod, Yup, etc.) would need per-library patterns.
+- **Why deferred**: fundamentally heuristic — false positives on unrelated structures with shared field names, false negatives when agents rename fields between representations (`userId` vs `user_id`). The LLM at audit, given a hotspot file, catches this case cleanly with full context. Adding a heuristic detector here would inject noise into a tool that's currently mostly deterministic. Revisit if the LLM consistently misses this pattern in real audits.
+
 ## Explicit non-goals
 
 These were considered and *intentionally* rejected:

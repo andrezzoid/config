@@ -1,7 +1,5 @@
 {
   "findings": [
-    { "flag": "passThroughVariable", "file": "case.ts", "line": 8 },
-    { "flag": "passThroughVariable", "file": "case.ts", "line": 8 },
     { "flag": "passThroughVariable", "file": "case.ts", "line": 8 }
   ]
 }

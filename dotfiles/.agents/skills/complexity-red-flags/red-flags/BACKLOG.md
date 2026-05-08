@@ -85,6 +85,12 @@ Gaps, deferrals, and refinements raised during design but not yet built. Each en
 - **Trade-off**: name-blind would catch more agent-recreation cases (different naming, same logic) but adds false positives where two unrelated classes happen to share a shape (e.g. `HttpClient.get(url)` vs `FileReader.read(path)`).
 - **Why deferred**: current behavior is the conservative choice; flip if real-world misses outweigh false positives.
 
+### `duplicateSymbol` primitive `const` — Jaccard name-similarity matching
+- **Current** (v1.6+): primitive-valued `const` requires *exact* name match + value match. Catches unambiguous duplicates (`const TIMEOUT = 5000` in two files), misses related-but-renamed cases (`MAX_SLACK_REFERENCE_FIELD_VALUE_LENGTH = 240` ↔ `MAX_TASK_FIELD_VALUE_LENGTH = 240`).
+- **Idea**: token-set Jaccard similarity ≥ 0.5 on names (tokenize SCREAMING_SNAKE / camelCase / kebab) as a *secondary* match path. Trace shows it discriminates well between coincidental same-value (`MAX_SLACK_REFERENCE_URL_LENGTH` vs `MAX_SLACK_ATTACHMENT_FALLBACK_LENGTH` → 0.43, skip) and conceptually related (`MAX_SLACK_REFERENCE_FIELD_VALUE_LENGTH` vs `MAX_TASK_FIELD_VALUE_LENGTH` → 0.57, group).
+- **Cost**: ~30 lines (tokenizer + Jaccard + threshold tunable). Could be additive — exact match always groups, Jaccard-only matches emit a separate "possibly related" severity.
+- **Why deferred**: exact-match is unambiguous and PoSD-clean; Jaccard is a heuristic stack and risks the noise that bit `duplicateLiteral`. Worth exploring when there's real-world demand for catching renamed duplicates without losing precision. Possible direction: lower-confidence severity tier for Jaccard matches so they're separable from exact matches.
+
 ### `passThroughVariable` closure detection
 - **Current**: a function param's "only used as call argument" check walks the function body but doesn't distinguish references inside nested closures from references in the outer scope. A param captured by a closure that uses it later could be misclassified as a forwarded variable.
 - **Trade-off**: closure-aware analysis requires walking with scope-tracking instead of bare AST traversal.

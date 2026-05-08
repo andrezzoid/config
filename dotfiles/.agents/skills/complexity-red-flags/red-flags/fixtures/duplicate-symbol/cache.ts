@@ -19,3 +19,6 @@ export class Container {
 
 // Negative: bare-primitive type alias — nominal type, never flagged.
 export type CacheKey = string;
+
+// Same value as queue.ts QUEUE_DEPTH (8192), different name — must NOT group.
+export const BUFFER_SIZE = 8192;

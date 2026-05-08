@@ -19,4 +19,16 @@ export interface Logger {
   log(msg: string): void;
 }
 
+// Structural type usage (zero `implements`) — TS overloads `interface` for
+// shape definitions. v1.6 doesn't flag zero-implementer interfaces because
+// they're overwhelmingly structural types in real codebases.
+export interface UserData {
+  id: string;
+  email: string;
+}
+
+export function lookupUser(id: string): UserData {
+  return { id, email: "x@y.z" };
+}
+
 export type User = { id: string };

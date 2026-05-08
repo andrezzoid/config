@@ -170,28 +170,30 @@ function detectShallowModule({ file, source, ast }: Ctx): Finding[] {
   }];
 }
 
-// Method/function whose body is exactly one delegating call where the inner
-// call's arguments match the outer params 1:1 by identifier name. v1.1 fix:
-// proper AST-shape comparison instead of ast-grep's text-based meta-var check.
+// PoSD Ch. 7: a class method that delegates to instance state and adds no
+// logic — the layer-without-purpose pattern. Specifically restricted to:
+// (a) class methods (not free functions, which are usually naming/type
+// abstractions PoSD favors), and (b) `this`-rooted receivers
+// (`this.method(args)` or `this.field.method(args)`). Static-method calls,
+// external module calls, and cast expressions are different patterns
+// (namespace, wrapper, type-narrowing) that aren't the smell.
 function detectPassThroughMethod({ file, ast, lineOf }: Ctx): Finding[] {
   const findings: Finding[] = [];
   walk(ast, (node) => {
-    let fn: Node | null = null;
-    let lineAnchor = node.start;
-    if (node.type === "FunctionDeclaration") {
-      fn = node;
-    } else if (node.type === "MethodDefinition") {
-      fn = node.value;
-    } else {
-      return;
-    }
+    if (node.type !== "MethodDefinition") return;
+    // Skip constructors — they typically have setup logic; if a constructor
+    // body collapses to one call, it's almost certainly `super(...)`, which
+    // doesn't carry the layer-without-logic smell.
+    if (node.kind === "constructor") return;
+
+    const fn = node.value;
     if (!fn?.body?.body || fn.body.body.length !== 1) return;
 
     const paramNames: string[] = [];
     for (const p of fn.params ?? []) {
       if (p.type === "Identifier") paramNames.push(p.name);
       else if (p.type === "TSParameterProperty" && p.parameter?.type === "Identifier") paramNames.push(p.parameter.name);
-      else return; // Rest/destructure/default — too complex for v1.1
+      else return; // Rest/destructure/default — too complex
     }
 
     const stmt = fn.body.body[0];
@@ -202,8 +204,17 @@ function detectPassThroughMethod({ file, ast, lineOf }: Ctx): Finding[] {
       call = stmt.expression;
     }
     if (!call || call.callee?.type !== "MemberExpression") return;
-    if ((call.arguments?.length ?? 0) !== paramNames.length) return;
 
+    // PoSD's pass-through is a class method delegating to its own instance
+    // state. The receiver must be `this` or `this.<member>` — anything else
+    // is a different pattern (static dispatch, module call, library wrapper).
+    const obj = call.callee.object;
+    const isThisRooted =
+      obj?.type === "ThisExpression" ||
+      (obj?.type === "MemberExpression" && obj.object?.type === "ThisExpression");
+    if (!isThisRooted) return;
+
+    if ((call.arguments?.length ?? 0) !== paramNames.length) return;
     for (let i = 0; i < paramNames.length; i++) {
       const arg = call.arguments[i];
       if (arg.type !== "Identifier" || arg.name !== paramNames[i]) return;
@@ -213,8 +224,8 @@ function detectPassThroughMethod({ file, ast, lineOf }: Ctx): Finding[] {
       flag: "passThroughMethod",
       severity: "candidate",
       file,
-      line: lineOf(lineAnchor),
-      message: "method body delegates with same args (true pass-through)",
+      line: lineOf(node.start),
+      message: "class method delegates to instance state with same args — layer without logic",
       metadata: {},
     });
   });
@@ -222,18 +233,20 @@ function detectPassThroughMethod({ file, ast, lineOf }: Ctx): Finding[] {
 }
 
 // Param whose every body reference is in argument position of a call —
-// it's threaded through but never read. PoSD's example is the classic
-// `(req, res, ctx, logger, metrics)` plumbing layer.
+// it's threaded through but never read. PoSD's canonical example is the
+// `(req, res, ctx, logger, metrics)` plumbing layer — *multiple* params
+// being forwarded together. The smell is the layer, not the variable.
 //
-// Two guards keep the false-positive rate sane:
-// (1) Function has ≥3 params — the PoSD smell is about *threading multiple*
-//     intermediate methods, and single-param "pass-throughs" are already
-//     covered by passThroughMethod when the body is one call.
-// (2) Body has >1 statement — single-statement bodies are pass-through-method's
+// Guards:
+// (1) Function has ≥3 params — narrows scope to functions where threading
+//     is even possible.
+// (2) Body has ≥2 statements — single-statement bodies are passThroughMethod's
 //     territory; flagging here just doubles the noise.
-//
-// Without these, the detector fires on legit cases like `cache.get(id)` where
-// `id` is meaningfully consumed but syntactically just a call arg.
+// (3) **At least 3 params are pass-through** — PoSD's canonical example
+//     (`request, config, logger, metrics`) is 4 forwarded params; the
+//     strict canonical reading is ≥3. Two-param forwarding is incidental,
+//     not the plumbing-layer pattern. Emit ONE finding per function listing
+//     all pass-through params.
 function detectPassThroughVariable({ file, ast, lineOf }: Ctx): Finding[] {
   const findings: Finding[] = [];
   walk(ast, (node) => {
@@ -245,6 +258,7 @@ function detectPassThroughVariable({ file, ast, lineOf }: Ctx): Finding[] {
     if ((fn.params?.length ?? 0) < 3) return;
     if (fn.body.body.length < 2) return;
 
+    const passThroughParams: string[] = [];
     for (const param of fn.params ?? []) {
       if (param.type !== "Identifier") continue;
       const name: string = param.name;
@@ -261,17 +275,19 @@ function detectPassThroughVariable({ file, ast, lineOf }: Ctx): Finding[] {
         if (!isForwarding) nonForwardingFound = true;
       });
 
-      if (usageCount > 0 && !nonForwardingFound) {
-        findings.push({
-          flag: "passThroughVariable",
-          severity: "candidate",
-          file,
-          line: lineOf(param.start),
-          message: `param '${name}' is only forwarded as a call argument — never read`,
-          metadata: { paramName: name },
-        });
-      }
+      if (usageCount > 0 && !nonForwardingFound) passThroughParams.push(name);
     }
+
+    if (passThroughParams.length < 3) return;
+
+    findings.push({
+      flag: "passThroughVariable",
+      severity: "candidate",
+      file,
+      line: lineOf(node.start),
+      message: `${passThroughParams.length} pass-through params (${passThroughParams.join(", ")}) — plumbing layer with no use of forwarded values`,
+      metadata: { passThroughParams },
+    });
   });
   return findings;
 }
@@ -500,7 +516,13 @@ function shortHash(s: string): string {
 // ignored — its value is determined at runtime). Trivial bare primitives
 // (short strings, common numbers, booleans) are also rejected at the top
 // level only — they may still appear as nested elements of an array/object.
-function fingerprintConstValue(node: Node): string | null {
+// For primitive-valued consts we require exact name + value match because
+// PoSD info-leakage is "the same DECISION encoded in N places." Same value
+// with different names could be coincidence (`MAX_TIMEOUT = 100` vs
+// `MAX_RETRIES = 100`); the LLM at audit catches conceptually-related-but-
+// renamed cases. Object/array consts skip the name check — the structural
+// fingerprint is signal enough on its own.
+function fingerprintConstValue(node: Node, name: string): string | null {
   const fp = constValueRaw(node);
   if (!fp) return null;
   if (fp === "b:true" || fp === "b:false") return null;
@@ -512,6 +534,11 @@ function fingerprintConstValue(node: Node): string | null {
     const s = JSON.parse(fp.slice(2));
     if (typeof s !== "string" || s.length < DUP_CONST_MIN_STRING_LENGTH) return null;
   }
+  // Detect bare primitive values (with optional sign prefix from
+  // UnaryExpression handling). These get the name-prefix discipline;
+  // structural values (arr[..], obj{..}) skip it.
+  const isPrimitive = /^[+-]?[snb]:/.test(fp);
+  if (isPrimitive) return `name:${name}|${fp}`;
   return fp;
 }
 
@@ -668,17 +695,146 @@ function isBarePrimitiveType(node: Node): boolean {
   return false;
 }
 
+// TS-aware structural fingerprint for type-system nodes. `normalizeAst` strips
+// TS nodes (which is correct for function bodies — `f(x: string)` and
+// `f(x: number)` should match), but for type aliases and interfaces those
+// nodes ARE the structure being matched. Without this, every complex type
+// alias collapses to the same empty fingerprint and unrelated types group.
+function fingerprintTypeNode(node: Node | null): string {
+  if (!node || typeof node !== "object") return "";
+  const t = node.type;
+  if (typeof t !== "string") return "";
+
+  // Keyword types — preserved literally.
+  switch (t) {
+    case "TSStringKeyword": return "kw:string";
+    case "TSNumberKeyword": return "kw:number";
+    case "TSBooleanKeyword": return "kw:boolean";
+    case "TSAnyKeyword": return "kw:any";
+    case "TSUnknownKeyword": return "kw:unknown";
+    case "TSNeverKeyword": return "kw:never";
+    case "TSVoidKeyword": return "kw:void";
+    case "TSNullKeyword": return "kw:null";
+    case "TSUndefinedKeyword": return "kw:undefined";
+    case "TSBigIntKeyword": return "kw:bigint";
+    case "TSObjectKeyword": return "kw:object";
+    case "TSSymbolKeyword": return "kw:symbol";
+    case "TSThisType": return "kw:this";
+  }
+
+  if (t === "TSLiteralType") {
+    const lit = node.literal;
+    if (lit?.type === "Literal") {
+      if (typeof lit.value === "string") return `lit:s:${JSON.stringify(lit.value)}`;
+      if (typeof lit.value === "number") return `lit:n:${lit.value}`;
+      if (typeof lit.value === "boolean") return `lit:b:${lit.value}`;
+    }
+    return "lit:?";
+  }
+
+  if (t === "TSTypeReference") {
+    // Preserve the reference name — that's what makes one type distinct from
+    // another. Walk type arguments recursively.
+    const name =
+      node.typeName?.name ??
+      // qualified name (Namespace.Type) — concatenate
+      (node.typeName?.type === "TSQualifiedName"
+        ? `${node.typeName.left?.name ?? "?"}.${node.typeName.right?.name ?? "?"}`
+        : "?");
+    const args = (node.typeArguments?.params ?? []).map(fingerprintTypeNode).join(",");
+    return args ? `ref:${name}<${args}>` : `ref:${name}`;
+  }
+
+  if (t === "TSUnionType" || t === "TSIntersectionType") {
+    const op = t === "TSUnionType" ? "|" : "&";
+    // Sort so order doesn't matter — `A | B` and `B | A` should match.
+    const members = (node.types ?? []).map(fingerprintTypeNode).sort();
+    return `${op === "|" ? "union" : "intersect"}[${members.join(op)}]`;
+  }
+
+  if (t === "TSArrayType") {
+    return `arr<${fingerprintTypeNode(node.elementType)}>`;
+  }
+
+  if (t === "TSTupleType") {
+    const elements = (node.elementTypes ?? []).map(fingerprintTypeNode);
+    return `tuple[${elements.join(",")}]`;
+  }
+
+  if (t === "TSTypeLiteral") {
+    // Inline `{ foo: T, bar: U }` — same logic as interface body.
+    const members = (node.members ?? []).map(fingerprintTypeMember).sort();
+    return `obj[${members.join("|")}]`;
+  }
+
+  if (t === "TSFunctionType" || t === "TSConstructorType") {
+    const params = (node.params ?? []).length;
+    const ret = node.returnType?.typeAnnotation
+      ? fingerprintTypeNode(node.returnType.typeAnnotation)
+      : "?";
+    return `${t === "TSFunctionType" ? "fn" : "ctor"}(${params})=>${ret}`;
+  }
+
+  if (t === "TSConditionalType") {
+    return `cond(${fingerprintTypeNode(node.checkType)},${fingerprintTypeNode(node.extendsType)}` +
+      `,${fingerprintTypeNode(node.trueType)},${fingerprintTypeNode(node.falseType)})`;
+  }
+
+  if (t === "TSMappedType") {
+    return `mapped(${fingerprintTypeNode(node.typeAnnotation)})`;
+  }
+
+  if (t === "TSIndexedAccessType") {
+    return `idx(${fingerprintTypeNode(node.objectType)},${fingerprintTypeNode(node.indexType)})`;
+  }
+
+  if (t === "TSParenthesizedType") {
+    return fingerprintTypeNode(node.typeAnnotation);
+  }
+
+  // Fallback: walk children recursively. Catches obscure TS node types we
+  // didn't enumerate explicitly.
+  const parts: string[] = [t];
+  for (const key of Object.keys(node)) {
+    if (NORMALIZE_SKIP_KEYS.has(key) || key === "type") continue;
+    const v = node[key];
+    if (Array.isArray(v)) {
+      parts.push("[" + v.map(fingerprintTypeNode).filter(Boolean).join(",") + "]");
+    } else if (v && typeof v === "object" && "type" in v) {
+      parts.push(fingerprintTypeNode(v));
+    }
+  }
+  return parts.join("");
+}
+
+// Fingerprint a single interface member or TSTypeLiteral member.
+// Handles property/method/index signatures uniformly.
+function fingerprintTypeMember(m: Node): string {
+  const name =
+    m.key?.type === "Identifier" ? m.key.name :
+    m.key?.type === "Literal" ? String(m.key.value) :
+    m.type === "TSIndexSignature" ? "[index]" :
+    "?";
+  const optional = m.optional ? "?" : "";
+  const readonly = m.readonly ? "readonly " : "";
+  if (m.type === "TSPropertySignature" || m.type === "TSIndexSignature") {
+    const valType = m.typeAnnotation?.typeAnnotation;
+    return `${readonly}${name}${optional}:${valType ? fingerprintTypeNode(valType) : "?"}`;
+  }
+  if (m.type === "TSMethodSignature" || m.type === "TSCallSignatureDeclaration" || m.type === "TSConstructSignatureDeclaration") {
+    const params = (m.params ?? []).length;
+    const ret = m.returnType?.typeAnnotation
+      ? fingerprintTypeNode(m.returnType.typeAnnotation)
+      : "?";
+    return `${name}${optional}(${params})=>${ret}`;
+  }
+  return `${name}:?`;
+}
+
 function fingerprintInterface(iface: Node): string | null {
   const members = iface.body?.body ?? [];
   if (members.length === 0) return null;
-  const memberFps: string[] = [];
-  for (const m of members) {
-    const name =
-      m.key?.type === "Identifier" ? m.key.name :
-      m.key?.type === "Literal" ? String(m.key.value) :
-      "?";
-    memberFps.push(`${name}:${normalizeAst(m)}`);
-  }
+  const memberFps = members.map(fingerprintTypeMember);
   memberFps.sort();
   return `iface:[${memberFps.join("|")}]`;
 }
@@ -687,7 +843,7 @@ function fingerprintTypeAlias(ta: Node): string | null {
   const rhs = ta.typeAnnotation;
   if (!rhs) return null;
   if (isBarePrimitiveType(rhs)) return null;
-  return `type:${normalizeAst(rhs)}`;
+  return `type:${fingerprintTypeNode(rhs)}`;
 }
 
 function fingerprintEnum(enm: Node): string | null {
@@ -737,7 +893,7 @@ function handleDeclaration(decl: Node, ctx: Ctx, out: SymbolDecl[]): void {
         const fp = fingerprintFunction(init);
         if (fp) out.push({ kind: "function", name: d.id.name, fingerprint: fp, file: ctx.file, line: declLine, start: d.start, end: d.end });
       } else {
-        const fp = fingerprintConstValue(init);
+        const fp = fingerprintConstValue(init, d.id.name);
         if (fp) out.push({ kind: "const", name: d.id.name, fingerprint: fp, file: ctx.file, line: declLine, start: d.start, end: d.end });
       }
     }
@@ -1061,13 +1217,24 @@ function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
   for (const d of decls) {
     const key = `${d.file}:${d.name}`;
     const impls = implementersByDecl.get(key) ?? [];
-    if (impls.length > 1) continue;
+
+    // Interface: exactly 1 implementer is the unambiguous speculative case
+    // — someone explicitly used `implements`, signaling polymorphism intent,
+    // but only one type satisfies it. Zero-implementer interfaces in TS are
+    // overwhelmingly *structural types* (used as `function f(x: Iface)`),
+    // not speculative abstractions; flagging them was wrong by default.
+    //
+    // Abstract class: ≤ 1 subclass remains the threshold. The `abstract`
+    // keyword is unambiguous polymorphism intent — you can't instantiate
+    // an abstract class, so a zero-subclass abstract is dead.
+    if (d.kind === "interface" && impls.length !== 1) continue;
+    if (d.kind === "abstractClass" && impls.length > 1) continue;
 
     const kindWord = d.kind === "interface" ? "interface" : "abstract class";
     const status =
       impls.length === 0
-        ? `no implementers found`
-        : `only one implementer: ${impls[0].implementer} at ${impls[0].file}:${impls[0].line}`;
+        ? `no subclasses — abstract class is dead`
+        : `only one ${d.kind === "interface" ? "implementer" : "subclass"}: ${impls[0].implementer} at ${impls[0].file}:${impls[0].line}`;
 
     findings.push({
       flag: "uniqueImplementation",
@@ -1194,31 +1361,47 @@ const CROSS_DETECTORS: CrossDetector[] = [
 
 // -------- File collection --------
 
-function collectFiles(target: string, diffRef: string | null): string[] {
-  if (diffRef) {
-    // In agent loops most changes are uncommitted, so we union three sets:
-    // (1) committed diff vs ref, (2) working-tree modified, (3) untracked.
-    const lines = new Set<string>();
-    try {
-      const a = execSync(`git diff --name-only --diff-filter=ACMR ${shellQuote(diffRef)} -- '*.ts' '*.tsx'`, {
-        cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
-      });
-      for (const l of a.split("\n")) if (l) lines.add(l);
-    } catch { /* ref doesn't exist or not a git repo — ignore */ }
-    try {
-      const b = execSync(`git ls-files --modified --others --exclude-standard -- '*.ts' '*.tsx'`, {
-        cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
-      });
-      for (const l of b.split("\n")) if (l) lines.add(l);
-    } catch { /* not a git repo — ignore */ }
-    return [...lines].filter(f => existsSync(join(target, f))).sort();
-  }
-  // Whole-tree scan via `find` — no rg dep, fewer surprises with hidden dirs.
+// Collect every TS/TSX file in the project. Cross-file detectors need the
+// whole tree to compute correct answers — `--diff` filters the OUTPUT, not
+// the analysis input.
+function collectAllProjectFiles(target: string): string[] {
   const out = execSync(
     `find . -type f \\( -name '*.ts' -o -name '*.tsx' \\) -not -path '*/node_modules/*' -not -path '*/.git/*'`,
     { cwd: target, encoding: "utf8" }
   );
   return out.split("\n").filter(Boolean).map(f => f.replace(/^\.\//, "")).sort();
+}
+
+// Files changed since `diffRef`. Union of: committed diff vs ref + working-
+// tree modified + untracked. Returns relative paths that exist on disk.
+function collectChangedFiles(target: string, diffRef: string): Set<string> {
+  const lines = new Set<string>();
+  try {
+    const a = execSync(`git diff --name-only --diff-filter=ACMR ${shellQuote(diffRef)} -- '*.ts' '*.tsx'`, {
+      cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    });
+    for (const l of a.split("\n")) if (l) lines.add(l);
+  } catch { /* ref doesn't exist or not a git repo — ignore */ }
+  try {
+    const b = execSync(`git ls-files --modified --others --exclude-standard -- '*.ts' '*.tsx'`, {
+      cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    });
+    for (const l of b.split("\n")) if (l) lines.add(l);
+  } catch { /* not a git repo — ignore */ }
+  return new Set([...lines].filter(f => existsSync(join(target, f))));
+}
+
+// Returns true iff a finding's file (or any related file in metadata) is in
+// the changed set. Cross-file detectors carry related files via metadata so
+// a finding rooted at an unchanged canonical file but spanning a changed one
+// still surfaces.
+function findingTouchesChanged(f: Finding, changed: Set<string>): boolean {
+  if (changed.has(f.file)) return true;
+  const occs = f.metadata.occurrences as Array<{ file: string }> | undefined;
+  if (occs?.some(o => changed.has(o.file))) return true;
+  const impls = f.metadata.implementers as Array<{ file: string }> | undefined;
+  if (impls?.some(i => changed.has(i.file))) return true;
+  return false;
 }
 
 function shellQuote(s: string): string {
@@ -1264,11 +1447,18 @@ function main(): void {
   const root = statSync(target).isDirectory() ? resolve(target) : resolve(target, "..");
   const targetAbs = resolve(target);
 
+  // Cross-file detectors need full project context — `--diff` was previously
+  // filtering the input set, which made orphanFile / duplicateSymbol /
+  // uniqueImplementation produce wrong answers (file flagged as orphan only
+  // because its importer wasn't in the diff). Now we parse every project
+  // file always, then filter the OUTPUT to findings touching changed files.
   let files: string[];
+  let changedFiles: Set<string> | null = null;
   if (statSync(targetAbs).isFile()) {
     files = [relative(root, targetAbs)];
   } else {
-    files = collectFiles(targetAbs, diffRef);
+    files = collectAllProjectFiles(targetAbs);
+    if (diffRef) changedFiles = collectChangedFiles(targetAbs, diffRef);
   }
 
   // Two-phase: parse all files first so cross-file detectors (e.g. duplicate-
@@ -1294,7 +1484,7 @@ function main(): void {
     });
   }
 
-  const allFindings: Finding[] = [];
+  let allFindings: Finding[] = [];
   for (const ctx of ctxs) {
     for (const detect of SINGLE_DETECTORS) {
       try { allFindings.push(...detect(ctx)); }
@@ -1308,6 +1498,12 @@ function main(): void {
     catch (e) {
       process.stderr.write(`cross-detector ${detect.name} failed: ${(e as Error).message}\n`);
     }
+  }
+
+  // Apply --diff scoping after detection so cross-file detectors saw the
+  // complete graph but the user only sees what's relevant to their changes.
+  if (changedFiles) {
+    allFindings = allFindings.filter(f => findingTouchesChanged(f, changedFiles!));
   }
 
   allFindings.sort((a, b) =>

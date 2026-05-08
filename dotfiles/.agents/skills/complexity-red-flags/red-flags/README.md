@@ -21,7 +21,7 @@ Deterministic candidate-flagger for PoSD-style complexity smells in TypeScript c
 | `emptyCatch` | per-file | `catch` clauses with no executable statement (truly empty or comment-only). |
 | `catchRethrow` | per-file | `catch (e) { throw e }` — pure rethrow with no enrichment. Enforces same identifier on both sides. |
 | `duplicateSymbol` | **cross-file** | Top-level declarations with identical shape across N+ files: `const` (by value), `function`/arrow (by param count + normalized body), `class`/`interface`/`type`/`enum` (by structural shape). Targets the agent-recreation pattern. Skips test files, generated paths, re-exports, and bare-primitive type aliases. Threshold ≥2 files for `const`/`function`, ≥3 for `class`/`interface`/`type`. One finding per group with full `occurrences` in metadata. |
-| `uniqueImplementation` | **cross-file** | Interface or abstract class with ≤ 1 implementer/subclass. The whole purpose of these constructs is polymorphism; if only one type satisfies them, callers pay the cost (read both abstraction and impl) for zero polymorphism payoff. Cross-file matching is by name. |
+| `uniqueImplementation` | **cross-file** | Interface or abstract class with ≤ 1 implementer/subclass. The whole purpose of these constructs is polymorphism; if only one type satisfies them, callers pay the cost (read both abstraction and impl) for zero polymorphism payoff. **Scope-aware**: `implements X` is resolved through the file's imports/re-exports to a specific declaration site, so two same-named interfaces in different modules don't conflate. Re-export chains followed up to 16 hops. Path aliases and namespace imports not yet supported. |
 | `orphanFile` | **cross-file** | Files imported by zero other files. Skips test files, `*.d.ts`, generated code, and common entrypoint patterns (`index.ts`/`main.ts`/`app.ts`/`server.ts`/`cli.ts`/`bin.ts`, plus `pages/`, `routes/`, `api/`, `app/`, `bin/` directories). Catches dead code and exploration files the agent forgot to delete. |
 
 ## Not yet covered (require manual audit)
@@ -121,5 +121,7 @@ In `red-flags.ts`:
 - `wideSignature` — PoSD Ch. 6 overexposure: > 4 required params (excluding optional/default/rest).
 - `uniqueImplementation` — PoSD Ch. 6 cost-benefit: interface or abstract class with ≤ 1 implementer means polymorphism payoff isn't real.
 - `orphanFile` — PoSD-adjacent dead-code signal targeting agent-exploration leftovers. Skips entrypoints by file-name pattern.
+
+**v1.5** — `uniqueImplementation` upgraded from name-only matching to scope-aware resolution. For each file we now build a `localName → declarationSite` map from local declarations + named imports + re-exports, then walk re-export chains to resolve `implements X` to a specific `(file, name)` pair. Catches the previously-missed case where two same-named interfaces in different modules each have a single implementer (name-only would conflate them as 2 implementers of one virtual "interface", missing both). Still doesn't handle path aliases (needs tsconfig parsing) or namespace imports (different AST shape).
 
 Performance is comparable across versions (oxc-parser is Rust-backed). No compile step at any point — Bun runs `red-flags.ts` directly.

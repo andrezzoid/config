@@ -844,14 +844,128 @@ function detectDuplicateSymbol(ctxs: Ctx[]): Finding[] {
   return findings;
 }
 
+// Per-file resolution table. For each name visible in a file's scope (locals,
+// imports, re-exports), records where it ultimately came from. Used to look
+// up `implements X` / `extends Y` references to a specific declaration site
+// — necessary because two files can declare interfaces with the same name
+// and we don't want to conflate them.
+type ScopeEntry =
+  | { kind: "local" }
+  | { kind: "imported"; sourceFile: string; sourceName: string }
+  | { kind: "external" }                  // package import — out of our scan
+  | { kind: "unresolvable" };             // default/namespace import — different shape
+
+function buildFileScope(ctx: Ctx, fileSet: Set<string>): Map<string, ScopeEntry> {
+  const refs = new Map<string, ScopeEntry>();
+
+  for (const stmt of ctx.ast.body ?? []) {
+    // Local declarations — both bare and `export <decl>` forms. The exported
+    // form has the declaration nested under stmt.declaration.
+    const decl =
+      stmt.type === "ExportNamedDeclaration" || stmt.type === "ExportDefaultDeclaration"
+        ? stmt.declaration
+        : stmt;
+    if (decl?.id?.name) {
+      const t = decl.type;
+      if (t === "TSInterfaceDeclaration" ||
+          t === "ClassDeclaration" ||
+          t === "TSTypeAliasDeclaration" ||
+          t === "TSEnumDeclaration" ||
+          t === "FunctionDeclaration") {
+        refs.set(decl.id.name, { kind: "local" });
+      }
+    }
+    if (decl?.type === "VariableDeclaration") {
+      for (const d of decl.declarations ?? []) {
+        if (d.id?.type === "Identifier") refs.set(d.id.name, { kind: "local" });
+      }
+    }
+
+    // Imports. `import { X } from './foo'` and `import { X as Y } from './foo'`
+    // resolve via the relative path. Default and namespace imports use a
+    // different reference shape we don't handle yet — mark as unresolvable.
+    if (stmt.type === "ImportDeclaration" && typeof stmt.source?.value === "string") {
+      const source = stmt.source.value;
+      const sourceFile = source.startsWith(".")
+        ? resolveRelativeImport(ctx.file, source, fileSet)
+        : null;
+      const isExternal = !source.startsWith(".");
+
+      for (const spec of stmt.specifiers ?? []) {
+        const localName = spec.local?.name;
+        if (!localName) continue;
+        if (spec.type === "ImportSpecifier" && spec.imported?.name) {
+          if (sourceFile) {
+            refs.set(localName, { kind: "imported", sourceFile, sourceName: spec.imported.name });
+          } else if (isExternal) {
+            refs.set(localName, { kind: "external" });
+          } else {
+            refs.set(localName, { kind: "unresolvable" });
+          }
+        } else {
+          // ImportDefaultSpecifier, ImportNamespaceSpecifier
+          refs.set(localName, { kind: "unresolvable" });
+        }
+      }
+    }
+
+    // Re-exports: `export { Foo } from './bar'` / `export { Foo as F } from './bar'`.
+    // ESTree convention here: spec.local = name in the source module,
+    // spec.exported = name as exposed from this file. So our key is the
+    // exported name, and the chain points to (sourceFile, local).
+    if (stmt.type === "ExportNamedDeclaration" && typeof stmt.source?.value === "string") {
+      const source = stmt.source.value;
+      const sourceFile = source.startsWith(".")
+        ? resolveRelativeImport(ctx.file, source, fileSet)
+        : null;
+      for (const spec of stmt.specifiers ?? []) {
+        const exposedName = spec.exported?.name ?? spec.local?.name;
+        const sourceName = spec.local?.name;
+        if (!exposedName || !sourceName) continue;
+        if (sourceFile) {
+          refs.set(exposedName, { kind: "imported", sourceFile, sourceName });
+        } else {
+          refs.set(exposedName, { kind: "external" });
+        }
+      }
+    }
+  }
+
+  return refs;
+}
+
+// Walk re-export / import chains until we hit a local declaration or a dead
+// end. Cycle protection bounded by depth — pathological re-export loops
+// shouldn't crash the scanner. Returns null when the name can't be resolved
+// to a local declaration in any scanned file.
+function resolveDeclarationSite(
+  startFile: string,
+  startName: string,
+  scopes: Map<string, Map<string, ScopeEntry>>,
+): { file: string; name: string } | null {
+  let file = startFile;
+  let name = startName;
+  for (let depth = 0; depth < 16; depth++) {
+    const scope = scopes.get(file);
+    if (!scope) return null;
+    const entry = scope.get(name);
+    if (!entry) return null;
+    if (entry.kind === "local") return { file, name };
+    if (entry.kind !== "imported") return null;
+    file = entry.sourceFile;
+    name = entry.sourceName;
+  }
+  return null;
+}
+
 // Interface or abstract class with ≤ 1 implementer/subclass — speculative
 // abstraction. The whole point of these constructs is polymorphism; if only
 // one type satisfies them, callers pay the cost (read both the abstraction
 // and the impl) for zero polymorphism payoff. PoSD Ch. 6 cost-benefit.
 //
-// Cross-file matching is by NAME (not full type resolution). False positives
-// from same-named-but-different abstractions in unrelated modules are rare —
-// when they do happen, the LLM filters at audit.
+// Matching is scope-aware: `implements X` is resolved through the file's
+// imports/re-exports to a specific (file, name) declaration site, so two
+// same-named interfaces in different modules don't conflate.
 function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
   type AbstractionDecl = {
     kind: "interface" | "abstractClass";
@@ -860,10 +974,19 @@ function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
     line: number;
     methodCount: number;
   };
+  const fileSet = new Set(ctxs.map(c => c.file));
+  const scopes = new Map<string, Map<string, ScopeEntry>>();
   const decls: AbstractionDecl[] = [];
-  // name → [{ implementerName, file, line }]
-  const implementersByName = new Map<string, Array<{ implementer: string; file: string; line: number }>>();
+  // (declarationFile + ":" + declarationName) → list of implementers
+  const implementersByDecl = new Map<string, Array<{ implementer: string; file: string; line: number }>>();
 
+  // Pass 1: build scope for every file (incl. test/generated — they may
+  // contribute implementers to non-test interfaces).
+  for (const ctx of ctxs) {
+    scopes.set(ctx.file, buildFileScope(ctx, fileSet));
+  }
+
+  // Pass 2: collect declarations + implementations.
   for (const ctx of ctxs) {
     if (DUP_TEST_FILE_PATTERN.test(ctx.file)) continue;
 
@@ -874,23 +997,19 @@ function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
           : stmt;
       if (!decl?.id?.name) continue;
 
-      // Interface declaration — count its body members (skip property
-      // signatures with no method shape, but include all named members for
-      // the surface count).
+      // Interface declaration.
       if (decl.type === "TSInterfaceDeclaration") {
-        const memberCount = decl.body?.body?.length ?? 0;
         decls.push({
           kind: "interface",
           name: decl.id.name,
           file: ctx.file,
           line: ctx.lineOf(decl.start),
-          methodCount: memberCount,
+          methodCount: decl.body?.body?.length ?? 0,
         });
         continue;
       }
 
-      // Abstract class declaration — count public members the same way as
-      // shallowModule (non-private methods + properties).
+      // Abstract class declaration — count public members like shallowModule does.
       if (decl.type === "ClassDeclaration" && decl.abstract) {
         let publicMembers = 0;
         for (const m of decl.body?.body ?? []) {
@@ -910,27 +1029,29 @@ function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
         continue;
       }
 
-      // Concrete class — record what it implements/extends so we can count
-      // implementers downstream.
+      // Concrete class — record what it implements/extends, resolved through
+      // this file's scope so we know the *specific* interface declaration site.
       if (decl.type === "ClassDeclaration" && decl.id?.name && !decl.abstract) {
         const implName = decl.id.name;
         const implLine = ctx.lineOf(decl.start);
 
-        for (const impl of decl.implements ?? []) {
-          // ESTree shape: TSClassImplements -> { expression: { name } } or
-          // TSExpressionWithTypeArguments -> { expression: { name } }
-          const interfaceName = impl.expression?.name ?? impl.expression?.expression?.name ?? null;
-          if (!interfaceName) continue;
-          const list = implementersByName.get(interfaceName) ?? [];
+        const recordReference = (refName: string) => {
+          const site = resolveDeclarationSite(ctx.file, refName, scopes);
+          if (!site) return;
+          const key = `${site.file}:${site.name}`;
+          const list = implementersByDecl.get(key) ?? [];
           list.push({ implementer: implName, file: ctx.file, line: implLine });
-          implementersByName.set(interfaceName, list);
+          implementersByDecl.set(key, list);
+        };
+
+        for (const impl of decl.implements ?? []) {
+          // TSClassImplements / TSExpressionWithTypeArguments shapes
+          const refName = impl.expression?.name ?? impl.expression?.expression?.name ?? null;
+          if (refName) recordReference(refName);
         }
 
         if (decl.superClass?.type === "Identifier") {
-          const superName = decl.superClass.name;
-          const list = implementersByName.get(superName) ?? [];
-          list.push({ implementer: implName, file: ctx.file, line: implLine });
-          implementersByName.set(superName, list);
+          recordReference(decl.superClass.name);
         }
       }
     }
@@ -938,7 +1059,8 @@ function detectUniqueImplementation(ctxs: Ctx[]): Finding[] {
 
   const findings: Finding[] = [];
   for (const d of decls) {
-    const impls = implementersByName.get(d.name) ?? [];
+    const key = `${d.file}:${d.name}`;
+    const impls = implementersByDecl.get(key) ?? [];
     if (impls.length > 1) continue;
 
     const kindWord = d.kind === "interface" ? "interface" : "abstract class";

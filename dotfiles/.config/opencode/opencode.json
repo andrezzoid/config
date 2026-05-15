@@ -1,0 +1,8 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "compaction": {
+    "auto": false
+  },
+  "formatter": true,
+  "lsp": true
+}

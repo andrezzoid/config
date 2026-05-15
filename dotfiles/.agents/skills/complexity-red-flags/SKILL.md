@@ -34,29 +34,30 @@ Complexity creeps in one small decision at a time — a shallow wrapper, a leake
 
 ## The Audit Workflow
 
-### Phase 0 — Run the deterministic pre-scanner (TypeScript only)
+### Phase 0 — Run strata, the deterministic pre-scanner (TypeScript only)
 
-For TypeScript projects, run `red-flags` first. It surfaces high-recall candidates for most of the 8 flags so you can spend judgment on the candidates instead of grep-walking the tree. Each finding is `severity: "candidate"` — never a verdict. You apply the per-flag test below to decide.
+For TypeScript projects, run `strata` first. It surfaces high-recall candidates for most of the 8 flags so you can spend judgment on the candidates instead of grep-walking the tree. Each finding is `severity: "candidate"` — never a verdict. You apply the per-flag test below to decide.
 
-One-time setup (after pulling, or first use):
-
-```bash
-cd <skill-dir>/red-flags && bun install
-```
-
-Then:
+Use an installed `strata` when available:
 
 ```bash
 # Whole project
-bun <skill-dir>/red-flags/red-flags.ts <project-path> --format json > /tmp/red-flags.json
+strata <project-path> --format json > /tmp/strata.json
 
-# Just files changed since a git ref (committed + working-tree + untracked)
-bun <skill-dir>/red-flags/red-flags.ts <project-path> --diff <git-ref> --format json > /tmp/red-flags.json
+# Files touched since a git ref; analysis still uses the full project graph
+strata <project-path> --touched-since <git-ref> --format json > /tmp/strata.json
+
+# Candidate identities introduced since a git ref; best default for PR review
+strata <project-path> --new-since <git-ref> --format json > /tmp/strata.json
 ```
 
-`<skill-dir>` is the directory containing this SKILL.md.
+If `strata` is not on `PATH`, run the published package directly:
 
-The scanner covers: `shallowModule`, `wideModule`, `wideSignature`, `passThroughMethod`, `passThroughVariable`, `genericNaming`, `tsEscapeHatch`, `emptyCatch`, `catchRethrow`, `duplicateSymbol` (cross-file, agent-recreation pattern), `uniqueImplementation` (cross-file, speculative abstraction), `orphanFile` (cross-file, dead code). Read `/tmp/red-flags.json`'s `findings[]` and `summary.topFiles[]` — start the audit at the highest-density files.
+```bash
+bunx @andrezzoid/strata <project-path> --format json > /tmp/strata.json
+```
+
+The scanner covers: `shallowModule`, `wideModule`, `wideSignature`, `passThroughMethod`, `passThroughVariable`, `genericNaming`, `tsEscapeHatch`, `emptyCatch`, `catchRethrow`, `duplicateSymbol` (cross-file, agent-recreation pattern), `uniqueImplementation` (cross-file, speculative abstraction), `orphanFile` (cross-file, dead code). Read `/tmp/strata.json`'s `findings[]` and `summary.topFiles[]` — start the audit at the highest-density files.
 
 The scanner does **not** cover (you must scan manually for these):
 
@@ -73,7 +74,7 @@ For non-TypeScript projects, skip Phase 0 — the rest of the workflow still app
 For each of the eight flags below, in order:
 
 1. **Read the Signal.** Know the shape you're looking for.
-2. **Run the Find.** Either consume the corresponding `flag` from `/tmp/red-flags.json`, or run the flag's manual detector (`grep`, signature listing, parameter trace) for flags the scanner doesn't cover.
+2. **Run the Find.** Either consume the corresponding `flag` from `/tmp/strata.json`, or run the flag's manual detector (`grep`, signature listing, parameter trace) for flags strata doesn't cover.
 3. **Apply the Test.** Confirm each candidate; reject false positives.
 4. **Write the Fix** using the DON'T → DO pattern. Cite file:line and the concrete edit — "inline `OrderValidator.validate` into `Order.create` (validators/order-validator.ts:18)", not "simplify validators".
 

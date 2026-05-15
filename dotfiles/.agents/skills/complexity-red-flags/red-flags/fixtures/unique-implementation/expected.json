@@ -1,8 +1,0 @@
-{
-  "findings": [
-    { "flag": "uniqueImplementation", "file": "contracts.ts", "line": 5 },
-    { "flag": "uniqueImplementation", "file": "contracts.ts", "line": 12 },
-    { "flag": "uniqueImplementation", "file": "forum/types.ts", "line": 2 },
-    { "flag": "uniqueImplementation", "file": "payments/types.ts", "line": 5 }
-  ]
-}

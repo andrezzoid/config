@@ -1,5 +1,0 @@
-{
-  "findings": [
-    { "flag": "shallowModule", "file": "case.ts", "line": 1 }
-  ]
-}

@@ -7,6 +7,8 @@ fi
 
 ## Exports
 export XDG_CONFIG_HOME="$HOME/.config" # some macOS apps (e.g. lazygit) ignore ~/.config without this
+export EDITOR="nvim"
+export VISUAL="$EDITOR"
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="/Users/andrejonas/.bun/bin:$PATH" # For bun executables
 

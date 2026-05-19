@@ -2,7 +2,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { Show } from "solid-js"
 
-import { shouldShowKeepAwakeBadge } from "../lib/keep-awake"
+import { KEEP_AWAKE_BADGE_LABEL, shouldShowKeepAwakeBadge } from "../lib/keep-awake"
 
 function KeepAwakeBadge(props: { api: TuiPluginApi; sessionID: string }) {
   const theme = () => props.api.theme.current
@@ -11,7 +11,7 @@ function KeepAwakeBadge(props: { api: TuiPluginApi; sessionID: string }) {
   return (
     <Show when={awake()}>
       <box flexDirection="row" paddingLeft={1}>
-        <text fg={theme().warning}>Awake</text>
+        <text fg={theme().warning}>{KEEP_AWAKE_BADGE_LABEL}</text>
       </box>
     </Show>
   )

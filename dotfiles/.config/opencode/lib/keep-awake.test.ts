@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { createKeepAwakeController, shouldShowKeepAwakeBadge } from "./keep-awake"
+import { KEEP_AWAKE_BADGE_LABEL, createKeepAwakeController, shouldShowKeepAwakeBadge } from "./keep-awake"
 
 class FakeCaffeinate {
   killed = false
@@ -109,6 +109,10 @@ describe("createKeepAwakeController", () => {
 })
 
 describe("shouldShowKeepAwakeBadge", () => {
+  it("uses a coffee badge label", () => {
+    expect(KEEP_AWAKE_BADGE_LABEL).toBe("☕ Awake")
+  })
+
   it("shows the badge only while a session keeps the machine awake", () => {
     expect(shouldShowKeepAwakeBadge({ type: "busy" })).toBe(true)
     expect(shouldShowKeepAwakeBadge({ type: "retry" })).toBe(true)

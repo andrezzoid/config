@@ -17,6 +17,8 @@ export type KeepAwakeControllerOptions = {
   spawnCaffeinate?: (watchedPid: number) => CaffeinateProcess
 }
 
+export const KEEP_AWAKE_BADGE_LABEL = "☕ Awake"
+
 /** True while opencode's session state implies an active sleep assertion. */
 export function shouldShowKeepAwakeBadge(status: { type: SessionWakeStatus } | undefined) {
   return status?.type === "busy" || status?.type === "retry"

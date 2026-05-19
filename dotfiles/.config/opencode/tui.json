@@ -1,8 +1,8 @@
 {
   "$schema": "https://opencode.ai/tui.json",
   "theme": "tokyonight_moon",
+  "plugin": ["./plugins/keep-awake-ui.tsx"],
   "attention": {
     "enabled": true
   }
 }
-

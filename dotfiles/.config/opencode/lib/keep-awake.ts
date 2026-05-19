@@ -17,6 +17,11 @@ export type KeepAwakeControllerOptions = {
   spawnCaffeinate?: (watchedPid: number) => CaffeinateProcess
 }
 
+/** True while opencode's session state implies an active sleep assertion. */
+export function shouldShowKeepAwakeBadge(status: { type: SessionWakeStatus } | undefined) {
+  return status?.type === "busy" || status?.type === "retry"
+}
+
 /**
  * Starts a macOS idle-sleep assertion tied to the opencode process lifetime.
  *
@@ -71,7 +76,7 @@ export function createKeepAwakeController(options: KeepAwakeControllerOptions = 
 
   return {
     setSessionStatus(sessionID: string, status: SessionWakeStatus) {
-      if (status === "busy" || status === "retry") activeSessions.add(sessionID)
+      if (shouldShowKeepAwakeBadge({ type: status })) activeSessions.add(sessionID)
       else activeSessions.delete(sessionID)
 
       updateAssertion()
@@ -80,7 +85,7 @@ export function createKeepAwakeController(options: KeepAwakeControllerOptions = 
     reconcileSessionStatuses(statuses: SessionStatusMap) {
       activeSessions.clear()
       for (const [sessionID, status] of Object.entries(statuses)) {
-        if (status.type === "busy" || status.type === "retry") activeSessions.add(sessionID)
+        if (shouldShowKeepAwakeBadge(status)) activeSessions.add(sessionID)
       }
 
       updateAssertion()

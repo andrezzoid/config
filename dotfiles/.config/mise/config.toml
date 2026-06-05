@@ -1,6 +1,7 @@
 [tools]
 bun = "latest"
 node = "lts"
+"pipx:mlx-audio-separator" = { version = "latest", extras = "convert" }
 rust = "latest"
 
 [settings]

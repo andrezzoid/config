@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# yt-instrumental — download a YouTube video's audio and extract the music
+# (vocals removed) with mlx-audio-separator's SOTA BS-Roformer model.
+#
+# Usage:   yt-instrumental <youtube-url>
+# Output:  a 320kbps MP3 instrumental in ~/Downloads, named after the video.
+#
+# Env overrides:
+#   OUTPUT_DIR   destination directory      (default: ~/Downloads)
+#   FORMAT       output audio format        (default: MP3; e.g. FLAC for lossless)
+#   BITRATE      bitrate for lossy formats  (default: 320k; ignored when empty)
+#   MODEL        separator checkpoint       (default: BS-Roformer ep 317)
+#   MODEL_DIR    persistent model cache     (default: ~/.cache/audio-separator-models)
+#   KEEP_VOCALS  set non-empty to also write the vocals stem (default: music only)
+#
+# Requirements: yt-dlp, ffmpeg, and the mise-managed mlx-audio-separator tool.
+# A model shipped as a PyTorch .ckpt (the default is) is converted to MLX on
+# first use, which needs torch in the tool's venv — a one-time `pip install torch`
+# into that venv; the conversion is then cached as .safetensors (see below).
+#
+# Design notes:
+#   - Audio is normalised to WAV before separation. YouTube streams are opus/aac
+#     in varying containers; a PCM intermediate gives the separator a predictable,
+#     fully-decodable input. The transcode is lossless wrt the (already-lossy)
+#     source and trivial next to separation time.
+#   - Output defaults to 320kbps MP3 for portability; set FORMAT=FLAC for lossless.
+#   - The model cache lives outside /tmp (the tool's default) so the
+#     ~hundreds-of-MB checkpoint survives reboots instead of being re-downloaded.
+#   - --save_converted_safetensors caches the one-time PyTorch-checkpoint→MLX
+#     conversion next to the checkpoint, so subsequent runs load the MLX weights
+#     directly (faster, and no torch needed once converted).
+
+set -euo pipefail
+
+die() { printf 'yt-instrumental: %s\n' "$1" >&2; exit 1; }
+
+url=${1:-}
+[ -n "$url" ] || die "usage: yt-instrumental <youtube-url>"
+
+out_dir=${OUTPUT_DIR:-$HOME/Downloads}
+fmt=${FORMAT:-MP3}
+bitrate=${BITRATE:-320k}
+model=${MODEL:-model_bs_roformer_ep_317_sdr_12.9755.ckpt}
+model_dir=${MODEL_DIR:-$HOME/.cache/audio-separator-models}
+
+command -v yt-dlp >/dev/null 2>&1 || die "yt-dlp not found on PATH"
+
+# mlx-audio-separator is a mise-managed tool; prefer it directly, but fall back
+# to 'mise exec' so the script also works from shells without mise shims on PATH.
+if command -v mlx-audio-separator >/dev/null 2>&1; then
+  separator=(mlx-audio-separator)
+elif command -v mise >/dev/null 2>&1; then
+  separator=(mise exec -- mlx-audio-separator)
+else
+  die "mlx-audio-separator not found (install: mise use -g pipx:mlx-audio-separator)"
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+echo "==> Extracting audio…"
+yt-dlp -x --audio-format wav --no-playlist -o "$tmp/%(title)s.%(ext)s" "$url"
+
+src=$(find "$tmp" -maxdepth 1 -name '*.wav' -print -quit)
+[ -n "$src" ] || die "yt-dlp produced no audio file"
+
+mkdir -p "$out_dir" "$model_dir"
+
+args=("$src"
+  --output_dir "$out_dir"
+  --output_format "$fmt"
+  --model_file_dir "$model_dir"
+  -m "$model"
+  --save_converted_safetensors)
+[ -n "$bitrate" ] && args+=(--output_bitrate "$bitrate")
+[ -n "${KEEP_VOCALS:-}" ] || args+=(--single_stem Instrumental)
+
+echo "==> Separating with ${model}…"
+"${separator[@]}" "${args[@]}"
+
+# Report this run's outputs: any file of the chosen format newer than the source.
+echo "==> Done. Saved to $out_dir:"
+find "$out_dir" -maxdepth 1 -type f -iname "*.$fmt" -newer "$src" -print | sed 's|^|    |'

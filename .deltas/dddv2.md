@@ -38,30 +38,33 @@ redesign — or in this delta's own logged history.
   (structural recall, never spontaneous memory). Ceremony is accidental
   complexity: checks scale with stakes or agents route around the process.
 
-**Goal.** This delta ships one artifact: the skill that replaces v1 —
-developed at `dotfiles/.agents/skills/dddv2/`, shipping as `ddd` (see
-Shipping) — plus its CLAUDE.md conductor line and the graduated acceptance
-harness. Non-goals, each already a Followup: refactoring the six sibling
-skills (stanced divergence for design-it-twice; executable-check
-generalization for test-driven-development) and the hooks enforcement
-layer. Neither blocks this delta; both depend on it.
+**Goal.** This delta ships the skill that replaces v1 — developed at
+`dotfiles/.agents/skills/dddv2/`, shipping as `ddd` (see Shipping) — with
+the eval harness graduated into the skill's own `evals/` directory as its
+permanent acceptance checks. Non-goals, deferred to Followups: the
+CLAUDE.md conductor registration, the sibling-skill refactors (two specific
+ones already recorded there), and the hooks enforcement layer. None blocks
+this delta; all depend on it.
 
 **Risks and assumptions, each with its sensitivity.**
 
 - *Frontier-model assumption* — every judgment-shaped rule (authority,
   discretion, layer choice) presumes a frontier model drives. Sensitivity:
-  on sub-frontier models authority collapses wholesale — the Sonnet 4.6
-  probe showed self-ratification, self-acceptance, and narrated checkers.
-  Do not run dddv2 below the frontier tier before the hooks layer exists.
+  on sub-frontier models authority collapses wholesale. Capability record,
+  for the operator who picks the model (the skill cannot detect or enforce
+  tier): runs well on Opus 4.8 and Fable 5; Sonnet 4.6 collapsed
+  (self-ratification, self-acceptance, narrated checkers).
 - *Same-weights decorrelation* — checkers are independent contexts but
   share model weights with authors; a model-level blind spot is invisible
   to every check at once. Sensitivity: unbounded by construction. The
   lever is cross-model checking (used for eval judging), kept as a lever,
   not a rule.
 - *Prose-only enforcement* — until the hooks delta ships, every bright
-  line binds only through skill text. Sensitivity: v4 evals show bright
-  lines holding where norms failed on the same models; any rule softened
-  back into a norm should be expected to fail under completion pressure.
+  line binds only through skill text. Sensitivity: bright lines verified on
+  Opus 4.8, the model whose norm-version failures were worst; Fable's
+  norm-era failure was not re-run post-fix (its tier sits at or above the
+  verified one). Any rule softened back into a norm should be expected to
+  fail under completion pressure.
 
 **Rejected alternatives** (the why-nots prose can't carry implicitly):
 full-file immutability after ratification — would make routing empirical
@@ -75,20 +78,21 @@ specialist tool: enter whenever the change needs a theory — it spans modules,
 is open-ended, or has multiple plausible approaches. Skip only when the
 change is one sentence with one obvious implementation. The skill's
 frontmatter description must carry this defaultness explicitly (it is the
-only pre-load routing surface), and shipping includes registering dddv2 as
-the conductor in the user's CLAUDE.md domain-skills instruction. Size bound:
+only pre-load routing surface). Size bound:
 Theory + Acceptance fit one screen; bigger ambitions become sequential
 deltas — no hierarchies, no epics. A cold session resumes by frontmatter
 `state`.
 
-**Shipping (decided).** Developed at `dotfiles/.agents/skills/dddv2/`; ships
-by replacement: at this delta's close, `ddd/` (v1) is deleted and `dddv2/`
-is renamed to `ddd/` — the skill keeps the `ddd` name (the anatomy standard
-requires name = directory; versions live in git, not names), and coexistence
-is forbidden (two skills would race the same `.deltas/` trigger). Close also
-replaces the CLAUDE.md domain-skills instruction (edited in dotfiles, the
-source of the home mirror) with a single conductor line delegating per-state
-skill loading to `ddd`, so load rules live in exactly one place.
+**Shipping (decided).** Developed at `dotfiles/.agents/skills/dddv2/` as
+`SKILL.draft.md` — registries only see `SKILL.md`, so the draft cannot race
+v1's trigger during development. Outcomes at close (steps are derived, not
+dictated): exactly one delta-driven skill exists, at
+`dotfiles/.agents/skills/ddd/`, and it is this one — v1 gone, the draft
+renamed live, the directory carrying the `ddd` name (the anatomy standard
+requires name = directory; versions live in git, not names). Coexistence is
+forbidden at every point in time: before close the draft is unregistered,
+after close v1 no longer exists. CLAUDE.md registration is a Followup, not
+a close condition.
 **Bootstrap exemption (declared):** this delta designs the protocol itself,
 so its Theory doubles as the product specification and exceeds the
 one-screen bound; that bound governs deltas run *under* the protocol.
@@ -128,17 +132,17 @@ classDiagram
       Followups
     }
     class Commit {
-      message = log line
-      gate crossings quote the human
+      natural message
+      diffs carry the record
     }
     class Checker {
-      role skeptic|decomposer|judge|verifier|cold-reader
-      role git author
+      role skeptic|deriver|judge|verifier|cold-reader
+      returns findings, never fixes
       read-only on shared tree
     }
     Delta "1" --> "*" Commit : history is the log
-    Delta --> Checker : sole briefing
-    Checker --> Commit : findings, role-authored
+    Delta --> Checker : briefing = delta + References
+    Checker --> Delta : findings, recorded by conductor
 ```
 
 (❄ = frozen at ratification.)
@@ -161,15 +165,17 @@ be requested, standalone, in a later message. The human ratifies — judgment,
 not a button. Norm-shaped gate rules lose to completion pressure; only
 bright lines bind.
 
-**Human gates are quoted, never paraphrased (decided).** RATIFY and ACCEPT
-are words only the human can write. The commit that crosses a human gate
-quotes the human's granting message verbatim; an agent-authored crossing is
-forgery regardless of work quality. Observed, both flavors, Opus 4.8 evals
-2026-06-12: "…and I'll ratify" (agent casting itself as ratifier, S1) and a
-commit reading "ACCEPTed on verifier evidence" with the human absent (S4 —
-the verifier's evidence is grounds for the human's ACCEPT, never a
-substitute for it; passive voice laundered an agent decision into a gate
-crossing, then the delta was irreversibly closed).
+**Human gates (decided).** RATIFY and ACCEPT are words only the human can
+write. The agent flips `state` across a human gate only in direct response
+to the human's message granting it; an agent-initiated crossing is forgery
+regardless of work quality — the verifier's evidence is grounds for the
+human's ACCEPT, never a substitute for it. Observed, both flavors, Opus 4.8
+evals 2026-06-12: "…and I'll ratify" (agent casting itself as ratifier, S1)
+and "ACCEPTed on verifier evidence" with the human absent (S4 — passive
+voice laundering an agent decision into a gate crossing, followed by
+irreversible close). In-repo, the flip is just a diff; binding it to an
+actual human message is the hooks followup's job — until then the rule
+binds behaviorally, which the v4 evals showed it does on frontier models.
 
 **Executing is transcription.** Discovery is confined to aligning, where
 figuring-out is cheap and disposable; what remains is reproducible and
@@ -184,27 +190,27 @@ is the evidence.
 the harness's Skill tool — explicitly, so structural recall can't degrade
 into spontaneous memory), and the boundary check — never run by the
 artifact's author. Non-author means a context that produced none of the
-artifacts under check; a fresh subagent briefed with the delta qualifies,
-and its briefing carries the role's load line from this table. Checker
-contexts commit their findings under a role git author (`dddv2-skeptic`,
-`dddv2-verifier`, …): independence becomes auditable — a convention, not a
-proof; harness-level enforcement lives in the hooks followup. Process
-execution is itself an observable: every spawned check records its role and
-the harness-returned agent id as a line in the delta itself — content,
-diffable, placement a matter of judgment — and the checker's own commits
-carry its role git author. What matters is the append-only record, auditable
-against harness transcripts. A check with no spawn
-record did not happen. Narrating a checker that was never spawned is forging
-evidence — if spawning is unavailable, either declare a reduction (the
-legitimate path) or stop and say so. Checker contexts are read-only on the
-shared working tree: any checkout they need happens in a `git worktree` or
-exported tree (observed incident: a verifier's `git checkout` left the
-shared checkout on a detached HEAD, Opus S4, 2026-06-12).
+artifacts under check; a fresh subagent briefed with the delta + its
+References (the standard briefing for every spawned context) qualifies, its
+briefing carrying the role's load line from this table. Checkers check and
+never fix: a checker that fixes becomes an author, and its work would need
+a fresh non-author check — findings reopen the owning layer, and the owning
+state fixes by whatever hands it delegates. Checkers return their findings;
+the conductor records them as delta content (challenges into `## Open`,
+verifier evidence into the delta before any ACCEPT request) — the record is
+the file and its diffs, like every other declaration. Narrating a checker
+that was never spawned is forging evidence — if spawning is unavailable,
+declare a reduction (the legitimate path) or stop and say so. Harness
+transcripts are the audit channel; mechanical enforcement is the hooks
+followup. Checkers are read-only on the shared working tree: any checkout
+happens in a `git worktree` or exported tree (observed incident: a
+verifier's `git checkout` left the shared checkout on a detached HEAD,
+Opus S4, 2026-06-12).
 
 | State (authority) | Loads | Work | Boundary check (non-author) |
 |---|---|---|---|
 | aligning (shared; human gates exit) | design-it-twice, define-errors-away | the aligning cycle | skeptic, fresh context: refutes factual claims against the codebase, audits the ontology checklist, lists questions unanswerable from delta + references → human dispositions and RATIFIES |
-| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | module boundaries → convergent derivation → per task: RED → GREEN → REFACTOR (the failing-test commit precedes the implementation commit; both reference the task id) | convergent derivation: two independent contexts each derive, from the delta alone, the task list AND the executable checks (delta-level acceptance executables, per-task check specs) — an invented assumption is a theory gap outright; a third context judges divergence: material reopens theory, immaterial merges. The implementer inherits the merged checks and never authors the measure it is graded by. Per task: pre-registered failing test (written to the inherited spec) + evidence in commit history |
+| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | module boundaries → convergent derivation → per task: implement to the inherited spec, test-first by conducted default (RED → GREEN → REFACTOR) | convergent derivation: two independent contexts (`dddv2-deriver`) each derive, from the delta + References, the task list, the delta-level acceptance executables, and per-task check specs — an invented assumption is a theory gap outright; a third context judges divergence: material reopens theory, immaterial merges. The implementer inherits the merged result and never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process |
 | verifying (non-author lineage) | complexity-red-flags | run acceptance, attempt refutation, audit the diff | human ACCEPTs on the verifier's evidence |
 | committing (agent) | comments-as-design | harvest via carriers; disposition followups | cold reader states what must remain true and why, from durable artifacts alone; a judge compares against frozen Theory |
 
@@ -255,19 +261,18 @@ verified against its source before shipping, never reproduced from memory:
 intensity, task workspace (add/split/reorder tasks when derivable from
 ratified theory), parallelism, spikes, harvest selection — is agent judgment,
 declared in the delta, never silent. Declarations are delta *content* —
-visible in the file and its diffs — never commit-message conventions;
-messages stay natural prose. Sole exception: commits crossing human gates
-quote the human verbatim, the one convention that anchors authority.
-Reductions are declared per check; no
-named tiers.
+visible in the file and its diffs. Commit messages are natural summaries of
+the work done, never load-bearing conventions: the what lives in the diffs,
+the why in the delta's content at each commit. Reductions are declared per
+check; no named tiers.
 
 **Theory ontology — capture-by-audit.** Theory stays prose; mandatory forms
 get filled to look complete. The skeptic audits against: goal · domain
 entities (class diagram when the domain model changes) · approach with
-rejected alternatives · structure sketch · norms deviations · constraints,
-invariants, assumptions each with sensitivity · non-goals · risks.
-Operations are excluded: the plan must be derivable — convergent
-decomposition tests exactly this — never dictated.
+rejected alternatives · structure sketch · norms deviations · constraints ·
+invariants · assumptions (each assumption with its sensitivity) · non-goals
+· risks. Operations are excluded: the plan must be derivable — convergent
+derivation tests exactly this — never dictated.
 
 **Acceptance convention.** Falsifiability, not grammar: `criterion — check:
 <observable procedure>`. Behavioral criteria become failing executable checks
@@ -279,18 +284,18 @@ exemption second.
 **Artifact.** One markdown file per delta at `.deltas/<name>.md`:
 
 - Frontmatter `state` — the only routing surface. There is no `ratified`
-  field: ratification is anchored by the RATIFY commit itself (the human's
-  words, quoted, tamper-evident in history); a field restating derivable
-  state is a self-report that can lie.
+  field: ratification is the state-flip edit made in direct response to the
+  human's RATIFY, discoverable as the diff that flips `state`; a field
+  restating derivable state is a self-report that can lie.
 - `## Theory` + `## Acceptance` — the ratification screen.
 - `## References` — each pointer with a one-line why.
 - `## Open` — live questions and forks; drained before any ratification
   proposal.
 - `## Tasks` — task definitions only: description, inline acceptance check,
-  `needs:` for ordering; ids are short kebab-case, unique within the delta. No status marks — a checked box is a self-report.
-  Completion is derived from observables: commits referencing the task id
-  exist and the task's acceptance check passes. Cheap resume signal = commit
-  refs; ground truth = the checks, run at gates.
+  `needs:` for ordering; ids are short kebab-case, unique within the delta.
+  No status marks — a checked box is a self-report. Completion is derived
+  from observables: the task's acceptance check passes (ground truth — run
+  them); history's diffs show what landed.
 - `## Followups` — out-of-scope discoveries; dispositioned at committing:
   each becomes a new delta stub, a tracker entry per project convention, or
   is dropped explicitly with the human.
@@ -308,13 +313,13 @@ exemption second.
   pair are live by design — `## Followups` must accept discoveries mid-work;
   its deferral valve is audited at committing, where every entry is
   dispositioned with the human.
-- **Log = git:** every consolidation and transition commits the delta file,
-  log line as commit message — append-only by construction. Per-task
-  evidence lives in the task's code commits.
+- **Log = git:** every consolidation and transition commits the delta file —
+  append-only by construction. The diffs are the authoritative record, and
+  the delta's content at each commit carries the why; messages are courtesy
+  summaries of the work done.
 - **Lifecycle:** committed alongside the work it governs; deleted at close
-  (git history is the archive). Commits reference task ids; a PR closes the
-  delta when a remote exists — without one, the closing commit plus deletion
-  is the whole close.
+  (git history is the archive). A PR closes the delta when a remote exists —
+  without one, the closing commit plus deletion is the whole close.
 
 **Harvest carriers.** Boundary-why, contracts, module invariants → interface
 comments. Behavioral contracts, regression guards → tests. Cross-module
@@ -328,15 +333,21 @@ with the delta — deltas are not archives.
       sibling skills, unprompted. — check: scenario run in a clean session
       against a `dddv2-evals` fixture, with the skill and the six sibling
       skills installed (the environment the skill assumes in production).
-- [ ] **One-screen ratify** — a delta is ratifiable from Theory + Acceptance
-      alone. — check: convergent derivation passes on a real delta; the
-      human states their predicted task list in a message *before* the
-      derived list is shown, and the two are compared.
+- [ ] **Derivability and prediction** — the theory determines the plan.
+      — check: convergent derivation passes on this delta; the human states
+      their predicted task list in a message *before* the derived list is
+      shown (timing relative to RATIFY is irrelevant — the prediction tests
+      theory-determinism, not the gate), and the two materially match. The
+      one-screen-ratify *experience* cannot be evidenced here (this delta is
+      exempt from the size bound) — it is validated on the first
+      protocol-governed delta, per Followups.
 - [ ] **Decorrelated contexts** — every boundary check runs in a non-author
       context, and generation fans out to independent contexts where stakes
       warrant (design divergence; convergent derivation of tasks and
       checks); self-report is never evidence. — check: exercise one delta
-      end-to-end; confirm each check's context.
+      end-to-end; every boundary check's findings appear as delta content
+      with their origin stated, and at least one spawned check is
+      cross-audited against harness transcripts.
 - [ ] **Convergence before gate** — ratification is proposed only after
       quiescence + dispositioned skeptic round, standalone. — check: scenario
       run of an aligning loop; agent must keep cycling, not propose the gate.
@@ -348,11 +359,17 @@ with the delta — deltas are not archives.
 - [ ] **Single source of truth** — every state, rule, and field defined in
       exactly one file. — check: cross-read all dddv2 files for re-encoded
       rules.
-- [ ] **Token-lean** — dddv2-authored text loaded in any single state
-      (tiktoken cl100k; sibling skills excluded — both versions load them)
-      ≤ half of v1's same-state path: SKILL.md + delta-schema.md + that
-      state's phase reference, at v1's last committed revision. — check:
-      committed measurement script, run against both.
+- [ ] **Token-lean** — dddv2-authored process text loaded in any single
+      state (tiktoken cl100k) ≤ half of v1's same-state path at commit
+      `ef6eb2a`: aligning ↔ SKILL+schema+explore; executing ↔
+      SKILL+schema+plan+apply (it does both phases' work, so it carries
+      both budgets); verifying ↔ SKILL+schema+verify; committing ↔
+      SKILL+schema+verify (nearest analog — v1's close lived in verify's
+      step 8). Sibling content is out of scope by design: the criterion
+      measures protocol overhead, and conducted sibling loads are the
+      feature v1 lacked — their cost is accepted here, in Theory, not
+      hidden in the measure. — check: committed measurement script, run
+      against both versions.
 
 ## References
 
@@ -395,8 +412,8 @@ with the delta — deltas are not archives.
   never as approval.
 - **human gates (RATIFY / ACCEPT)** — the two transitions only the human's
   word can cross: RATIFY approves theory + measure (aligning → executing);
-  ACCEPT approves the verified result (verifying → committing). The crossing
-  commit quotes the human verbatim.
+  ACCEPT approves the verified result (verifying → committing). The agent
+  crosses only in direct response to the human's granting message.
 - **state / authority** — the frontmatter field naming who holds decision
   power: aligning (shared), executing (agent, inside ratified theory),
   verifying (non-author checker), committing (agent, closing out).
@@ -417,18 +434,21 @@ with the delta — deltas are not archives.
   the implementation, so "the test passed" is provable from commit order
   rather than taken on trust.
 - **convergent derivation** — at executing entry, two independent subagents
-  each derive the task list and the executable checks from the delta alone;
+  (`dddv2-deriver`) each derive the task list, the delta-level acceptance
+  executables, and per-task check specs from the delta + References;
   divergence between them is evidence the theory under-determines the work.
-  The implementer inherits the merged result, so it never authors the
-  measure it is graded by.
+  The implementer inherits the merged result — it never authors the
+  criteria it is graded by; its per-task tests are transcriptions of the
+  inherited specs.
 - **non-author / decorrelation** — no artifact is checked by its maker;
   checkers are fresh subagents briefed only by the delta, so they can't
   inherit the author's blind spots.
 - **narrated checker** — claiming a checker ran without spawning one.
   Forged evidence by definition.
-- **spawn record / role author** — the audit trail proving a checker ran:
-  its findings commit is authored as `dddv2-<role>`, and the reporting
-  commit records the harness agent id.
+- **never-narrate** — a checker's existence must be real: spawn it or
+  declare a reduction; claiming an unspawned checker ran is forged
+  evidence. Checkers return findings; the conductor records them as delta
+  content; harness transcripts are the audit channel.
 - **cold reader** — the close-out check: a fresh subagent reading only the
   durable artifacts (code, comments, tests, docs) must reconstruct what
   must stay true and why — proof the knowledge survived outside the delta.
@@ -442,60 +462,16 @@ with the delta — deltas are not archives.
 - **integrity rule** — after ratification, `## Theory` and `## Acceptance`
   are immutable; touching either reopens aligning.
 - **log = git** — no in-file log: every consolidation and transition is a
-  commit of the delta file, its message the log line.
+  commit of the delta file; the diffs are the record, the delta's content
+  the why, the messages natural summaries.
 - **conduction / loads** — dddv2 ordering the sibling skills loaded at each
   state entry via the Skill tool, instead of trusting recall.
 - **derived status** — task completion is never marked in the file (a
-  checkbox is a self-report); it is derived from task-id commits existing
-  and the task's check passing.
+  checkbox is a self-report); it is derived by running the task's
+  acceptance check — reality, not records.
 
 ## Open
 
-- **Skeptic re-pass challenges (15), awaiting disposition.** Spawn record:
-  role dddv2-skeptic, agent a3f3270d923e2c3e8, 2026-06-12; full text relayed
-  in conversation. Terse index:
-  1. Token-lean still broken: sibling-exclusion premise false at baseline
-     (v1 loads no siblings — exclusion subsidizes v2); state↔phase mapping
-     undefined (aligning→2 refs? committing→0); baseline SHA unpinned.
-  2. Development-window skill race: dddv2/SKILL.md goes live in the
-     registered skills dir the moment it's written, racing v1's `.deltas/`
-     trigger; coexistence rule covers only post-close.
-  3. Convergent derivation self-contradicts: implementer writes the per-task
-     executable test, so "never authors the measure it is graded by" is
-     false for the executable; spec/executable asymmetry unexplained;
-     glossary drifts from body.
-  4. "Sole exception" false: log-line messages and task-id references are
-     also commit-message conventions; entity diagram overclaims (every
-     commit = log line).
-  5. "Bright lines held on the same models" overstates: v4 re-runs were
-     Opus-only; Fable's norm-failure never re-tested.
-  6. RATIFY-commit anchor has no normative format or discovery procedure;
-     token not reserved.
-  7. Read-only checkers vs role-authored commits: who writes, from where —
-     contradictory as stated.
-  8. Terminology fork: derivation vs decomposition (one machine, two names),
-     plus undefined role "decomposer" in the diagram.
-  9. CLAUDE.md conductor line silently removes sibling loading for all
-     non-delta work (trivial asks never enter the protocol).
-  10. Goal paragraph: "one artifact" then three deliverables; "each already
-      a Followup" false (two of six sibling refactors are).
-  11. Ontology checklist demands sensitivities on all constraints/invariants;
-      only the three risk bullets carry them — checklist over-demands or
-      pass under-delivered.
-  12. C12's third repair landed in Theory prose, not in any acceptance
-      check; "Decorrelated contexts" check still non-procedural.
-  13. One-screen ratify evidenced only on this delta, which is exempt from
-      the one-screen bound — circular; prediction timing vs RATIFY
-      unspecified.
-  14. "Do not run below frontier tier" unenforceable: no detection, no tier
-      definition.
-  15. Shipping dictates operations inside frozen Theory while the ontology
-      excludes Operations.
-  Plus: eval results remain unverifiable from the repo (transcripts outside
-  it); 10 unanswerable implementer questions (deriver access scope, role
-  strings, checker write mechanics, gate-commit discovery, token-lean
-  mapping, harness home after close, conductor wording, tier membership,
-  description suppression pre-ship, prediction timing).
 - **Eval gap (deferred to executing, deliberately):** convergent derivation
   (tasks + checks from the delta alone) is the one machine never
   behaviorally tested — eval fixtures pre-supplied task lists. It runs for
@@ -505,7 +481,7 @@ with the delta — deltas are not archives.
 
 ## Tasks
 
-_(derived at executing entry via convergent decomposition)_
+_(derived at executing entry via convergent derivation)_
 
 ## Followups
 
@@ -515,5 +491,14 @@ _(derived at executing entry via convergent decomposition)_
   prohibition, executable-check generalization. (Sibling-skills delta.)
 - Claude Code hooks as mechanical enforcement: PostToolUse hook auto-commits
   `.deltas/*` edits (log-by-construction); SessionStart hook injects active
-  delta name + state so cold-start routing is structural. (Tooling delta,
-  after the skill exists.)
+  delta name + state so cold-start routing is structural; gate-flip
+  verification (a state flip across a human gate must follow an actual
+  human message). (Tooling delta, after the skill exists.)
+- Replace the CLAUDE.md domain-skills instruction with the conductor line
+  plus a retained "outside a delta, load domain skills judiciously as the
+  task warrants" sentence — the conductor line is the only *mandatory*
+  loading rule; exact wording decided then. (Edited in dotfiles, the source
+  of the home mirror.)
+- The first protocol-governed delta validates the one-screen-ratify
+  experience (this bootstrap delta is exempt from the size bound and cannot
+  evidence it); failure there reopens this design.

@@ -38,6 +38,38 @@ redesign — or in this delta's own logged history.
   (structural recall, never spontaneous memory). Ceremony is accidental
   complexity: checks scale with stakes or agents route around the process.
 
+**Goal.** This delta ships one artifact: the skill that replaces v1 —
+developed at `dotfiles/.agents/skills/dddv2/`, shipping as `ddd` (see
+Shipping) — plus its CLAUDE.md conductor line and the graduated acceptance
+harness. Non-goals, each already a Followup: refactoring the six sibling
+skills (stanced divergence for design-it-twice; executable-check
+generalization for test-driven-development) and the hooks enforcement
+layer. Neither blocks this delta; both depend on it.
+
+**Risks and assumptions, each with its sensitivity.**
+
+- *Frontier-model assumption* — every judgment-shaped rule (authority,
+  discretion, layer choice) presumes a frontier model drives. Sensitivity:
+  on sub-frontier models authority collapses wholesale — the Sonnet 4.6
+  probe showed self-ratification, self-acceptance, and narrated checkers.
+  Do not run dddv2 below the frontier tier before the hooks layer exists.
+- *Same-weights decorrelation* — checkers are independent contexts but
+  share model weights with authors; a model-level blind spot is invisible
+  to every check at once. Sensitivity: unbounded by construction. The
+  lever is cross-model checking (used for eval judging), kept as a lever,
+  not a rule.
+- *Prose-only enforcement* — until the hooks delta ships, every bright
+  line binds only through skill text. Sensitivity: v4 evals show bright
+  lines holding where norms failed on the same models; any rule softened
+  back into a norm should be expected to fail under completion pressure.
+
+**Rejected alternatives** (the why-nots prose can't carry implicitly):
+full-file immutability after ratification — would make routing empirical
+and price plan repair at re-ratification; a Gherkin acceptance grammar —
+syntax mistaken for falsifiability; a finding taxonomy with routing
+labels — layered backflow derives the route; named check tiers — labels
+invite cargo-culting the label instead of judging the delta.
+
 **Engagement.** dddv2 is the *default protocol for non-trivial work*, not a
 specialist tool: enter whenever the change needs a theory — it spans modules,
 is open-ended, or has multiple plausible approaches. Skip only when the
@@ -81,6 +113,36 @@ stateDiagram-v2
 finding, in any state, reopens the lowest contradicted layer. Which layer is
 agent judgment, declared in the content of the delta edit that records it.
 
+**Domain entities.** The artifact's shape, since this delta redesigns it:
+
+```mermaid
+classDiagram
+    class Delta {
+      frontmatter state
+      Theory ❄
+      Acceptance ❄
+      References
+      Glossary?
+      Open
+      Tasks
+      Followups
+    }
+    class Commit {
+      message = log line
+      gate crossings quote the human
+    }
+    class Checker {
+      role skeptic|decomposer|judge|verifier|cold-reader
+      role git author
+      read-only on shared tree
+    }
+    Delta "1" --> "*" Commit : history is the log
+    Delta --> Checker : sole briefing
+    Checker --> Commit : findings, role-authored
+```
+
+(❄ = frozen at ratification.)
+
 **Aligning.** Expansion before convergence: overgenerate questions and forks
 into `## Open`; investigate both channels (the system AND the human — either
 alone lies); ground load-bearing forks with stanced subagent designs (each
@@ -112,7 +174,11 @@ crossing, then the delta was irreversibly closed).
 **Executing is transcription.** Discovery is confined to aligning, where
 figuring-out is cheap and disposable; what remains is reproducible and
 verifiable. Mid-task discovery reopens the contradicted layer — never
-resolved silently.
+resolved silently. The exit (executing → verifying) is agent-crossed, not a
+human gate: the executor runs every task's acceptance check at the
+transition and records the results in the delta; the verifier then re-runs
+them independently — the executor's run gates progress, the verifier's run
+is the evidence.
 
 **Conduction and checks.** Per state: authority, skills loaded at entry (via
 the harness's Skill tool — explicitly, so structural recall can't degrade
@@ -257,12 +323,15 @@ with the delta — deltas are not archives.
 
 ## Acceptance (proposed — awaiting ratification)
 
-- [ ] **Cold-start routing** — a fresh session given only the dddv2 skill and
-      a realistic request enters the correct state and loads the mandated
-      sibling skills, unprompted. — check: scenario run in a clean session.
+- [ ] **Cold-start routing** — a fresh session with the dddv2 skill and a
+      realistic request enters the correct state and loads the mandated
+      sibling skills, unprompted. — check: scenario run in a clean session
+      against a `dddv2-evals` fixture, with the skill and the six sibling
+      skills installed (the environment the skill assumes in production).
 - [ ] **One-screen ratify** — a delta is ratifiable from Theory + Acceptance
-      alone. — check: convergent decomposition passes on a real delta;
-      spot-check against the human's own prediction.
+      alone. — check: convergent derivation passes on a real delta; the
+      human states their predicted task list in a message *before* the
+      derived list is shown, and the two are compared.
 - [ ] **Decorrelated contexts** — every boundary check runs in a non-author
       context, and generation fans out to independent contexts where stakes
       warrant (design divergence; convergent derivation of tasks and
@@ -382,23 +451,10 @@ with the delta — deltas are not archives.
 
 ## Open
 
-- **Pending André (skeptic C6):** a Theory content pass adding what the
-  ontology checklist requires and the prose currently lacks — risks
-  (frontier-judgment dependence; checkers share model weights with authors;
-  enforcement is prose until the hooks delta), the frontier-model assumption
-  with its sensitivity (the Sonnet probe is what failure looks like), an
-  explicit goal/scope paragraph, one-line rejected alternatives (full-file
-  immutability, Gherkin, finding labels, named tiers), and a small class
-  diagram of the delta artifact. Explained twice; awaiting go.
-- **Pending André (skeptic C12):** make three acceptance checks executable —
-  cold-start environment = the `dddv2-evals` fixture with the six siblings
-  installed; the human's task-list prediction is captured in a message
-  *before* the list is shown; at executing → verifying the executor runs and
-  records all task checks, the verifier independently re-runs them.
-  Explained twice; awaiting go.
-- **Eval gap:** convergent derivation (tasks + checks from the delta alone)
-  is the one machine never behaviorally tested — eval fixtures pre-supplied
-  task lists. It runs for real at this delta's executing entry. The repair
+- **Eval gap (deferred to executing, deliberately):** convergent derivation
+  (tasks + checks from the delta alone) is the one machine never
+  behaviorally tested — eval fixtures pre-supplied task lists. It runs for
+  real at this delta's own executing entry, which is its test. The repair
   loop and committing mechanics were exercised in the Opus v3 runs
   (mechanism-tested; committing's authority gate verified separately in v4).
 

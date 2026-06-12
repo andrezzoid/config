@@ -322,7 +322,8 @@ exemption second.
   each becomes a new delta stub, a tracker entry per project convention, or
   is dropped explicitly with the human.
 - `## Glossary` (optional) — definitions for terms the delta coins or leans
-  on; the skeptic audits it whenever the delta invents vocabulary. Most
+  on; a deriver that trips on undefined vocabulary has found a gap here.
+  Most
   deltas won't need one.
 - **Audience rule:** every section readable by a third person with zero
   conversation context; the different-words test (defined in

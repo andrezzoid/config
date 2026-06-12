@@ -103,7 +103,7 @@ surface; the sizing guidance governs deltas run *under* the protocol.
 ```mermaid
 stateDiagram-v2
     [*] --> aligning
-    aligning --> executing : quiescence + skeptic challenges dispositioned, human RATIFY
+    aligning --> executing : derivability converged + forks decided, human RATIFY
     executing --> verifying : all tasks done, evidence in history
     verifying --> executing : reopens plan or implementation
     verifying --> aligning : reopens theory
@@ -137,7 +137,7 @@ classDiagram
       diffs carry the record
     }
     class Reviewer {
-      role skeptic|judge|verifier|cold-reader
+      role verifier|cold-reader
       returns findings, never fixes
       read-only on shared tree
     }
@@ -162,14 +162,18 @@ drafted under a distinct design philosophy) and prototype demos; consolidate
 into Theory each cycle. Reading is not theory-building — the human's theory
 forms by exercising artifacts, not reviewing prose (this delta's own history
 is the incident: prototype rounds surfaced more than prose rounds, on both
-sides). Load-bearing theory is exercised — prototype, demo, or dry-run —
-before ratification is proposed. Exit is a protocol, not a reflex: (1) quiescence — a full cycle with no material theory change,
-`## Open` drained, nothing left that needs figuring-out downstream;
-(2) skeptic round — its challenges go to the human verbatim, in a message
-that contains no ratification request ("pick the fork and RATIFY" in one
-breath is the observed anti-pattern: eval S1, 2026-06-12); (3) only after
-the human has dispositioned every challenge and every fork may ratification
-be requested, standalone, in a later message. The human ratifies — judgment,
+sides). Verification prefers exercised artifacts over prose critique —
+prototypes, derivation runs, executed checks; prose adversaries generate
+tacit knowledge faster than artifacts capture it (observed in this delta's
+own history when skeptic rounds replaced eval rounds). Exit is a protocol,
+not a reflex: (1) `## Open` drained — every item resolved into Theory or
+explicitly deferred, nothing left that needs figuring-out downstream;
+(2) the derivability check passes (see Conduction) — divergences and
+invented assumptions are theory gaps the agent self-corrects, looping until
+convergent; what surfaces to the human is only genuine forks; (3) only
+after the human has decided every fork may ratification be requested —
+never in the same breath as a fork question ("pick the fork and RATIFY" is
+the observed anti-pattern; see dddv2-evals). The human ratifies — judgment,
 not a button. Norm-shaped gate rules lose to completion pressure; only
 bright lines bind.
 
@@ -177,11 +181,10 @@ bright lines bind.
 write. The agent flips `state` across a human gate only in direct response
 to the human's message granting it; an agent-initiated crossing is forgery
 regardless of work quality — the verifier's evidence is grounds for the
-human's ACCEPT, never a substitute for it. Observed, both flavors, Opus 4.8
-evals 2026-06-12: "…and I'll ratify" (agent casting itself as ratifier, S1)
-and "ACCEPTed on verifier evidence" with the human absent (S4 — passive
-voice laundering an agent decision into a gate crossing, followed by
-irreversible close). In-repo, the flip is just a diff; binding it to an
+human's ACCEPT, never a substitute for it (both violation flavors were
+observed in evals — agents ratifying for the human and accepting on the
+verifier's behalf; the case law lives in dddv2-evals). In-repo, the flip is
+just a diff; binding it to an
 actual human message is the hooks followup's job — until then the rule
 binds behaviorally, which the v4 evals showed on Opus 4.8.
 
@@ -221,17 +224,21 @@ Opus S4, 2026-06-12).
 
 | State (authority) | Loads | Work | Boundary check (non-author) |
 |---|---|---|---|
-| aligning (shared; human gates exit) | design-it-twice, define-errors-away | the aligning cycle | skeptic, fresh context: refutes factual claims against the codebase, audits the ontology checklist, lists questions unanswerable from delta + references → human dispositions and RATIFIES |
-| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | module boundaries → convergent derivation → per task: implement to the inherited spec, test-first by conducted default (RED → GREEN → REFACTOR) | convergent derivation: two independent deriver contexts each derive, from the delta + References, the task list, the delta-level acceptance executables, and per-task check specs — an invented assumption is a theory gap outright; a third context judges divergence: material reopens theory, immaterial merges. The implementer inherits the merged result and never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process |
+| aligning (shared; human gates exit) | design-it-twice, define-errors-away | the aligning cycle | derivability: two fresh deriver contexts independently produce, from Theory + Acceptance + References, the task list, the delta-level acceptance executables, and per-task check specs. Any divergence or invented assumption is a theory gap — the agent self-corrects and reruns, surfacing only genuine forks to the human. On convergence the merged output becomes `## Tasks` and the acceptance executables; forks decided → human RATIFIES |
+| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | per task: implement to the inherited spec, test-first by conducted default (RED → GREEN → REFACTOR) | the implementer inherits the derived tasks and checks — it never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process. Exit: executor runs every task check and records results |
 | verifying (non-author lineage) | complexity-red-flags | run acceptance, attempt refutation, audit the diff | human ACCEPTs on the verifier's evidence |
-| committing (agent) | comments-as-design | harvest via carriers; disposition followups | cold reader states what must remain true and why, from durable artifacts alone; a judge compares against frozen Theory |
+| committing (agent) | comments-as-design | harvest via carriers; disposition followups | cold reader states what must remain true and why, from durable artifacts alone; its reconstruction is laid beside the frozen Theory for the human at close — the human is the least-correlated judge available and is already present |
 
 **Minimality.** The skill ships the invariant spine only: states-as-authority,
 frozen measures + integrity rule, non-author checks, layered backflow,
 conduction loads, discovery-aborts, holdable ratification surface, declared
 discretion.
 Any further rule must earn its place by a failed eval scenario — missing
-rules are observable, redundant ones are not.
+rules are observable, redundant ones are not. The same discipline governs
+design dialogue: a proposed mechanism names the observed failure it
+answers; speculative mechanism is rejected by default (this delta's
+history is the case study — every unforced mechanism the agent proposed,
+the human later deleted).
 
 **Skill form.** The skill follows the house anatomy (see References):
 frontmatter `name` + `description` (what + when, defaultness explicit), then
@@ -280,7 +287,9 @@ the why in the delta's content at each commit. Reductions are declared per
 check; no named tiers.
 
 **Theory ontology — capture-by-audit.** Theory stays prose; mandatory forms
-get filled to look complete. The skeptic audits against: goal · domain
+get filled to look complete. Completeness is checked by derivation — gaps
+surface as the derivers' invented assumptions and divergences — and this
+checklist guides the author's consolidation: goal · domain
 entities (class diagram when the domain model changes) · approach with
 rejected alternatives · structure sketch · norms deviations · constraints ·
 invariants · assumptions (each assumption with its sensitivity) · non-goals
@@ -351,10 +360,7 @@ with the delta — deltas are not archives.
       — check: convergent derivation passes on this delta; the human states
       their predicted task list in a message *before* the derived list is
       shown (timing relative to RATIFY is irrelevant — the prediction tests
-      theory-determinism, not the gate), and the two materially match. The
-      ratification-surface *experience* (holdable in one sitting) cannot be
-      evidenced here (bootstrap oversize) — it is validated on the first
-      protocol-governed delta, per Followups.
+      theory-determinism, not the gate), and the two materially match.
 - [ ] **Decorrelated contexts** — every boundary check runs in a non-author
       context, and generation fans out to independent contexts where stakes
       warrant (design divergence; convergent derivation of tasks and
@@ -362,9 +368,10 @@ with the delta — deltas are not archives.
       end-to-end; every boundary check's findings appear as delta content
       with their origin stated, and at least one spawned check is
       cross-audited against harness transcripts.
-- [ ] **Convergence before gate** — ratification is proposed only after
-      quiescence + dispositioned skeptic round, standalone. — check: scenario
-      run of an aligning loop; agent must keep cycling, not propose the gate.
+- [ ] **Convergence before gate** — ratification is requested only after
+      `## Open` is drained, derivability has converged, and every fork is
+      decided — never bundled with a fork question. — check: scenario run of
+      an aligning loop; the agent must keep cycling, not propose the gate.
 - [ ] **Atomic close** — committing is blocked until the cold-reader check
       passes and followups are dispositioned. — check: close a real delta.
 - [ ] **Proportional ceremony** — trivial asks never enter the protocol;
@@ -416,14 +423,8 @@ with the delta — deltas are not archives.
 - **`## Open` / drained** — the live list of unresolved questions and forks;
   drained = every item resolved into Theory or explicitly deferred. A
   precondition for any ratification request.
-- **quiescence** — a full review cycle producing no material Theory change;
-  the signal that aligning has converged.
 - **consolidation** — folding a cycle's findings into the delta text and
   committing it.
-- **skeptic** — a fresh subagent that attacks the delta before ratification:
-  refutes factual claims against the codebase, audits content completeness,
-  lists what it couldn't answer. Output goes to the human as challenges,
-  never as approval.
 - **human gates (RATIFY / ACCEPT)** — the two transitions only the human's
   word can cross: RATIFY approves theory + measure (aligning → executing);
   ACCEPT approves the verified result (verifying → committing). The agent
@@ -448,13 +449,14 @@ with the delta — deltas are not archives.
   the implementation: the conducted default that keeps history honest. No
   longer the verification backbone — that is ATDD's job, the
   deriver-authored acceptance executables.
-- **convergent derivation** — at executing entry, two independent deriver subagents
-  each derive the task list, the delta-level acceptance
-  executables, and per-task check specs from the delta + References;
-  divergence between them is evidence the theory under-determines the work.
-  The implementer inherits the merged result — it never authors the
-  criteria it is graded by; its per-task tests are transcriptions of the
-  inherited specs.
+- **convergent derivation (the derivability check)** — at aligning's exit,
+  two independent deriver subagents each derive the task list, the
+  delta-level acceptance executables, and per-task check specs from
+  Theory + Acceptance + References. Any divergence or invented assumption
+  is a theory gap: the agent self-corrects and reruns; only genuine forks
+  go to the human. The converged output becomes `## Tasks` and the
+  executables; the implementer inherits it and never authors the criteria
+  it is graded by.
 - **non-author / decorrelation** — no artifact is checked by its maker;
   reviewers are fresh subagents briefed with the delta + its References,
   so they can't inherit the author's blind spots.
@@ -494,7 +496,7 @@ with the delta — deltas are not archives.
 
 ## Tasks
 
-_(derived at executing entry via convergent derivation)_
+_(derived at aligning exit via convergent derivation)_
 
 ## Followups
 
@@ -512,7 +514,3 @@ _(derived at executing entry via convergent derivation)_
   task warrants" sentence — the conductor line is the only *mandatory*
   loading rule; exact wording decided then. (Edited in dotfiles, the source
   of the home mirror.)
-- The first protocol-governed delta validates the ratification-surface
-  experience — holdable in one sitting, concise without sacrificing
-  expressiveness (this bootstrap delta is oversize and cannot evidence it);
-  failure there reopens this design.

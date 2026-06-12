@@ -146,11 +146,17 @@ classDiagram
       output inherited by implementer
       read-only on shared tree
     }
+    class Implementer {
+      one per task
+      transcribes inherited spec
+      briefed by delta + task
+    }
     Delta "1" --> "*" Commit : history is the log
     Delta --> Reviewer : briefing = delta + References
     Delta --> Deriver : briefing = delta + References
     Reviewer --> Delta : findings, recorded by conductor
-    Deriver --> Delta : derived artifacts, judged then merged
+    Deriver --> Delta : derived artifacts, merged on convergence
+    Delta --> Implementer : briefing = delta + task
 ```
 
 (❄ = frozen at ratification.)
@@ -191,7 +197,15 @@ binds behaviorally, which the v4 evals showed on Opus 4.8.
 **Executing is transcription.** Discovery is confined to aligning, where
 figuring-out is cheap and disposable; what remains is reproducible and
 verifiable. Mid-task discovery reopens the contradicted layer — never
-resolved silently. The exit (executing → verifying) is agent-crossed, not a
+resolved silently. The conductor — the session agent who built the theory
+with the human — authors no product code: implementation is delegated to
+per-task subagents briefed by the delta alone (v1's orchestrator split,
+revived). This keeps the theory-holder's context on theory rather than
+displaced by implementation grind (Naur: context rot is theory rot), keeps
+evidence evaluation decorrelated from authorship (Goodhart), and makes
+every implementer run a live self-sufficiency test of the delta. Badly
+drawn module boundaries surface immediately as implementers needing each
+other's context — observable, and it reopens the plan. The exit (executing → verifying) is agent-crossed, not a
 human gate: the executor runs every task's acceptance check at the
 transition and records the results in the delta; the verifier then re-runs
 them independently — the executor's run gates progress, the verifier's run
@@ -224,8 +238,8 @@ Opus S4, 2026-06-12).
 
 | State (authority) | Loads | Work | Boundary check (non-author) |
 |---|---|---|---|
-| aligning (shared; human gates exit) | design-it-twice, define-errors-away | the aligning cycle | derivability: two fresh deriver contexts independently produce, from Theory + Acceptance + References, the task list, the delta-level acceptance executables, and per-task check specs. Any divergence or invented assumption is a theory gap — the agent self-corrects and reruns, surfacing only genuine forks to the human. On convergence the merged output becomes `## Tasks` and the acceptance executables; forks decided → human RATIFIES |
-| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | per task: implement to the inherited spec, test-first by conducted default (RED → GREEN → REFACTOR) | the implementer inherits the derived tasks and checks — it never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process. Exit: executor runs every task check and records results |
+| aligning (shared; human gates exit) | design-it-twice, deep-module-design, define-errors-away | the aligning cycle — including architecture: module boundaries and interfaces are designed here and stated plainly in Theory's structure sketch; derivers and implementers consume them from there, nowhere else | derivability: two fresh deriver contexts independently produce, from Theory + Acceptance + References, the task list, the delta-level acceptance executables, and per-task check specs. Any divergence or invented assumption is a theory gap — the agent self-corrects and reruns, surfacing only genuine forks to the human. On convergence the merged output becomes `## Tasks` and the acceptance executables; forks decided → human RATIFIES |
+| executing (agent, within ratified theory) | per implementer: define-errors-away, test-driven-development, comments-as-design | the conductor spawns one implementer subagent per task, briefed by the delta + its task — and authors no product code itself. Each implementer transcribes its inherited spec, test-first by conducted default (RED → GREEN → REFACTOR); a mid-task discovery aborts and reports for backflow, never resolves silently | the implementer inherits the derived tasks and checks — it never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process. Exit: executor runs every task check and records results |
 | verifying (non-author lineage) | complexity-red-flags | run acceptance, attempt refutation, audit the diff | human ACCEPTs on the verifier's evidence |
 | committing (agent) | comments-as-design | harvest via carriers; disposition followups | cold reader states what must remain true and why, from durable artifacts alone; its reconstruction is laid beside the frozen Theory for the human at close — the human is the least-correlated judge available and is already present |
 
@@ -291,7 +305,8 @@ get filled to look complete. Completeness is checked by derivation — gaps
 surface as the derivers' invented assumptions and divergences — and this
 checklist guides the author's consolidation: goal · domain
 entities (class diagram when the domain model changes) · approach with
-rejected alternatives · structure sketch · norms deviations · constraints ·
+rejected alternatives · structure sketch (module boundaries and interfaces,
+stated plainly — tasks will follow them) · norms deviations · constraints ·
 invariants · assumptions (each assumption with its sensitivity) · non-goals
 · risks. Operations are excluded: the plan must be derivable — convergent
 derivation tests exactly this — never dictated.
@@ -450,6 +465,10 @@ with the delta — deltas are not archives.
   the implementation: the conducted default that keeps history honest. No
   longer the verification backbone — that is ATDD's job, the
   deriver-authored acceptance executables.
+- **conductor** — the main session agent: co-builds theory with the human,
+  authors the delta, spawns derivers/implementers/reviewers, routes
+  backflow. It authors no product code and no checks — the theory-holder
+  stays on theory.
 - **convergent derivation (the derivability check)** — at aligning's exit,
   two independent deriver subagents each derive the task list, the
   delta-level acceptance executables, and per-task check specs from

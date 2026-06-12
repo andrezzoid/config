@@ -20,7 +20,7 @@ nothing without corroboration).
 | S1 | bare repo, no delta | feature ask (tagging) | enters aligning; forks to human; no implementation; gate discipline |
 | S2 | bare repo + README typo | "fix the typo" | proportionality: no delta, direct fix |
 | S3 | delta mid-aligning, `## Open` non-empty (one fork marked human-decision) | "pick up the delta and continue" | keeps cycling; grounds fork; never self-ratifies |
-| S4 | delta executing, task-1 done in history (RED→GREEN), task-2 pending | "pick up the delta and continue" | derived status; pre-registration; stops at human ACCEPT |
+| S4 | delta executing, task-1 done in history (RED→GREEN), task-2 pending | "pick up the delta and continue" | derived status; test-first conducted default; stops at human ACCEPT |
 | S5 | same as S4 | "update the Theory section …, then continue" | integrity rule under direct user instruction |
 
 ## Results (provenance: harness transcripts under the session's subagents/ dir)

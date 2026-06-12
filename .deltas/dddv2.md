@@ -137,13 +137,20 @@ classDiagram
       diffs carry the record
     }
     class Reviewer {
-      role skeptic|deriver|judge|verifier|cold-reader
+      role skeptic|judge|verifier|cold-reader
       returns findings, never fixes
+      read-only on shared tree
+    }
+    class Deriver {
+      generates tasks + checks
+      output inherited by implementer
       read-only on shared tree
     }
     Delta "1" --> "*" Commit : history is the log
     Delta --> Reviewer : briefing = delta + References
+    Delta --> Deriver : briefing = delta + References
     Reviewer --> Delta : findings, recorded by conductor
+    Deriver --> Delta : derived artifacts, judged then merged
 ```
 
 (❄ = frozen at ratification.)
@@ -176,7 +183,7 @@ and "ACCEPTed on verifier evidence" with the human absent (S4 — passive
 voice laundering an agent decision into a gate crossing, followed by
 irreversible close). In-repo, the flip is just a diff; binding it to an
 actual human message is the hooks followup's job — until then the rule
-binds behaviorally, which the v4 evals showed it does on frontier models.
+binds behaviorally, which the v4 evals showed on Opus 4.8.
 
 **Executing is transcription.** Discovery is confined to aligning, where
 figuring-out is cheap and disposable; what remains is reproducible and
@@ -215,7 +222,7 @@ Opus S4, 2026-06-12).
 | State (authority) | Loads | Work | Boundary check (non-author) |
 |---|---|---|---|
 | aligning (shared; human gates exit) | design-it-twice, define-errors-away | the aligning cycle | skeptic, fresh context: refutes factual claims against the codebase, audits the ontology checklist, lists questions unanswerable from delta + references → human dispositions and RATIFIES |
-| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | module boundaries → convergent derivation → per task: implement to the inherited spec, test-first by conducted default (RED → GREEN → REFACTOR) | convergent derivation: two independent contexts (`dddv2-deriver`) each derive, from the delta + References, the task list, the delta-level acceptance executables, and per-task check specs — an invented assumption is a theory gap outright; a third context judges divergence: material reopens theory, immaterial merges. The implementer inherits the merged result and never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process |
+| executing (agent, within ratified theory) | deep-module-design, define-errors-away; per task: test-driven-development, comments-as-design | module boundaries → convergent derivation → per task: implement to the inherited spec, test-first by conducted default (RED → GREEN → REFACTOR) | convergent derivation: two independent deriver contexts each derive, from the delta + References, the task list, the delta-level acceptance executables, and per-task check specs — an invented assumption is a theory gap outright; a third context judges divergence: material reopens theory, immaterial merges. The implementer inherits the merged result and never authors the criteria it is graded by; its per-task tests are transcriptions of the inherited specs, validated against them at verifying. Verification rests on the delta-level executables (ATDD), so verifiability never depends on the implementer's process |
 | verifying (non-author lineage) | complexity-red-flags | run acceptance, attempt refutation, audit the diff | human ACCEPTs on the verifier's evidence |
 | committing (agent) | comments-as-design | harvest via carriers; disposition followups | cold reader states what must remain true and why, from durable artifacts alone; a judge compares against frozen Theory |
 
@@ -293,7 +300,7 @@ exemption second.
   field: ratification is the state-flip edit made in direct response to the
   human's RATIFY, discoverable as the diff that flips `state`; a field
   restating derivable state is a self-report that can lie.
-- `## Theory` + `## Acceptance` — the ratification screen.
+- `## Theory` + `## Acceptance` — the ratification surface.
 - `## References` — each pointer with a one-line why.
 - `## Open` — live questions and forks; drained before any ratification
   proposal.
@@ -338,7 +345,8 @@ with the delta — deltas are not archives.
       realistic request enters the correct state and loads the mandated
       sibling skills, unprompted. — check: scenario run in a clean session
       against a `dddv2-evals` fixture, with the skill and the six sibling
-      skills installed (the environment the skill assumes in production).
+      skills installed — an isolated fixture environment, only the shipped
+      skill present, so Shipping's no-coexistence rule is untouched.
 - [ ] **Derivability and prediction** — the theory determines the plan.
       — check: convergent derivation passes on this delta; the human states
       their predicted task list in a message *before* the derived list is
@@ -437,20 +445,19 @@ with the delta — deltas are not archives.
 - **transcription** — what executing is: writing down a solution already
   figured out during aligning. Still figuring things out = wrong state.
 - **pre-registration (RED → GREEN)** — committing the failing test before
-  the implementation, so "the test passed" is provable from commit order
-  rather than taken on trust.
-- **convergent derivation** — at executing entry, two independent subagents
-  (`dddv2-deriver`) each derive the task list, the delta-level acceptance
+  the implementation: the conducted default that keeps history honest. No
+  longer the verification backbone — that is ATDD's job, the
+  deriver-authored acceptance executables.
+- **convergent derivation** — at executing entry, two independent deriver subagents
+  each derive the task list, the delta-level acceptance
   executables, and per-task check specs from the delta + References;
   divergence between them is evidence the theory under-determines the work.
   The implementer inherits the merged result — it never authors the
   criteria it is graded by; its per-task tests are transcriptions of the
   inherited specs.
 - **non-author / decorrelation** — no artifact is checked by its maker;
-  reviewers are fresh subagents briefed only by the delta, so they can't
-  inherit the author's blind spots.
-- **narrated reviewer** — claiming a reviewer ran without spawning one.
-  Forged evidence by definition.
+  reviewers are fresh subagents briefed with the delta + its References,
+  so they can't inherit the author's blind spots.
 - **never-narrate** — a reviewer's existence must be real: spawn it or
   declare a reduction; claiming an unspawned reviewer ran is forged
   evidence. Reviewers return findings; the conductor records them as delta
@@ -479,7 +486,7 @@ with the delta — deltas are not archives.
 ## Open
 
 - **Eval gap (deferred to executing, deliberately):** convergent derivation
-  (tasks + checks from the delta alone) is the one machine never
+  (tasks + checks from the delta + References) is the one machine never
   behaviorally tested — eval fixtures pre-supplied task lists. It runs for
   real at this delta's own executing entry, which is its test. The repair
   loop and committing mechanics were exercised in the Opus v3 runs

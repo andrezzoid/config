@@ -451,6 +451,51 @@ with the delta — deltas are not archives.
 
 ## Open
 
+- **Skeptic re-pass challenges (15), awaiting disposition.** Spawn record:
+  role dddv2-skeptic, agent a3f3270d923e2c3e8, 2026-06-12; full text relayed
+  in conversation. Terse index:
+  1. Token-lean still broken: sibling-exclusion premise false at baseline
+     (v1 loads no siblings — exclusion subsidizes v2); state↔phase mapping
+     undefined (aligning→2 refs? committing→0); baseline SHA unpinned.
+  2. Development-window skill race: dddv2/SKILL.md goes live in the
+     registered skills dir the moment it's written, racing v1's `.deltas/`
+     trigger; coexistence rule covers only post-close.
+  3. Convergent derivation self-contradicts: implementer writes the per-task
+     executable test, so "never authors the measure it is graded by" is
+     false for the executable; spec/executable asymmetry unexplained;
+     glossary drifts from body.
+  4. "Sole exception" false: log-line messages and task-id references are
+     also commit-message conventions; entity diagram overclaims (every
+     commit = log line).
+  5. "Bright lines held on the same models" overstates: v4 re-runs were
+     Opus-only; Fable's norm-failure never re-tested.
+  6. RATIFY-commit anchor has no normative format or discovery procedure;
+     token not reserved.
+  7. Read-only checkers vs role-authored commits: who writes, from where —
+     contradictory as stated.
+  8. Terminology fork: derivation vs decomposition (one machine, two names),
+     plus undefined role "decomposer" in the diagram.
+  9. CLAUDE.md conductor line silently removes sibling loading for all
+     non-delta work (trivial asks never enter the protocol).
+  10. Goal paragraph: "one artifact" then three deliverables; "each already
+      a Followup" false (two of six sibling refactors are).
+  11. Ontology checklist demands sensitivities on all constraints/invariants;
+      only the three risk bullets carry them — checklist over-demands or
+      pass under-delivered.
+  12. C12's third repair landed in Theory prose, not in any acceptance
+      check; "Decorrelated contexts" check still non-procedural.
+  13. One-screen ratify evidenced only on this delta, which is exempt from
+      the one-screen bound — circular; prediction timing vs RATIFY
+      unspecified.
+  14. "Do not run below frontier tier" unenforceable: no detection, no tier
+      definition.
+  15. Shipping dictates operations inside frozen Theory while the ontology
+      excludes Operations.
+  Plus: eval results remain unverifiable from the repo (transcripts outside
+  it); 10 unanswerable implementer questions (deriver access scope, role
+  strings, checker write mechanics, gate-commit discovery, token-lean
+  mapping, harness home after close, conductor wording, tier membership,
+  description suppression pre-ship, prediction timing).
 - **Eval gap (deferred to executing, deliberately):** convergent derivation
   (tasks + checks from the delta alone) is the one machine never
   behaviorally tested — eval fixtures pre-supplied task lists. It runs for

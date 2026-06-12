@@ -53,8 +53,8 @@ this delta; all depend on it.
   on sub-frontier models authority collapses wholesale. Capability record,
   for the operator who picks the model (the skill cannot detect or enforce
   tier): runs well on Opus 4.8 and Fable 5; Sonnet 4.6 collapsed
-  (self-ratification, self-acceptance, narrated checkers).
-- *Same-weights decorrelation* — checkers are independent contexts but
+  (self-ratification, self-acceptance, narrated reviewers).
+- *Same-weights decorrelation* — reviewers are independent contexts but
   share model weights with authors; a model-level blind spot is invisible
   to every check at once. Sensitivity: unbounded by construction. The
   lever is cross-model checking (used for eval judging), kept as a lever,
@@ -78,10 +78,11 @@ specialist tool: enter whenever the change needs a theory — it spans modules,
 is open-ended, or has multiple plausible approaches. Skip only when the
 change is one sentence with one obvious implementation. The skill's
 frontmatter description must carry this defaultness explicitly (it is the
-only pre-load routing surface). Size bound:
-Theory + Acceptance fit one screen; bigger ambitions become sequential
-deltas — no hierarchies, no epics. A cold session resumes by frontmatter
-`state`.
+only pre-load routing surface). Size bound: the ratification surface stays
+holdable in one sitting — concise without sacrificing expressiveness; a
+screen is the aim, not a wall. Ambitions whose theory can't stay holdable
+become sequential deltas — no hierarchies, no epics. A cold session resumes
+by frontmatter `state`.
 
 **Shipping (decided).** Developed at `dotfiles/.agents/skills/dddv2/` as
 `SKILL.draft.md` — registries only see `SKILL.md`, so the draft cannot race
@@ -93,9 +94,9 @@ requires name = directory; versions live in git, not names). Coexistence is
 forbidden at every point in time: before close the draft is unregistered,
 after close v1 no longer exists. CLAUDE.md registration is a Followup, not
 a close condition.
-**Bootstrap exemption (declared):** this delta designs the protocol itself,
-so its Theory doubles as the product specification and exceeds the
-one-screen bound; that bound governs deltas run *under* the protocol.
+**Bootstrap note (declared):** this delta designs the protocol itself, so
+its Theory doubles as the product specification and far exceeds the usual
+surface; the sizing guidance governs deltas run *under* the protocol.
 
 **Architecture.** States model authority, not activity:
 
@@ -135,14 +136,14 @@ classDiagram
       natural message
       diffs carry the record
     }
-    class Checker {
+    class Reviewer {
       role skeptic|deriver|judge|verifier|cold-reader
       returns findings, never fixes
       read-only on shared tree
     }
     Delta "1" --> "*" Commit : history is the log
-    Delta --> Checker : briefing = delta + References
-    Checker --> Delta : findings, recorded by conductor
+    Delta --> Reviewer : briefing = delta + References
+    Reviewer --> Delta : findings, recorded by conductor
 ```
 
 (❄ = frozen at ratification.)
@@ -192,17 +193,21 @@ into spontaneous memory), and the boundary check — never run by the
 artifact's author. Non-author means a context that produced none of the
 artifacts under check; a fresh subagent briefed with the delta + its
 References (the standard briefing for every spawned context) qualifies, its
-briefing carrying the role's load line from this table. Checkers check and
-never fix: a checker that fixes becomes an author, and its work would need
+briefing carrying the role's load line from this table. Reviewers check and
+never fix: a reviewer that fixes becomes an author, and its work would need
 a fresh non-author check — findings reopen the owning layer, and the owning
-state fixes by whatever hands it delegates. Checkers return their findings;
+state fixes by whatever hands it delegates. A reviewer's finding list is
+evidence, never a measure: repairs address the reopened layer, and
+re-verification after a repair is a full fresh pass — never a confirmation
+that listed items were fixed, because fixing-the-list is Goodhart's
+shortcut past fixing-the-problem. Reviewers return their findings;
 the conductor records them as delta content (challenges into `## Open`,
 verifier evidence into the delta before any ACCEPT request) — the record is
-the file and its diffs, like every other declaration. Narrating a checker
+the file and its diffs, like every other declaration. Narrating a reviewer
 that was never spawned is forging evidence — if spawning is unavailable,
 declare a reduction (the legitimate path) or stop and say so. Harness
 transcripts are the audit channel; mechanical enforcement is the hooks
-followup. Checkers are read-only on the shared working tree: any checkout
+followup. Reviewers are read-only on the shared working tree: any checkout
 happens in a `git worktree` or exported tree (observed incident: a
 verifier's `git checkout` left the shared checkout on a detached HEAD,
 Opus S4, 2026-06-12).
@@ -216,7 +221,8 @@ Opus S4, 2026-06-12).
 
 **Minimality.** The skill ships the invariant spine only: states-as-authority,
 frozen measures + integrity rule, non-author checks, layered backflow,
-conduction loads, discovery-aborts, one-screen sizing, declared discretion.
+conduction loads, discovery-aborts, holdable ratification surface, declared
+discretion.
 Any further rule must earn its place by a failed eval scenario — missing
 rules are observable, redundant ones are not.
 
@@ -338,8 +344,8 @@ with the delta — deltas are not archives.
       their predicted task list in a message *before* the derived list is
       shown (timing relative to RATIFY is irrelevant — the prediction tests
       theory-determinism, not the gate), and the two materially match. The
-      one-screen-ratify *experience* cannot be evidenced here (this delta is
-      exempt from the size bound) — it is validated on the first
+      ratification-surface *experience* (holdable in one sitting) cannot be
+      evidenced here (bootstrap oversize) — it is validated on the first
       protocol-governed delta, per Followups.
 - [ ] **Decorrelated contexts** — every boundary check runs in a non-author
       context, and generation fans out to independent contexts where stakes
@@ -416,7 +422,7 @@ with the delta — deltas are not archives.
   crosses only in direct response to the human's granting message.
 - **state / authority** — the frontmatter field naming who holds decision
   power: aligning (shared), executing (agent, inside ratified theory),
-  verifying (non-author checker), committing (agent, closing out).
+  verifying (non-author reviewer), committing (agent, closing out).
 - **bright line** — a rule phrased so compliance is mechanically checkable
   ("this message contains no ratification request"), versus a **norm**
   ("don't rush the gate"). Evals showed norms fail under completion
@@ -441,13 +447,13 @@ with the delta — deltas are not archives.
   criteria it is graded by; its per-task tests are transcriptions of the
   inherited specs.
 - **non-author / decorrelation** — no artifact is checked by its maker;
-  checkers are fresh subagents briefed only by the delta, so they can't
+  reviewers are fresh subagents briefed only by the delta, so they can't
   inherit the author's blind spots.
-- **narrated checker** — claiming a checker ran without spawning one.
+- **narrated reviewer** — claiming a reviewer ran without spawning one.
   Forged evidence by definition.
-- **never-narrate** — a checker's existence must be real: spawn it or
-  declare a reduction; claiming an unspawned checker ran is forged
-  evidence. Checkers return findings; the conductor records them as delta
+- **never-narrate** — a reviewer's existence must be real: spawn it or
+  declare a reduction; claiming an unspawned reviewer ran is forged
+  evidence. Reviewers return findings; the conductor records them as delta
   content; harness transcripts are the audit channel.
 - **cold reader** — the close-out check: a fresh subagent reading only the
   durable artifacts (code, comments, tests, docs) must reconstruct what
@@ -499,6 +505,7 @@ _(derived at executing entry via convergent derivation)_
   task warrants" sentence — the conductor line is the only *mandatory*
   loading rule; exact wording decided then. (Edited in dotfiles, the source
   of the home mirror.)
-- The first protocol-governed delta validates the one-screen-ratify
-  experience (this bootstrap delta is exempt from the size bound and cannot
-  evidence it); failure there reopens this design.
+- The first protocol-governed delta validates the ratification-surface
+  experience — holdable in one sitting, concise without sacrificing
+  expressiveness (this bootstrap delta is oversize and cannot evidence it);
+  failure there reopens this design.

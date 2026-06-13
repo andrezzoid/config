@@ -1,5 +1,5 @@
 ---
-state: executing
+state: aligning
 ---
 
 # Delta: dddv2 — rebuild DDD as an alignment-preserving transaction
@@ -523,7 +523,26 @@ with the delta — deltas are not archives.
 
 ## Open
 
-_(drained — the derivability check, formerly the one untested machine, was
+- **Backflow from `token-measure` (reopens Acceptance — André's fork).** The
+  frozen Token-lean criterion is infeasible for aligning, measured honestly:
+  dddv2's always-loaded `SKILL.draft.md` is 2183 tokens — 89% of aligning's
+  budget (half of v1's *smallest* state path, 2457) — before any reference.
+  The anatomy standard mandates six always-loaded sections; the spine fills
+  the rest; the floor can't drop below ~1860 without cutting spine. Three
+  states pass (executing +843, verifying +20, committing +5). The measure
+  and the anatomy/spine are in genuine conflict; the criterion as ratified
+  cannot pass. Options for the measure (André decides, then re-ratify):
+  (a) qualitative — "every state loads materially less than its v1 analog
+  and no state loads the whole protocol" (drops the brittle number the
+  skeptic flagged twice; verified at verifying); (b) dddv2 total corpus ≤
+  v1 total corpus (simple "leaner overall", passes); (c) exclude the
+  always-loaded core, measure on-demand reference load ≤ half v1's phase
+  ref (measures the progressive-disclosure benefit specifically); (d) half
+  of v1's *largest* path uniformly (keeps a "half" guarantee; aligning
+  ~150 tokens over, needs trimming). The script stays as evidence under
+  any choice.
+
+_(previously drained — the derivability check, formerly the one untested machine, was
 exercised on this delta itself: two independent runs converged on the same
 task graph; André's prediction matched at his granularity; seven shared
 invented assumptions were closed in Theory and a confirming re-run

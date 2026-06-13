@@ -92,8 +92,12 @@ dictated): exactly one delta-driven skill exists, at
 renamed live, the directory carrying the `ddd` name (the anatomy standard
 requires name = directory; versions live in git, not names). Coexistence is
 forbidden at every point in time: before close the draft is unregistered,
-after close v1 no longer exists. CLAUDE.md registration is a Followup, not
-a close condition.
+after close v1 no longer exists. The cutover is the committing-phase close
+action (delete v1, rename the draft live, name = `ddd`) — not an executing
+task; its check is the close gate (exactly one delta-driven skill exists,
+named `ddd`), not a task acceptance check. CLAUDE.md registration is a
+Followup, not a close condition. This repo closes direct to the default
+branch; no PR.
 **Bootstrap note (declared):** this delta designs the protocol itself, so
 its Theory doubles as the product specification and far exceeds the usual
 surface; the sizing guidance governs deltas run *under* the protocol.
@@ -257,7 +261,12 @@ the human later deleted).
 **Skill form.** The skill follows the house anatomy (see References):
 frontmatter `name` + `description` (what + when, defaultness explicit), then
 Overview, When to Use, Core Process, Common Rationalizations, Red Flags,
-Verification. Authoring follows the skill-creator process. Minimality still
+Verification. Authoring follows the skill-creator process. Structure: a
+single `SKILL.md` by default — for a single file the text loaded in every
+state is the whole file, so Token-lean reduces to "whole SKILL.md ≤ half of
+v1's *smallest* state path"; progressive-disclosure reference files are a
+permitted fallback only if that budget can't be met, splitting load per
+state, single-source discipline preserved (each rule defined once). Minimality still
 governs content: Rationalizations and Red Flags carry only failure modes
 actually observed in sessions or evals, each traceable to its incident —
 never speculative vices. The body is teaching prose, not telegraphic
@@ -285,8 +294,9 @@ verified against its source before shipping, never reproduced from memory:
   "Complexity is anything related to the structure of a software system that
   makes it hard to understand and modify the system." · "define errors out
   of existence."
-- Naur, *Programming as Theory Building*: exact wording must be pulled from
-  the paper during executing — the load-bearing claims to anchor: the
+- Naur, *Programming as Theory Building* (1985; repr. in *Computing: A
+  Human Activity*, 1992 — pull exact wording from the paper text during
+  executing, not memory) — the load-bearing claims to anchor: the
   program is the theory the team holds; the text alone cannot carry it; a
   program dies when the team holding its theory dissolves.
 
@@ -370,8 +380,10 @@ with the delta — deltas are not archives.
       realistic request enters the correct state and loads the mandated
       sibling skills, unprompted. — check: scenario run in a clean session
       against a `dddv2-evals` fixture, with the skill and the six sibling
-      skills installed — an isolated fixture environment, only the shipped
-      skill present, so Shipping's no-coexistence rule is untouched.
+      skills installed — an isolated fixture environment (a temp dir with its
+      own skills directory holding only the shipped skill + the six
+      siblings, a fresh session opened with that cwd), so Shipping's
+      no-coexistence rule is untouched.
 - [ ] **Derivability and prediction** — the theory determines the plan.
       — check: convergent derivation passes on this delta; the human states
       their predicted task list in a message *before* the derived list is
@@ -391,8 +403,12 @@ with the delta — deltas are not archives.
 - [ ] **Atomic close** — committing is blocked until the cold-reader check
       passes and followups are dispositioned. — check: close a real delta.
 - [ ] **Proportional ceremony** — trivial asks never enter the protocol;
-      small deltas run declared-reduced checks. — check: scenario runs of a
-      trivial ask and a small delta.
+      small deltas run declared-reduced checks. — check: the trivial-ask
+      scenario (S2) and a small-delta-reduction scenario (authored during
+      graduate-evals — the current harness lacks it; pass = the agent
+      enters the protocol and declares each reduction as delta content).
+      All graduated scenarios form the skill's permanent suite; the
+      criteria-named subset is the must-pass set for this delta's close.
 - [ ] **Single source of truth** — every state, rule, and field defined in
       exactly one file. — check: cross-read all dddv2 files for re-encoded
       rules.

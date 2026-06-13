@@ -523,12 +523,12 @@ with the delta — deltas are not archives.
 
 ## Open
 
-- **Eval gap (deferred to executing, deliberately):** convergent derivation
-  (tasks + checks from the delta + References) is the one machine never
-  behaviorally tested — eval fixtures pre-supplied task lists. It runs for
-  real at this delta's own executing entry, which is its test. The repair
-  loop and committing mechanics were exercised in the Opus v3 runs
-  (mechanism-tested; committing's authority gate verified separately in v4).
+_(drained — the derivability check, formerly the one untested machine, was
+exercised on this delta itself: two independent runs converged on the same
+task graph; André's prediction matched at his granularity; seven shared
+invented assumptions were closed in Theory and a confirming re-run
+re-derived clean. No genuine forks surfaced. Token-lean's likely multi-file
+consequence raised to André pre-ratification.)_
 
 ## Tasks
 

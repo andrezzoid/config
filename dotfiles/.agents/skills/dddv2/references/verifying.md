@@ -10,7 +10,7 @@ Three things, in a non-author lineage:
 - **Attempt refutation** — actively try to break the result, not merely confirm it passes.
 - **Audit the diff** — read what actually landed against what the theory said would.
 
-The verifier is **read-only on the shared working tree**, and **returns findings rather than fixing** (both rules, SKILL.draft.md §2): any checkout happens in a `git worktree` or exported tree, and the conductor records the returned findings as delta content.
+The verifier is **read-only on the shared working tree** and **returns findings rather than fixing** (both rules, SKILL.draft.md §2): checkout goes to a `git worktree` or exported tree; the conductor records returned findings as delta content.
 
 ## Findings route by backflow
 

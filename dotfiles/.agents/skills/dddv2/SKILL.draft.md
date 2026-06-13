@@ -9,7 +9,7 @@ description: The default protocol for any non-trivial change — runs it as an a
 
 A **delta** is a human-aligned unit of change run by an agent: an *alignment-preserving transaction on a shared theory*. It opens only when human and agent share a theory of the change, aborts back to alignment the moment reality contradicts that theory, and commits atomically — code, durable context, and the human's understanding advance together, or the delta isn't done.
 
-The alignment bar is Naur's: the real program is the theory its team holds, which text alone cannot carry — *"an essential part of any program, the theory of it, is something that could not conceivably be expressed, but is inextricably bound to human beings"* (Naur, *Programming as Theory Building*). Aligned means the human could predict the plan and even write the code themselves. A program dies when its theory-holders dissolve, so a delta grows that shared theory, then harvests it into homes that outlive the delta.
+The alignment bar is Naur's: the real program is the theory its team holds, which text alone cannot carry — *"an essential part of any program, the theory of it, is something that could not conceivably be expressed, but is inextricably bound to human beings"* (Naur, *Programming as Theory Building*). Aligned means the human could predict the plan and even write the code. A program dies when its theory-holders dissolve, so a delta grows that shared theory, then harvests it into homes that outlive the delta.
 
 All state lives in one file per delta, `.deltas/<name>.md` — the sole inter-session memory and every subagent's briefing. Routing is **syntactic**: frontmatter `state` decides where you are, because "is this done?" can't be trusted to the doer. The **conductor** (the session agent who builds the theory with the human) authors the delta and spawns every other context; it authors **no product code and no checks**, so the theory-holder stays on theory (context rot is theory rot — Naur) and evidence stays decorrelated from authorship. States model **authority**, not activity:
 
@@ -35,12 +35,12 @@ The default for non-trivial work — enter whenever the change needs a theory; s
 
 ### 1. Route to the current state, and conduct it
 
-Find or create `.deltas/<name>.md` — one file per delta, sections in normative order: **Theory, Acceptance, References, Glossary (optional), Open, Tasks, Followups**. Two rules bind the routing surface; the rest of the file's shape (integrity, no-status, Theory checklist, acceptance convention, margin, the audience rule) is detailed in [delta-file.md](references/delta-file.md) and recalled by each state's reference where it bites:
+Find or create `.deltas/<name>.md` — one file per delta, sections in normative order: **Theory, Acceptance, References, Glossary (optional), Open, Tasks, Followups**. Two rules bind the routing surface; the rest of the file's shape is detailed in [delta-file.md](references/delta-file.md) and recalled by each state's reference where it bites:
 
 - **Frontmatter `state` is the only routing surface.** New delta starts `state: aligning`. There is no `ratified` field — ratification is the diff that flips `state` in direct response to the human's word; a field restating derivable state can lie.
 - **Log = git:** every consolidation and transition commits the delta file. The diffs are the record, the content at each commit the *why*, messages natural summaries.
 
-Then open the current `state`'s reference (below) and let it drive — it carries that state's procedure, boundary check, and exit. At each state entry, **load its skills explicitly with the Skill tool** — explicit loading is structural recall; spontaneous memory degrades silently:
+Then open the current `state`'s reference (below) and let it drive — it carries that state's procedure, boundary check, and exit. At each state entry, **load its skills explicitly with the Skill tool** — explicit loading is structural recall; memory degrades silently:
 
 | `state` (authority) | Loads (via Skill tool) | Reference |
 |---|---|---|

@@ -1,5 +1,5 @@
 ---
-state: aligning
+state: executing
 ---
 
 # Delta: dddv2 — rebuild DDD as an alignment-preserving transaction
@@ -532,7 +532,44 @@ consequence raised to André pre-ratification.)_
 
 ## Tasks
 
-_(derived at aligning exit via convergent derivation)_
+_(converged output of the derivability check — four blind derivations agreed
+on this graph; cutover is the committing close action, not a task.)_
+
+- **verify-quote-pool** — assemble the quote pool as verified verbatim text:
+  Conway (melconway.com), Strathern/Goodhart, Brooks NSB 1986 and MMM p.116
+  + anniversary amendment, the three Ousterhout lines, Naur (from the paper
+  text); record each with its source locator. needs: [].
+  check: a non-author context re-fetches each cited source and string-matches
+  every quote the skill uses; pass = all byte-match their source (Ousterhout
+  against the sibling files), none reproduced from memory.
+
+- **author-skill** — write the skill at `dotfiles/.agents/skills/dddv2/` as
+  `SKILL.draft.md` (+ progressive-disclosure reference files as token-lean
+  requires): house anatomy, frontmatter `name: ddd` + defaultness
+  description, the invariant spine only, teaching prose with every rule
+  carrying its why (quote-pool anchors where apt), Rationalizations/Red
+  Flags only from recorded incidents. needs: [verify-quote-pool].
+  check: structural audit by a non-author context — anatomy sections in
+  order; `name: ddd`, description ≤1024 chars carrying defaultness + skip
+  rule; every spine rule present with a rationale; every Rationalization/Red
+  Flag traceable to a dddv2-evals or logged incident; no rule defined twice.
+
+- **graduate-evals** — move the harness from `.deltas/dddv2-evals/` into the
+  skill's `evals/` as permanent acceptance checks, runner-framing retargeted
+  from inline prototype text to the installed shipped skill; author the
+  small-delta-reduction scenario the current harness lacks. needs:
+  [author-skill].
+  check: `bash evals/fixtures.sh <tmp>` exits 0 building every fixture as a
+  clean git repo; rubrics present for all scenarios incl. small-delta; one
+  smoke scenario runs runner + judge end-to-end to a verdict.
+
+- **token-measure** — commit a tiktoken-cl100k measurement script in `evals/`
+  comparing dddv2 per-state load to half of v1's same-state path at `ef6eb2a`
+  (aligning: SKILL+schema+explore; executing: +plan+apply; verifying and
+  committing: +verify); split the skill into progressive-disclosure files if
+  a single-file load exceeds budget. needs: [author-skill].
+  check: run the script at HEAD; exit 0 with every state's dddv2 load ≤ half
+  its v1 path.
 
 ## Followups
 

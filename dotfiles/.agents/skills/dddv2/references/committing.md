@@ -1,6 +1,6 @@
 # Committing — harvest the theory, then close
 
-**Authority: agent, closing out.** The result is ACCEPTed; committing moves durable knowledge out of the dying delta into homes that outlive it, then closes. Skill loaded at entry (via the Skill tool): **comments-as-design**.
+Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). The result is ACCEPTed; committing moves durable knowledge out of the dying delta into homes that outlive it, then closes.
 
 ## Harvest via carriers
 

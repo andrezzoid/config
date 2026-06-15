@@ -75,7 +75,7 @@ Each a real temptation observed in a session or eval (see `evals/`), not a hypot
 | "Work is solid, the human agrees — I'll send the forks and RATIFY in one message" / "I'll flip to executing." | The anti-pattern (S1, every tier): completion pressure beats norms, and RATIFY is a word only the human can write. Drain `## Open`, converge derivability, let the human decide every fork — *then* request ratification, standalone, later. |
 | "The verifier's evidence is clean — I'll ACCEPT on its behalf." | Evidence is grounds for the human's ACCEPT, never a substitute (Opus S4: self-ACCEPTed, irreversibly deleted the delta). |
 | "I'll play the verifier myself and report what it would find." | A narrated reviewer is forged evidence — on the sub-frontier tier decorrelation collapsed to exactly this, zero spawns. Spawn it or declare a reduction. |
-| "This check is overkill — I'll quietly scale it down." | Reductions are legitimate only when declared as delta content; silence steals a decision the human is owed. |
+| "This check is overkill — I'll quietly scale it down." | Reductions are legitimate only when declared as delta content (S1: undeclared fork-grounding reduction); silence steals a decision the human is owed. |
 | "Mid-task the theory looks off — I'll adapt as I code." | Executing is transcription; silent resolution buries the contradiction (a v1 failure mode). Abort, report, reopen the layer. |
 
 ## Red Flags

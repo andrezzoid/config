@@ -1,6 +1,6 @@
 # Aligning — build the theory together
 
-**Authority: shared.** Aligning is collaborative theory-building; its exit gate is the human's. Skills loaded at entry (via the Skill tool): **design-it-twice, deep-module-design, define-errors-away**. Architecture is aligning's job — module boundaries and interfaces are designed *here* and stated plainly in Theory's structure sketch, the sole place derivers and implementers read them (file shape: [delta-file.md](delta-file.md)).
+Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Aligning is collaborative theory-building; its exit gate is the human's. Architecture is aligning's job — module boundaries and interfaces are designed *here* and stated plainly in Theory's structure sketch, the sole place derivers and implementers read them (file shape: [delta-file.md](delta-file.md)).
 
 ## The cycle: expand, then converge
 

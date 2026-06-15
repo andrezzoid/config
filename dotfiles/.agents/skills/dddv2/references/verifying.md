@@ -1,6 +1,6 @@
 # Verifying — refute, then hand the evidence to the human
 
-**Authority: non-author lineage.** Verification runs in a context that produced none of the artifacts under check — a fresh subagent briefed with the delta + its References, never the conductor or any implementer. Skill loaded at entry (via the Skill tool): **complexity-red-flags**.
+Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Verification runs in a context that produced none of the artifacts under check — a fresh subagent briefed with the delta + its References, never the conductor or any implementer.
 
 ## The work
 

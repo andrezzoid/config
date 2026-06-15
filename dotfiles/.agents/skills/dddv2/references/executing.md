@@ -1,6 +1,6 @@
 # Executing — transcription, not discovery
 
-**Authority: agent, within ratified theory.** Everything here happens inside the frozen Theory + Acceptance; nothing here may touch them — editing either reopens aligning (integrity rule, [delta-file.md](delta-file.md)). Skills loaded per implementer (via the Skill tool): **define-errors-away, test-driven-development, comments-as-design**.
+Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Everything here happens inside the frozen Theory + Acceptance; nothing here may touch them — editing either reopens aligning (integrity rule, [delta-file.md](delta-file.md)).
 
 ## Executing is transcription
 

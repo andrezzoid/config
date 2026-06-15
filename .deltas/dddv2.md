@@ -261,12 +261,12 @@ the human later deleted).
 **Skill form.** The skill follows the house anatomy (see References):
 frontmatter `name` + `description` (what + when, defaultness explicit), then
 Overview, When to Use, Core Process, Common Rationalizations, Red Flags,
-Verification. Authoring follows the skill-creator process. Structure: a
-single `SKILL.md` by default — for a single file the text loaded in every
-state is the whole file, so Token-lean reduces to "whole SKILL.md ≤ half of
-v1's *smallest* state path"; progressive-disclosure reference files are a
-permitted fallback only if that budget can't be met, splitting load per
-state, single-source discipline preserved (each rule defined once). Minimality still
+Verification. Authoring follows the skill-creator process. Structure:
+progressive disclosure — a small always-loaded `SKILL.md` core plus
+per-state reference files, so entering one state never loads another's
+procedure (leaner than v1 where it matters; not a hard budget). Single
+source preserved: each rule defined once, cross-referenced elsewhere.
+Minimality still
 governs content: Rationalizations and Red Flags carry only failure modes
 actually observed in sessions or evals, each traceable to its incident —
 never speculative vices. The body is teaching prose, not telegraphic
@@ -412,17 +412,6 @@ with the delta — deltas are not archives.
 - [ ] **Single source of truth** — every state, rule, and field defined in
       exactly one file. — check: cross-read all dddv2 files for re-encoded
       rules.
-- [ ] **Token-lean** — dddv2-authored process text loaded in any single
-      state (tiktoken cl100k) ≤ half of v1's same-state path at commit
-      `ef6eb2a`: aligning ↔ SKILL+schema+explore; executing ↔
-      SKILL+schema+plan+apply (it does both phases' work, so it carries
-      both budgets); verifying ↔ SKILL+schema+verify; committing ↔
-      SKILL+schema+verify (nearest analog — v1's close lived in verify's
-      step 8). Sibling content is out of scope by design: the criterion
-      measures protocol overhead, and conducted sibling loads are the
-      feature v1 lacked — their cost is accepted here, in Theory, not
-      hidden in the measure. — check: committed measurement script, run
-      against both versions.
 
 ## References
 
@@ -523,26 +512,9 @@ with the delta — deltas are not archives.
 
 ## Open
 
-- **Backflow from `token-measure` (reopens Acceptance — André's fork).** The
-  frozen Token-lean criterion is infeasible for aligning, measured honestly:
-  dddv2's always-loaded `SKILL.draft.md` is 2183 tokens — 89% of aligning's
-  budget (half of v1's *smallest* state path, 2457) — before any reference.
-  The anatomy standard mandates six always-loaded sections; the spine fills
-  the rest; the floor can't drop below ~1860 without cutting spine. Three
-  states pass (executing +843, verifying +20, committing +5). The measure
-  and the anatomy/spine are in genuine conflict; the criterion as ratified
-  cannot pass. Options for the measure (André decides, then re-ratify):
-  (a) qualitative — "every state loads materially less than its v1 analog
-  and no state loads the whole protocol" (drops the brittle number the
-  skeptic flagged twice; verified at verifying); (b) dddv2 total corpus ≤
-  v1 total corpus (simple "leaner overall", passes); (c) exclude the
-  always-loaded core, measure on-demand reference load ≤ half v1's phase
-  ref (measures the progressive-disclosure benefit specifically); (d) half
-  of v1's *largest* path uniformly (keeps a "half" guarantee; aligning
-  ~150 tokens over, needs trimming). The script stays as evidence under
-  any choice.
-
-_(previously drained — the derivability check, formerly the one untested machine, was
+_(drained — token-lean dropped by André (best-effort, not a hard
+requirement); the measurement script is kept as informational tooling.
+Earlier: — the derivability check, formerly the one untested machine, was
 exercised on this delta itself: two independent runs converged on the same
 task graph; André's prediction matched at his granularity; seven shared
 invented assumptions were closed in Theory and a confirming re-run
@@ -582,13 +554,10 @@ on this graph; cutover is the committing close action, not a task.)_
   clean git repo; rubrics present for all scenarios incl. small-delta; one
   smoke scenario runs runner + judge end-to-end to a verdict.
 
-- **token-measure** — commit a tiktoken-cl100k measurement script in `evals/`
-  comparing dddv2 per-state load to half of v1's same-state path at `ef6eb2a`
-  (aligning: SKILL+schema+explore; executing: +plan+apply; verifying and
-  committing: +verify); split the skill into progressive-disclosure files if
-  a single-file load exceeds budget. needs: [author-skill].
-  check: run the script at HEAD; exit 0 with every state's dddv2 load ≤ half
-  its v1 path.
+- **token-measure** (done; non-gating diagnostic) — `evals/token_measure.py`
+  reports per-state dddv2 load vs v1; retained as informational tooling, not
+  an acceptance gate (token-lean dropped as a best-effort target, not a hard
+  requirement). needs: [author-skill].
 
 ## Followups
 

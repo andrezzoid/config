@@ -23,4 +23,4 @@ This transition is the agent's to cross — no human word required. At the trans
 1. The **executor runs every task's acceptance check** and records the results as delta content. This run *gates progress*.
 2. `state: verifying`. The verifier then re-runs the same checks independently — **the verifier's run is the evidence, the executor's run only the gate**.
 
-Task completion is never marked in the file — it is derived by running the checks (no-status rule, [delta-file.md](delta-file.md)) and reading history's diffs for what landed.
+Task completion is never marked — it is derived, not declared (no-status rule, [delta-file.md](delta-file.md)).

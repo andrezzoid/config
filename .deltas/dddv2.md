@@ -1,5 +1,5 @@
 ---
-state: verifying
+state: executing
 ---
 
 # Delta: dddv2 — rebuild DDD as an alignment-preserving transaction

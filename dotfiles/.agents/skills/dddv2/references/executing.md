@@ -6,11 +6,11 @@ Authority and conducted skills: see the Core Process table in [SKILL.draft.md](.
 
 Discovery was confined to aligning, where figuring-out is cheap and disposable. What reaches executing is reproducible and verifiable — you are *writing down a solution already figured out*, not still figuring it out. If you find yourself figuring something out, you are in the wrong state.
 
-The conductor authors no product code (the conductor rule, Overview): implementation is delegated to **one implementer subagent per task**, each briefed by the delta + its task alone. Beyond keeping the theory-holder on theory and evidence decorrelated from authorship, this makes every implementer a live self-sufficiency test of the delta — if one needs another's context to proceed, the module boundaries were drawn wrong, which is *observable* and reopens the plan.
+The conductor authors no product code (the conductor rule, Overview): implementation is delegated to **one implementer subagent per task**, each briefed by the delta + its task alone. Beyond the rule's own reasons, this makes every implementer a live self-sufficiency test of the delta — if one needs another's context to proceed, the module boundaries were drawn wrong, which is *observable* and reopens the plan.
 
 ## What each implementer does
 
-The implementer **inherits** the derived tasks and per-task checks from aligning's convergent derivation — it never authors the criteria it is graded by. It transcribes its inherited spec test-first by conducted default: **RED → GREEN → REFACTOR**, the failing test committed before the implementation so history stays honest. Pre-registration keeps the record truthful, but it is no longer the verification backbone — that is ATDD's job, the deriver-authored delta-level executables, so verifiability never depends on any implementer's process.
+The implementer **inherits** the derived tasks and per-task checks from aligning's convergent derivation — it does not author its own grading criteria ([derivability.md](derivability.md)). It transcribes its inherited spec test-first by conducted default: **RED → GREEN → REFACTOR**, the failing test committed before the implementation so history stays honest. Pre-registration keeps the record truthful, but it is no longer the verification backbone — that is ATDD's job, the deriver-authored delta-level executables, so verifiability never depends on any implementer's process.
 
 ## Mid-task discovery aborts
 

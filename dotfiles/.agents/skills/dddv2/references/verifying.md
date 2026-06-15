@@ -1,6 +1,6 @@
 # Verifying — refute, then hand the evidence to the human
 
-Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Verification runs in a context that produced none of the artifacts under check — a fresh subagent briefed with the delta + its References, never the conductor or any implementer.
+Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Verification runs non-author (SKILL.draft.md §2) — a fresh subagent, never the conductor or any implementer, since either authored what is now under check.
 
 ## The work
 
@@ -14,8 +14,8 @@ The verifier is **read-only on the shared working tree** and **returns findings 
 
 ## Findings route by backflow
 
-Each finding reopens the lowest contradicted layer (SKILL.draft.md §4): verifying → executing reopens plan or implementation, verifying → aligning reopens theory; the owning state fixes, by whatever hands it delegates. After any repair, re-verification is a **full fresh pass**, not a re-check of the finding list (§2) — so the route here is *which layer reopened*, never *which findings to confirm*.
+Each finding reopens the lowest contradicted layer (SKILL.draft.md §4): verifying → executing reopens plan or implementation, verifying → aligning reopens theory; the owning state fixes, by whatever hands it delegates. After any repair, re-verification is a full fresh pass (§2) — so the route here is *which layer reopened*, never *which findings to confirm*.
 
 ## Human ACCEPT
 
-When refutation fails — the result holds — the verifier's evidence goes to the human as **grounds** for ACCEPT. The human ACCEPTs on that evidence; the evidence is never a substitute for the human's word. ACCEPT is a word only the human can write, and the agent flips `state: committing` only in direct response to it (human-gate rule, SKILL.draft.md §3). An agent accepting on the verifier's behalf is forgery, observed in evals (Opus S4).
+When refutation fails — the result holds — the verifier's evidence goes to the human as **grounds** for ACCEPT, never a substitute for the human's word: ACCEPT is the human's to write, and the agent crosses the gate only on it (human-gate rule, SKILL.draft.md §3). Accepting on the verifier's behalf was the observed forgery (Opus S4).

@@ -1,6 +1,6 @@
 # Committing — harvest the theory, then close
 
-Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). The result is ACCEPTed; committing moves durable knowledge out of the dying delta into homes that outlive it, then closes.
+Authority and conducted skills: see the Core Process table in [SKILL.md](../SKILL.md). The result is ACCEPTed; committing moves durable knowledge out of the dying delta into homes that outlive it, then closes.
 
 ## Harvest via carriers
 
@@ -21,7 +21,7 @@ Every `## Followups` entry is dispositioned *with the human* — this is where t
 
 ## The cold-reader check
 
-The close-out boundary check. Spawn a **fresh subagent that reads only the durable artifacts** — code, comments, tests, docs — *not* the delta. From those alone it states what must remain true and why. Its reconstruction is laid beside the frozen `## Theory` for the human at close (the least-correlated judge, already present). A gap between the two means the harvest missed knowledge that didn't survive outside the delta — harvest more. The cold reader is read-only on the shared tree (SKILL.draft.md §2).
+The close-out boundary check. Spawn a **fresh subagent that reads only the durable artifacts** — code, comments, tests, docs — *not* the delta. From those alone it states what must remain true and why. Its reconstruction is laid beside the frozen `## Theory` for the human at close (the least-correlated judge, already present). A gap between the two means the harvest missed knowledge that didn't survive outside the delta — harvest more. The cold reader is read-only on the shared tree (SKILL.md §2).
 
 ## Close
 

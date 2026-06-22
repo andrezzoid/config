@@ -69,7 +69,7 @@ Runner = general-purpose subagent, model as labeled, exercising the INSTALLED
 shipped skill (not inline prototype text). Set up an isolated fixture
 environment: a temp dir holding a copy of the fixture repo plus its own
 skills directory containing ONLY the shipped `dddv2` skill
-(`SKILL.draft.md` + `references/` — the multi-file skill, loaded the way a
+(`SKILL.md` + `references/` — the multi-file skill, loaded the way a
 real session loads it) and the six sibling skills it conducts
 (design-it-twice, deep-module-design, define-errors-away,
 test-driven-development, comments-as-design, complexity-red-flags). Open a

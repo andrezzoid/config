@@ -16,7 +16,7 @@ Frozen criterion (delta `dddv2`, ## Acceptance → "Token-lean"):
   protocol overhead, and conducted sibling loads are the feature v1 lacked.
 
 WHAT "dddv2 text loaded in a state" MEANS (the load model, settled honestly).
-SKILL.draft.md is always resident (it is the router; the harness loads it on
+SKILL.md is always resident (it is the router; the harness loads it on
 trigger and it carries the spine rules that bind every state). On top of it,
 each state loads exactly the reference text that state genuinely operates on:
 
@@ -61,10 +61,10 @@ V1_STATE_PATHS = {
 
 # dddv2 text resident in each state -- the honest load model (see module docstring).
 DDDV2_STATE_LOADS = {
-    "aligning":   ["SKILL.draft.md", "references/aligning.md", "references/delta-file.md", "references/derivability.md"],
-    "executing":  ["SKILL.draft.md", "references/executing.md"],
-    "verifying":  ["SKILL.draft.md", "references/verifying.md"],
-    "committing": ["SKILL.draft.md", "references/committing.md"],
+    "aligning":   ["SKILL.md", "references/aligning.md", "references/delta-file.md", "references/derivability.md"],
+    "executing":  ["SKILL.md", "references/executing.md"],
+    "verifying":  ["SKILL.md", "references/verifying.md"],
+    "committing": ["SKILL.md", "references/committing.md"],
 }
 
 

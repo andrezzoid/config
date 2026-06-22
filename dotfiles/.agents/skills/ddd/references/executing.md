@@ -1,6 +1,6 @@
 # Executing — transcription, not discovery
 
-Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Everything here happens inside the frozen Theory + Acceptance; nothing here may touch them — editing either reopens aligning (integrity rule, [delta-file.md](delta-file.md)).
+Authority and conducted skills: see the Core Process table in [SKILL.md](../SKILL.md). Everything here happens inside the frozen Theory + Acceptance; nothing here may touch them — editing either reopens aligning (integrity rule, [delta-file.md](delta-file.md)).
 
 ## Executing is transcription
 
@@ -14,7 +14,7 @@ The implementer **inherits** the derived tasks and per-task checks from aligning
 
 ## Mid-task discovery aborts
 
-A discovery mid-task — the theory looks off, a boundary won't hold, an assumption was wrong — **aborts and reports for backflow; it is never resolved silently**. Silent resolution buries exactly the contradiction the protocol exists to surface (a v1 failure mode). The finding reopens the lowest contradicted layer (backflow rule, SKILL.draft.md §4); the layer choice is declared in the recording edit.
+A discovery mid-task — the theory looks off, a boundary won't hold, an assumption was wrong — **aborts and reports for backflow; it is never resolved silently**. Silent resolution buries exactly the contradiction the protocol exists to surface (a v1 failure mode). The finding reopens the lowest contradicted layer (backflow rule, SKILL.md §4); the layer choice is declared in the recording edit.
 
 ## Exit: executing → verifying (agent-crossed, not a human gate)
 

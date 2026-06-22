@@ -1,6 +1,6 @@
 # Aligning — build the theory together
 
-Authority and conducted skills: see the Core Process table in [SKILL.draft.md](../SKILL.draft.md). Aligning is collaborative theory-building; its exit gate is the human's. Architecture is aligning's job — module boundaries and interfaces are designed *here* and stated plainly in Theory's structure sketch, the sole place derivers and implementers read them (file shape: [delta-file.md](delta-file.md)).
+Authority and conducted skills: see the Core Process table in [SKILL.md](../SKILL.md). Aligning is collaborative theory-building; its exit gate is the human's. Architecture is aligning's job — module boundaries and interfaces are designed *here* and stated plainly in Theory's structure sketch, the sole place derivers and implementers read them (file shape: [delta-file.md](delta-file.md)).
 
 ## The cycle: expand, then converge
 
@@ -20,4 +20,4 @@ Norm-shaped gate rules lose to completion pressure, so the exit is a sequence of
 2. **Derivability converges** — run the convergent-derivation check ([derivability.md](derivability.md)) until two fresh deriver contexts agree; its output becomes `## Tasks` and the acceptance executables.
 3. **Every fork decided by the human** — and only *then* may ratification be requested, **standalone, in a later message**. "Pick the fork and RATIFY" in one breath is the observed anti-pattern (S1, every tier); the fork question and the ratification request never share a message.
 
-The human ratifies on judgment, not as a button. (Human-gate rule: SKILL.draft.md §3.)
+The human ratifies on judgment, not as a button. (Human-gate rule: SKILL.md §3.)

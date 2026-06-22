@@ -1,89 +1,97 @@
 ---
 name: ddd
-description: "A structured process for AI-assisted development using four phases: explore, plan, apply, verify. Use this skill whenever working on code changes that benefit from structured decomposition — features, refactors, bug fixes, or exploratory work. Also use when the user mentions exploring a problem, planning a change, applying a task, verifying work, or when you encounter a .delta.yml file. Supports both human-guided work (user invokes a phase) and autonomous execution (self-route based on delta state). Do NOT use for trivial one-line fixes, typo corrections, or config tweaks."
+description: The default protocol for any non-trivial change — runs it as an alignment-preserving transaction on a shared theory, so code, context, and the human's understanding advance together or not at all. Enter whenever a change needs a theory: it spans modules, is open-ended, has multiple plausible approaches, touches a schema, edits multiple files, spans sessions or handoffs, or is a non-trivial bug fix. Also enter whenever a delta file exists under .deltas/, or the human mentions aligning, ratifying, executing, verifying, or committing a delta. Not a specialist tool — reach for it by default. Skip ONLY when the change is one sentence with one obvious implementation (a typo, a config tweak, a single-line fix).
 ---
 
 # Delta-Driven Development
 
-Key words: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY — interpreted per RFC 2119.
+## Overview
 
-## Assess and Route
+A **delta** is a human-aligned unit of change run by an agent: an _alignment-preserving transaction on a shared theory_. It opens only when human and agent share a theory of the change, aborts back to alignment the moment reality contradicts that theory, and commits atomically — code, durable context, and the human's understanding advance together, or the delta isn't done.
 
-When this skill triggers, assess the current situation and route to the correct phase.
-Read the corresponding reference file BEFORE executing any phase.
+The alignment bar is Naur's: the real program is the theory its team holds, which text alone cannot carry — _"an essential part of any program, the theory of it, is something that could not conceivably be expressed, but is inextricably bound to human beings"_ (Naur, _Programming as Theory Building_). Aligned means the human could predict the plan and even write the code. A program dies when its theory-holders dissolve, so a delta grows that shared theory, then harvests it into homes that outlive the delta.
 
-### Step 1: Check for an existing delta
+All state lives in one file per delta, `.deltas/<name>.md` — the sole inter-session memory and every subagent's briefing. Routing is **syntactic**: frontmatter `state` decides where you are, because "is this done?" can't be trusted to the doer. The **conductor** (the session agent who builds the theory with the human) authors the delta and spawns every other context; it authors **no product code and no checks**, so the theory-holder stays on theory (context rot is theory rot — Naur) and evidence stays decorrelated from authorship. States model **authority**, not activity:
 
-Look for a `.delta.yml` file in the project root or `.deltas/` directory.
+```mermaid
+stateDiagram-v2
+    [*] --> aligning
+    aligning --> executing : derivability converged + forks decided, human RATIFY
+    executing --> verifying : all tasks done, evidence in history
+    executing --> aligning : reopens theory
+    verifying --> executing : reopens plan or implementation
+    verifying --> aligning : reopens theory
+    verifying --> committing : human ACCEPT
+    committing --> executing : reopens plan or implementation
+    committing --> aligning : reopens theory
+    committing --> [*] : cold-reader check passes, delta closes
+```
 
-- **Delta exists** → Read it fully (goal, tasks, statuses, log). Go to Step 3.
-- **No delta exists** → Go to Step 2.
+## When to Use
 
-### Step 2: No delta — determine starting phase
+The default for non-trivial work — enter whenever the change needs a theory; skip only when it's one sentence with one obvious implementation. Size is self-limiting: `## Theory` + `## Acceptance` stay holdable in one sitting — a screen, not a wall. Ambitions whose theory can't stay holdable become _sequential_ deltas — no hierarchies, no epics.
 
-| Situation | Phase | Reference |
-|-----------|-------|-----------|
-| Goal is vague, problem space unclear, or user says "explore/investigate/research" | **Explore** | `references/explore.md` |
-| Goal is concrete and ready to decompose, or user says "plan/break down/decompose" | **Plan** | `references/plan.md` |
-| User provides a goal and asks to start building immediately | **Plan**, then **Apply** | `references/plan.md` → `references/apply.md` |
+## Core Process
 
-### Step 3: Delta exists — route by state
+### 1. Route to the current state, and conduct it
 
-Read all task statuses and the log's most recent entries. Then:
+Find or create `.deltas/<name>.md` — one file per delta, sections in normative order: **Theory, Acceptance, References, Glossary (optional), Open, Tasks, Followups**. Two rules bind the routing surface; the rest of the file's shape is detailed in [delta-file.md](references/delta-file.md) and recalled by each state's reference where it bites:
 
-| Delta state | Phase | Reference |
-|-------------|-------|-----------|
-| All tasks `pending`, no apply log entries yet | **Apply** next eligible task | `references/apply.md` |
-| Some tasks `done`, eligible `pending` tasks remain (all deps satisfied) | **Apply** next eligible task | `references/apply.md` |
-| Next eligible task has `options` with `resolution: null` | **Halt.** Present the decision with your analysis. Wait for human input. | — |
-| All tasks `done`, no verification logged yet | **Verify** | `references/verify.md` |
-| Latest log shows `[bug]` from verify | **Apply** the failed task (its status MUST be `in_progress`) | `references/apply.md` |
-| Latest log shows `[design_gap]` from verify | **Plan** — revise the delta | `references/plan.md` |
-| Latest log shows `[context_gap]` from verify | Update context, then **Plan** if delta needs revision | `references/plan.md` |
-| State is ambiguous or contradictory | **Halt.** Describe the ambiguity. Ask for direction. | — |
+- **Frontmatter `state` is the only routing surface.** New delta starts `state: aligning`. There is no `ratified` field — ratification is the diff that flips `state` in direct response to the human's word; a field restating derivable state can lie.
+- **Log = git:** every consolidation and transition commits the delta file. The diffs are the record, the content at each commit the _why_, messages natural summaries.
 
-### Step 4: Human override
+Then open the current `state`'s reference (below) and let it drive — it carries that state's procedure, boundary check, and exit. At each state entry, **load its skills explicitly with the Skill tool** — explicit loading is structural recall; memory degrades silently:
 
-If the user explicitly requests a phase, execute that phase regardless of delta state.
-Human intent always takes precedence over autonomous routing.
+| `state` (authority)                     | Loads (via Skill tool)                                                           | Reference                                            |
+| --------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `aligning` (shared)                     | design-it-twice, deep-module-design, define-errors-away                          | [references/aligning.md](references/aligning.md)     |
+| `executing` (agent, in ratified theory) | per implementer: define-errors-away, test-driven-development, comments-as-design | [references/executing.md](references/executing.md)   |
+| `verifying` (non-author)                | complexity-red-flags                                                             | [references/verifying.md](references/verifying.md)   |
+| `committing` (agent)                    | comments-as-design                                                               | [references/committing.md](references/committing.md) |
 
-## Mid-Flight Re-Entry
+### 2. The check rules that bind every state
 
-When starting with a fresh context window and an existing delta:
+A boundary check is **never run by the artifact's author** — an author's verdict on its own work is self-report, not evidence (Goodhart: _"When a measure becomes a target, it ceases to be a good measure."_). Non-author = a context that produced _none_ of the artifacts under check; a fresh subagent briefed with the delta + its References qualifies.
 
-1. Read the `.delta.yml` — goal, task statuses, notes.
-2. Read the log. If >20 entries: read the first entry, the last 5, and scan summaries between.
-3. Run acceptance criteria for every task marked `done`.
-4. If any `done` task's criteria now fail → log the failure as `[bug]`, set task to `in_progress`.
-5. Route per Step 3.
+- **Reviewers return findings; they never fix.** A reviewer that fixes becomes an author whose work then needs its own fresh check. Findings reopen the owning layer; the owning _state_ fixes.
+- **Re-verification after a repair is a full fresh pass**, never a confirmation the listed items got fixed — fixing-the-list is Goodhart's shortcut past fixing-the-problem.
+- **Never narrate an unspawned reviewer:** claiming one ran is forged evidence. If spawning is unavailable, declare a reduction (the legitimate path) or stop. The conductor records returned findings as delta content; harness transcripts are the audit channel.
+- **Reviewers are read-only on the shared working tree:** any checkout happens in a `git worktree` or exported tree — a verifier's `git checkout` once stranded the shared checkout on a detached HEAD (Opus S4).
 
-## Mandatory Behaviors
+### 3. Human gates: RATIFY and ACCEPT
 
-These apply across ALL phases. They are non-negotiable.
+RATIFY and ACCEPT are words **only the human can write**. The agent flips `state` across a human gate _only in direct response to the human's granting message_; an agent-initiated crossing is forgery regardless of work quality (both flavors showed up in evals — ratifying for the human, accepting on the verifier's behalf). The verifier's evidence is _grounds_ for the human's ACCEPT, never a substitute. These are bright lines, not norms: norm-shaped gate rules lose to completion pressure, so only a mechanically checkable phrasing ("contains no ratification request") holds.
 
-1. **Orient first.** Every phase MUST begin by reading available state — delta, context,
-   relevant code — before taking any action.
+### 4. Layered backflow
 
-2. **One task per Apply.** Each Apply invocation MUST implement exactly one task.
-   MUST NOT batch, scope-creep, or do work outside the current task's scope.
+Work is layered **theory → plan → implementation**. Any finding, in any state, reopens the _lowest contradicted layer_ — never a silent patch. Which layer is agent judgment, **declared in the delta edit that records it**: a silent reopen buries the contradiction the protocol exists to surface.
 
-3. **Clean state after Apply.** After every Apply, the codebase MUST compile, pass existing
-   tests, and contain no debug artifacts or uncommitted partial work.
+## Common Rationalizations
 
-4. **Capture what you learn.** When implementation reveals something the delta or context
-   didn't account for, you MUST record it in the delta log, notes, or project context.
+Each a real temptation observed in a session or eval (see `evals/`), not a hypothetical.
 
-5. **Halt on decisions.** Tasks with `options` and `resolution: null` MUST NOT be resolved
-   by the agent. Present options with analysis. Wait for human input.
+| Excuse                                                                                                        | Reality                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Work is solid, the human agrees — I'll send the forks and RATIFY in one message" / "I'll flip to executing." | The anti-pattern (S1, every tier): completion pressure beats norms, and RATIFY is a word only the human can write. Drain `## Open`, converge derivability, let the human decide every fork — _then_ request ratification, standalone, later. |
+| "The verifier's evidence is clean — I'll ACCEPT on its behalf."                                               | Evidence is grounds for the human's ACCEPT, never a substitute (Opus S4: self-ACCEPTed, irreversibly deleted the delta).                                                                                                                     |
+| "I'll play the verifier myself and report what it would find."                                                | A narrated reviewer is forged evidence — on the sub-frontier tier decorrelation collapsed to exactly this, zero spawns. Spawn it or declare a reduction.                                                                                     |
+| "This check is overkill — I'll quietly scale it down."                                                        | Reductions are legitimate only when declared as delta content (S1: undeclared fork-grounding reduction); silence steals a decision the human is owed.                                                                                        |
+| "Mid-task the theory looks off — I'll adapt as I code."                                                       | Executing is transcription; silent resolution buries the contradiction (a v1 failure mode). Abort, report, reopen the layer.                                                                                                                 |
 
-6. **Flag contradictions.** When context contradicts code, or acceptance criteria are
-   ambiguous, or anything is unexpected — flag it explicitly. MUST NOT fill gaps silently.
+## Red Flags
 
-## File Locations
+Observable symptoms, each from a recorded incident:
 
-| Artifact | Location |
-|----------|----------|
-| Delta files | Project root (`*.delta.yml`) or `.deltas/` directory |
-| Delta schema + examples | `references/delta-schema.md` |
-| Phase instructions | `references/explore.md`, `plan.md`, `apply.md`, `verify.md` |
-| Project context | Team-defined: CLAUDE.md, AGENTS.md, JSDoc, architecture docs, etc. |
+- One message carries both a fork question and a ratification request; or `state` flipped across a gate with no human RATIFY/ACCEPT before it.
+- A boundary check with no spawn behind it, or run by a context that authored what it checked; a reviewer that fixed instead of returning findings; re-verification that confirmed a list instead of a fresh pass.
+- The shared working tree changed — or sits on a detached HEAD — after a reviewer ran.
+- A check reduced or skipped with no declaration; a mid-task discovery resolved in place; a task carrying a status mark.
+
+## Verification
+
+Confirm from artifacts, never memory:
+
+- [ ] Delta file: frontmatter `state` only, normative order, third-person readable; frozen pair unchanged since ratification (else `state` is `aligning`); completion derived by running checks, not status marks.
+- [ ] Each state loaded its sibling skills via the Skill tool; each boundary check ran non-author and returned findings (never fixed) — or a reduction is declared.
+- [ ] Each gate crossing followed a human RATIFY/ACCEPT message, requested standalone after every fork was decided; findings reopened the lowest contradicted layer, declared.
+- [ ] Close: followups dispositioned, harvest in carriers, cold-reader reconstruction laid beside frozen Theory, exactly one delta-driven skill remains, delta deleted.

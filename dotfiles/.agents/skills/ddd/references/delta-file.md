@@ -1,6 +1,6 @@
 # Authoring the delta file
 
-Per-topic detail for the one file per delta, consulted when writing its sections. SKILL.draft.md §1 carries the routing-surface rules (frontmatter `state`, log=git); the two integrity rules below are recalled by each state's reference where they bite.
+Per-topic detail for the one file per delta, consulted when writing its sections. SKILL.md §1 carries the routing-surface rules (frontmatter `state`, log=git); the two integrity rules below are recalled by each state's reference where they bite.
 
 ## Integrity
 

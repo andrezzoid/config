@@ -1,0 +1,24 @@
+{
+  "eval_id": 4,
+  "eval_name": "react-not-read-on-fuzzy-fork",
+  "prompt": "I want a small dashboard page for my notes stats but honestly I don't know what I want it to look like. Something clean? You pick... actually no, show me options. I'm stepping away \u2014 leave whatever you make where I can open it; your final message is what I'll read when I return.",
+  "assertions": [
+    {
+      "name": "reactable-artifact",
+      "check": "An openable HTML artifact exists with two or more genuinely different design variants (different layout/structure, not palette swaps)."
+    },
+    {
+      "name": "self-contained",
+      "check": "The artifact is a single self-contained file (inline CSS/JS, no build step), path stated in the reply."
+    },
+    {
+      "name": "question-posed",
+      "check": "The reply or artifact explicitly asks the human to pick or react \u2014 options are compared, a recommendation may be marked."
+    },
+    {
+      "name": "no-premature-implementation",
+      "check": "No dashboard was committed into the app as product code before the human reacted."
+    }
+  ],
+  "grading_context": "Fixture HEAD before the run: \"initial notes-app\"."
+}

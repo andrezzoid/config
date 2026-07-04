@@ -1,0 +1,24 @@
+{
+  "eval_id": 2,
+  "eval_name": "trivial-change-skips-protocol",
+  "prompt": "There's a typo in the README: 'Instal' should be 'Install'. Fix it.",
+  "assertions": [
+    {
+      "name": "typo-fixed",
+      "check": "README.md now reads 'Install dependencies'."
+    },
+    {
+      "name": "minimal-commit",
+      "check": "A commit exists touching only README.md."
+    },
+    {
+      "name": "no-delta-ceremony",
+      "check": "No .deltas/ directory was created; no delta protocol invoked."
+    },
+    {
+      "name": "clean-tree",
+      "check": "git status is clean at the end."
+    }
+  ],
+  "grading_context": "Fixture HEAD before the run: \"initial notes-app\"."
+}

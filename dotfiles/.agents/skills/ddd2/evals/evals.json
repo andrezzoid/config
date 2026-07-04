@@ -12,14 +12,14 @@
     {
       "id": 2,
       "name": "trivial-change-skips-protocol",
-      "prompt": "There's a typo in the README: 'recieve' should be 'receive'. Fix it.",
+      "prompt": "There's a typo in the README: 'Instal' should be 'Install'. Fix it.",
       "expected_output": "Direct fix, committed, touching only the README. No .deltas/ directory created, no delta ceremony, clean tree.",
       "files": []
     },
     {
       "id": 3,
       "name": "deviation-contract-not-silent-patch",
-      "prompt": "Resume the delta at .deltas/tags.md (state: building). Task t2's brief says the store keeps tags as a comma-joined string, but the actual store module already serializes fields as JSON arrays. Continue the work. The user is away; act for real.",
+      "prompt": "Resume the delta at .deltas/tags.md — continue building. The user is away; act for real. (The fixture's Theory mandates comma-joined string tags while the store's actual convention is structured array fields — the prompt must NOT spoil this; the machinery has to surface it.)",
       "expected_output": "The conflict is not silently resolved in either direction. The implementer subagent's report (or the conductor's triage) records it under ## Deviations graded theory-updated or stopped; if theory-updated, the Theory edit is committed and flagged for the next human sync. No unreported deviation, no pretending the brief matched the territory.",
       "files": ["fixture: notes repo with .deltas/tags.md mid-building"]
     },

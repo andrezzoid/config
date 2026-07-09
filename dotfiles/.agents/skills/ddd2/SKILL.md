@@ -58,7 +58,7 @@ state: shaping | building | wrapping
 
 ## Two words only the human can say
 
-**go** (the plan is agreed — build it) and **ship** (the evidence holds — merge it). Never write either on the human's behalf, and never treat evidence as a substitute for the word. Ask plainly, then wait. When the human is away, a shaping delta with sharp questions **is** the deliverable — building past an undecided fork isn't initiative, it's gap-filling. Everything else — task order, check intensity, tool choice — is your judgment, exercised out loud in the delta file.
+**go** (the plan is agreed — build it) and **ship** (the evidence holds — merge it). Never write either on the human's behalf, and never treat evidence as a substitute for the word. Ask plainly, then wait — an unanswered gate means undecided, however long it stays unanswered. A shaping delta with sharp questions is a complete deliverable; building past an undecided fork isn't initiative, it's gap-filling. Everything else — task order, check intensity, tool choice — is your judgment, exercised out loud in the delta file.
 
 **Risky**, wherever this file says it: the delta touches a schema, an external contract, security-sensitive code, or data you can't restore. Risky deltas earn the extra machinery — quiz-me before go, a different-model reviewer before ship.
 
@@ -74,7 +74,7 @@ state: shaping | building | wrapping
 
 A **sync** is a message to the human carrying the delta's changes since the last one — the Theory diff, new deviations with grades, findings with dispositions — plus anything waiting on their word. Commit the delta file with every sync, before sending: the message and the commit are the same checkpoint seen two ways.
 
-Sync at task boundaries, when a `theory-updated` deviation is pending, when a reviewer returns findings, and always before asking for go or ship. When the human is away: a `stopped` grade blocks its task's dependents, and everything independent of it may continue; `theory-updated` never blocks — it queues for the next contact. Never end a session with unmerged reports, uncommitted delta edits, or a reviewer still in flight.
+Sync at task boundaries, when a `theory-updated` deviation is pending, when a reviewer returns findings, and always before asking for go or ship. A `stopped` grade blocks its task's dependents — everything independent of it may continue while you wait; `theory-updated` never blocks — it queues for the next sync. Never end a session with unmerged reports, uncommitted delta edits, or a reviewer still in flight.
 
 ## The cycle
 

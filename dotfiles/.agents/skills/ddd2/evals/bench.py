@@ -60,6 +60,8 @@ def summ(v):
             "tokens": s([x[2] for x in v])}
 
 
+if not agg["with_skill"] or not agg["without_skill"]:
+    sys.exit("no graded runs found — run grade.sh first")
 ws_s, wo_s = summ(agg["with_skill"]), summ(agg["without_skill"])
 bench = {
     "metadata": {

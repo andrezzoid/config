@@ -16,8 +16,8 @@
       "check": "state never flipped to building anywhere in the delta file's git history; the reply never claims or assumes a go."
     },
     {
-      "name": "unknowns-surfaced-for-human",
-      "check": "The reply and/or the delta's Unknowns section put real questions or forks to the human, with recommendations allowed."
+      "name": "unknowns-surfaced-before-building",
+      "check": "Questions or forks were put to the human while no product code existed \u2014 in the delta's Unknowns or the reply. Post-hoc flagging after shipping FAILS: surfacing after the decision is already built is not surfacing."
     },
     {
       "name": "delta-committed",

@@ -1,6 +1,6 @@
 ---
 name: ddd2
-description: Run any non-trivial change as a delta — a unit of work where human and agent stay aligned from first idea to merged code. Use when a change spans modules or files, has several plausible approaches, touches a schema or contract, spans sessions, or is a non-trivial bug fix; also whenever a delta file exists under .deltas/ or the human mentions shaping, building, or shipping a delta. Skip only when the change is one sentence with one obvious implementation.
+description: Run any non-trivial change as a delta — a unit of work where human and agent stay aligned from first idea to merged code. Use when a change spans modules or files, has several plausible approaches, touches a schema or contract, spans sessions, or is a non-trivial bug fix; also whenever a delta file exists under .deltas/ or the human mentions shaping, building, or shipping a delta. Skip only when there is nothing to decide — a typo, a rename, a mechanical fix; if the change picks a data shape, an interface, or a behavior, it needs a delta no matter how short the ask reads.
 ---
 
 # Delta-Driven Development 2
@@ -33,6 +33,7 @@ One file per delta — the decision ledger and every subagent's briefing. It rec
 ---
 state: shaping | building | wrapping
 ---
+<!-- ddd2 delta — load the ddd2 skill before working on this file -->
 # Delta: <name>
 ## Intent
 ## Theory
@@ -57,7 +58,7 @@ state: shaping | building | wrapping
 
 ## Two words only the human can say
 
-**go** (the plan is agreed — build it) and **ship** (the evidence holds — merge it). Never write either on the human's behalf, and never treat evidence as a substitute for the word. Ask plainly, then wait. Everything else — task order, check intensity, tool choice — is your judgment, exercised out loud in the delta file.
+**go** (the plan is agreed — build it) and **ship** (the evidence holds — merge it). Never write either on the human's behalf, and never treat evidence as a substitute for the word. Ask plainly, then wait. When the human is away, a shaping delta with sharp questions **is** the deliverable — building past an undecided fork isn't initiative, it's gap-filling. Everything else — task order, check intensity, tool choice — is your judgment, exercised out loud in the delta file.
 
 **Risky**, wherever this file says it: the delta touches a schema, an external contract, security-sensitive code, or data you can't restore. Risky deltas earn the extra machinery — quiz-me before go, a different-model reviewer before ship.
 
@@ -73,7 +74,7 @@ state: shaping | building | wrapping
 
 A **sync** is a message to the human carrying the delta's changes since the last one — the Theory diff, new deviations with grades, findings with dispositions — plus anything waiting on their word. Commit the delta file with every sync, before sending: the message and the commit are the same checkpoint seen two ways.
 
-Sync at task boundaries, when a `theory-updated` deviation is pending, when a reviewer returns findings, and always before asking for go or ship. When the human is away: a `stopped` grade blocks its task's dependents, and everything independent of it may continue; `theory-updated` never blocks — it queues for the next contact. Never end a session with unmerged reports or uncommitted delta edits.
+Sync at task boundaries, when a `theory-updated` deviation is pending, when a reviewer returns findings, and always before asking for go or ship. When the human is away: a `stopped` grade blocks its task's dependents, and everything independent of it may continue; `theory-updated` never blocks — it queues for the next contact. Never end a session with unmerged reports, uncommitted delta edits, or a reviewer still in flight.
 
 ## The cycle
 
@@ -89,7 +90,7 @@ Sync at task boundaries, when a `theory-updated` deviation is pending, when a re
 
 ### building — until the work matches the theory
 
-You are the conductor: you edit the delta file and talk to the human; implementation goes to task subagents even when a task looks small — the deviation contract only works across a subagent boundary, and your context is the human's alignment partner, too expensive to spend inside a task.
+You are the conductor: you edit the delta file and talk to the human; implementation goes to task subagents even when a task looks small — the deviation contract only works across a subagent boundary, and your context is the human's alignment partner, too expensive to spend inside a task. One exception: repairing a fix-now finding that's a few lines inside an already-reviewed area may be done directly — but the same deviation report is still owed, written against your own work.
 
 1. One task per subagent, briefed with the delta file + its task, nothing more. Include this deviation contract verbatim in every brief:
 

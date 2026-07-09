@@ -1,6 +1,6 @@
 ---
 name: visualize
-description: Render decisions, plans, structures, and evidence as single-file HTML artifacts the human opens and reacts to — option comparisons, implementation plans, module maps, annotated diffs, explainers. Use whenever the human must compare more than two of anything, understand a structure (modules, flows, pipelines), review a substantial change, or whenever a wall of prose is about to be the interface.
+description: Render decisions, plans, structures, and evidence as single-file HTML artifacts the human opens and reacts to — option comparisons, implementation plans, module maps, annotated diffs, explainers. Use whenever the human must compare more than two of anything, understand a structure (modules, flows, pipelines), review a substantial change, or whenever a wall of prose is about to be the interface. For throwaway design-direction comparisons this wins over frontend-design (which builds the chosen direction as production code) — comparison artifacts follow prototype hygiene, never committed.
 ---
 
 # Visualize

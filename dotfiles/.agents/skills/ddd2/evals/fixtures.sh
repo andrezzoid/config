@@ -111,6 +111,7 @@ cat > "$d/.deltas/tags.md" <<'EOF'
 ---
 state: shaping
 ---
+<!-- ddd2 delta — load the ddd2 skill before working on this file -->
 # Delta: tags
 
 ## Intent
@@ -168,6 +169,7 @@ cat > "$d/.deltas/tags.md" <<'EOF'
 ---
 state: shaping
 ---
+<!-- ddd2 delta — load the ddd2 skill before working on this file -->
 # Delta: tags
 
 ## Intent

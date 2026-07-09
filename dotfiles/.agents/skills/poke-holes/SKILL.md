@@ -40,6 +40,7 @@ One fresh agent, briefed with only the repo — never the plan, delta, or conver
 4. **Decorrelate when stakes are high.** Same-model reviewers share the author's priors, so they can share its blind spots — use a different model for the territory lens on anything expensive to unwind.
 5. **A reviewer you didn't spawn produced no findings.** If you can't spawn, say so plainly — a narrated review is worse than none, because it looks like one.
 6. **Scale to the work, out loud.** A small change earns a single territory-lens agent; that reduction is fine when it's on the record (in the delta file, or stated to the human) — and a silent skip never is.
+7. **Await what you spawn.** A session that ends while a reviewer is still running loses the findings yet looks like a completed check — wait for it, or record the reduction.
 
 ## Findings triage
 

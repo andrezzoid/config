@@ -19,7 +19,9 @@
 
 ### Software Engineering
 
-At the start of any task, always match the description to the task at hand and load (with your Skill tool) as many of the following skills as necessary:
+Any change that involves a decision — a data shape, an interface, a behavior — runs as a delta: load /ddd2 first and let it conduct the toolkit (find-unknowns, prototype, visualize, poke-holes, quiz-me) and the design skills per phase. Skip it only for mechanical changes with nothing to decide (typos, renames, config tweaks).
+
+Outside a delta, load domain skills as the task warrants:
 
 - /comments-as-design
 - /complexity-red-flags

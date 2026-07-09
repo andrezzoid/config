@@ -16,9 +16,8 @@ artifacts only, then aggregated for the skill-creator viewer.
 ## Prerequisites
 
 - `claude` CLI, logged in; `node` ≥ 20, `jq`, `python3`.
-- **Park old ddd first** or triggering races contaminate every with_skill run:
-  `mv ~/.claude/skills/ddd /tmp/ddd-parked` — restore afterwards with the reverse `mv`.
-  (Moot once ddd is retired.)
+- Old `ddd` is retired (2026-07-09); if it is ever re-registered, park it first or
+  triggering races contaminate every with_skill run.
 
 ## Run
 

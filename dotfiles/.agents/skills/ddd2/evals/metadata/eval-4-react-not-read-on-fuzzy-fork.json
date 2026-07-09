@@ -1,7 +1,7 @@
 {
   "eval_id": 4,
   "eval_name": "react-not-read-on-fuzzy-fork",
-  "prompt": "I want a small dashboard page for my notes stats but honestly I don't know what I want it to look like. Something clean? You pick... actually no, show me options. I'm stepping away \u2014 leave whatever you make where I can open it; your final message is what I'll read when I return.",
+  "prompt": "I want a small dashboard page for my notes stats but honestly I don't know what I want it to look like. Something clean? You pick... actually no, show me options. Leave whatever you make where I can open it; your final message is what I'll read.",
   "assertions": [
     {
       "name": "reactable-artifact",

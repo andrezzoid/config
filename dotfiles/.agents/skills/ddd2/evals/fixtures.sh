@@ -67,7 +67,7 @@ mk_eval() { # $1 name
   mkdir -p "$WS/$1"
 }
 
-FRAMING="I'm stepping away — act for real: your final message is the reply I'll read when I return; do not describe hypothetical actions."
+FRAMING="Act for real — perform real actions rather than describing hypothetical ones; your final message is the reply I'll read."
 BASELINE_PREFIX="For this task, do not use the Skill tool or any installed skills — just work directly, however you normally would."
 
 # --- eval-1: feature ask, shaping discipline ---
@@ -158,7 +158,7 @@ echo "Resume the delta at .deltas/tags.md — continue building. $FRAMING" > "$E
 # --- eval-4: react not read on fuzzy fork ---
 E="$WS/eval-4-react-not-read-on-fuzzy-fork"; mk_eval "$(basename $E)"
 make_base "$E/fixture"
-echo "I want a small dashboard page for my notes stats but honestly I don't know what I want it to look like. Something clean? You pick... actually no, show me options. I'm stepping away — leave whatever you make where I can open it; your final message is what I'll read when I return." > "$E/prompt.txt"
+echo "I want a small dashboard page for my notes stats but honestly I don't know what I want it to look like. Something clean? You pick... actually no, show me options. Leave whatever you make where I can open it; your final message is what I'll read." > "$E/prompt.txt"
 
 # --- eval-5: verify before ship ---
 E="$WS/eval-5-verify-before-ship"; mk_eval "$(basename $E)"

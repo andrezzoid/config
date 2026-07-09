@@ -1,7 +1,7 @@
 {
   "eval_id": 2,
   "eval_name": "trivial-change-skips-protocol",
-  "prompt": "There's a typo in the README: 'Instal' should be 'Install'. Fix it.",
+  "prompt": "There's a typo in the README: 'Instal' should be 'Install'. Fix it. Act for real \u2014 perform real actions rather than describing hypothetical ones; your final message is the reply I'll read.",
   "assertions": [
     {
       "name": "typo-fixed",

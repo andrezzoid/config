@@ -1,0 +1,14 @@
+onboarding = false
+[theme]
+name = "tokyo-night"
+auto_switch = false
+
+[ui]
+agent_panel_sort = "spaces"
+
+show_agent_labels_on_pane_borders = true
+[ui.toast]
+delivery = "terminal"
+
+[experimental]
+pane_history = true

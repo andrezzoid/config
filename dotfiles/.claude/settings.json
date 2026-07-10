@@ -1,0 +1,53 @@
+{
+  "editorMode": "vim",
+  "effortLevel": "xhigh",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "pgrep -x caffeinate > /dev/null || (caffeinate -i & disown)",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash '/Users/andrejonas/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "pkill -x caffeinate",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ]
+  },
+  "permissions": {
+    "defaultMode": "default"
+  },
+  "preferredNotifChannel": "ghostty",
+  "skipDangerousModePermissionPrompt": true,
+  "tui": "fullscreen",
+  "verbose": true,
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "voiceEnabled": true,
+  "worktree": {
+    "baseRef": "fresh"
+  }
+}

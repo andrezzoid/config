@@ -3,6 +3,25 @@ onboarding = false
 name = "tokyo-night"
 auto_switch = false
 
+# Tokyo Night Moon overrides; Herdr has no built-in Moon variant.
+[theme.custom]
+accent = "#82aaff"
+panel_bg = "#222436"
+surface0 = "#2f334d"
+surface1 = "#444a73"
+surface_dim = "#1e2030"
+overlay0 = "#545c7e"
+overlay1 = "#737aa2"
+text = "#c8d3f5"
+subtext0 = "#828bb8"
+mauve = "#c099ff"
+green = "#c3e88d"
+yellow = "#ffc777"
+red = "#ff757f"
+blue = "#82aaff"
+teal = "#4fd6be"
+peach = "#ff966c"
+
 [ui]
 agent_panel_sort = "spaces"
 

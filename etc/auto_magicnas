@@ -1,3 +1,6 @@
-home       -fstype=smbfs,soft    ://andre@magicnas.local/home
-Family     -fstype=smbfs,soft    ://andre@magicnas.local/Family
-Singular   -fstype=smbfs,soft    ://andre@magicnas.local/Singular
+# autofs map for magicnas — deployed to /etc/auto_magicnas by setup.sh.
+# The server name must match the login-keychain entry (srvr) byte-for-byte,
+# or automountd fails auth silently and the shares appear empty.
+home       -fstype=smbfs,soft    ://andre@magicnas._smb._tcp.local/home
+Family     -fstype=smbfs,soft    ://andre@magicnas._smb._tcp.local/Family
+Singular   -fstype=smbfs,soft    ://andre@magicnas._smb._tcp.local/Singular

@@ -37,22 +37,24 @@ if [ -f defaults.sh ]; then
   bash defaults.sh
 fi
 
-# NAS automount
+# NAS automount + SMB client config (mc_on=no — see etc/nsmb.conf for why)
 echo "Configuring NAS automount..."
 sudo cp etc/auto_magicnas /etc/auto_magicnas
+sudo cp etc/nsmb.conf /etc/nsmb.conf
 if ! grep -q "auto_magicnas" /etc/auto_master; then
   echo '/Users/andrejonas/magicnas    auto_magicnas' | sudo tee -a /etc/auto_master
 fi
 
 # Seed SMB credentials into login keychain so automountd can mount unattended.
 # `-r "smb "` is the FourCC Finder uses; automountd launches mount_smbfs, hence the -T grant.
-if ! security find-internet-password -a andre -s magicnas.local -r "smb " &>/dev/null; then
-  echo "Enter SMB password for andre@magicnas.local (stored in login keychain):"
+# The -s server name must match etc/auto_magicnas byte-for-byte.
+if ! security find-internet-password -a andre -s magicnas._smb._tcp.local -r "smb " &>/dev/null; then
+  echo "Enter SMB password for andre@magicnas (stored in login keychain):"
   security add-internet-password \
     -a andre \
-    -s magicnas.local \
+    -s magicnas._smb._tcp.local \
     -r "smb " \
-    -l "magicnas.local (andre)" \
+    -l "magicnas._smb._tcp.local (andre)" \
     -T /sbin/mount_smbfs \
     -U \
     -w

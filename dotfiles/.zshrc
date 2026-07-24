@@ -126,6 +126,18 @@ nasfix() {
     diskutil unmount /Volumes/home >/dev/null 2>&1
 }
 
+# Claude Code on Codex models via CLIProxyAPI (needs `brew services start cliproxyapi`).
+# Override the model per-call (`claude-codex --model gpt-5.5`) or mid-session (`/model`).
+# Effort dial: gpt-5.6-sol-{low,medium,high,xhigh} aliases defined in cliproxyapi.conf;
+# plain gpt-5.6-sol resolves to xhigh (Claude Code's adaptive thinking maps there).
+claude-codex() {
+    ANTHROPIC_BASE_URL="http://127.0.0.1:8317" \
+    ANTHROPIC_AUTH_TOKEN="$(< ~/.cli-proxy-api/.local-api-key)" \
+    ANTHROPIC_MODEL="gpt-5.6-sol" \
+    ANTHROPIC_DEFAULT_HAIKU_MODEL="gpt-5.4-mini" \
+    claude "$@"
+}
+
 
 ## Shell integrations
 eval "$(fzf --zsh)"

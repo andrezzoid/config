@@ -62,6 +62,18 @@ fi
 
 sudo automount -vc
 
+# CLIProxyAPI (Codex models in Claude Code via claude-codex)
+# Client API key is generated per-machine and injected at deploy time; it lives
+# untracked in ~/.cli-proxy-api/.local-api-key (read by the claude-codex function).
+echo "Configuring CLIProxyAPI..."
+mkdir -p ~/.cli-proxy-api
+if [ ! -f ~/.cli-proxy-api/.local-api-key ]; then
+  echo "sk-cliproxy-$(openssl rand -hex 16)" > ~/.cli-proxy-api/.local-api-key
+  chmod 600 ~/.cli-proxy-api/.local-api-key
+fi
+sed "s/__CLIPROXY_API_KEY__/$(cat ~/.cli-proxy-api/.local-api-key)/" etc/cliproxyapi.conf > /opt/homebrew/etc/cliproxyapi.conf
+brew services start cliproxyapi 2>/dev/null || true
+
 # Podman machine setup
 if command -v podman &>/dev/null; then
   podman machine init 2>/dev/null
@@ -74,5 +86,6 @@ echo "  1. Sign into 1Password"
 echo "  2. Enable 1Password SSH agent (Settings > Developer > SSH Agent)"
 echo "  3. Sign into: browsers, Slack, Discord, Figma, Notion, etc."
 echo "  4. Sign into CLIs: td login, etc."
-echo "  5. Set default apps"
-echo "  6. Grant Ghostty 'Local Network' permission (System Settings > Privacy & Security > Local Network) — required for NAS access from the terminal"
+echo "  5. Codex login for claude-codex: cliproxyapi --codex-login"
+echo "  6. Set default apps"
+echo "  7. Grant Ghostty 'Local Network' permission (System Settings > Privacy & Security > Local Network) — required for NAS access from the terminal"

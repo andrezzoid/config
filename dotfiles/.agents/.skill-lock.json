@@ -47,15 +47,6 @@
       "pluginName": "example-skills",
       "installedAt": "2026-05-06T14:40:25.008Z",
       "updatedAt": "2026-05-06T14:40:25.008Z"
-    },
-    "herdr": {
-      "source": "ogulcancelik/herdr",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/ogulcancelik/herdr.git",
-      "skillPath": "SKILL.md",
-      "skillFolderHash": "c8850a2e3e284033142db0f8117fa5998c68bd59",
-      "installedAt": "2026-07-10T10:48:31.930Z",
-      "updatedAt": "2026-07-10T10:48:31.930Z"
     }
   },
   "lastSelectedAgents": [

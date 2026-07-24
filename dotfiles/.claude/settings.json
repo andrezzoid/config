@@ -1,53 +1,54 @@
 {
-  "editorMode": "vim",
-  "effortLevel": "xhigh",
+  "permissions": {
+    "defaultMode": "default"
+  },
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "",
         "hooks": [
           {
-            "command": "pgrep -x caffeinate > /dev/null || (caffeinate -i & disown)",
-            "type": "command"
+            "type": "command",
+            "command": "pgrep -x caffeinate > /dev/null || (caffeinate -i & disown)"
           }
-        ],
-        "matcher": ""
+        ]
       },
       {
+        "matcher": "*",
         "hooks": [
           {
+            "type": "command",
             "command": "bash '/Users/andrejonas/.claude/hooks/herdr-agent-state.sh' session",
-            "timeout": 10,
-            "type": "command"
+            "timeout": 10
           }
-        ],
-        "matcher": "*"
+        ]
       }
     ],
     "Stop": [
       {
+        "matcher": "",
         "hooks": [
           {
-            "command": "pkill -x caffeinate",
-            "type": "command"
+            "type": "command",
+            "command": "pkill -x caffeinate"
           }
-        ],
-        "matcher": ""
+        ]
       }
     ]
   },
-  "permissions": {
-    "defaultMode": "default"
+  "worktree": {
+    "baseRef": "fresh"
   },
-  "preferredNotifChannel": "ghostty",
-  "skipDangerousModePermissionPrompt": true,
+  "effortLevel": "xhigh",
   "tui": "fullscreen",
-  "verbose": true,
   "voice": {
     "enabled": true,
     "mode": "hold"
   },
+  "skipDangerousModePermissionPrompt": true,
+  "editorMode": "vim",
+  "verbose": true,
+  "preferredNotifChannel": "ghostty",
   "voiceEnabled": true,
-  "worktree": {
-    "baseRef": "fresh"
-  }
+  "model": "claude-fable-5[1m]"
 }

@@ -1,3 +1,7 @@
+---
+description: Review a pull request in a loop until ready to merge
+---
+
 /loop 5m
 
 Let's put this PR in shape to get merged as a Senior Engineer would:
@@ -20,4 +24,4 @@ Let's put this PR in shape to get merged as a Senior Engineer would:
 
 4. Resolve conversation for addressed comments that were either fixed or ignored
 
-5. Let the cron fire up to 5 times. Then cancel the cron and /loop again every 6h.
+5. Let the cron fire up to 10 times. Then cancel the cron and /loop again every 6h.

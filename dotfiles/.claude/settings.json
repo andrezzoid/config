@@ -1,6 +1,17 @@
 {
   "permissions": {
-    "defaultMode": "default"
+    "defaultMode": "auto",
+    "deny": [
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "DesignSync",
+      "NotebookEdit",
+      "SendMessage",
+      "PushNotification",
+      "RemoteTrigger"
+    ],
+    "disableRemoteControl": true,
+    "disableArtifact": true
   },
   "hooks": {
     "SessionStart": [
@@ -49,6 +60,5 @@
   "editorMode": "vim",
   "verbose": true,
   "preferredNotifChannel": "ghostty",
-  "voiceEnabled": true,
-  "model": "claude-fable-5[1m]"
+  "voiceEnabled": true
 }

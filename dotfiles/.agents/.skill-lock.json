@@ -6,37 +6,36 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
       "skillPath": "skills/agent-browser/SKILL.md",
-      "skillFolderHash": "121eecacd86c0aab06aef5cd4663e80c5397cd41",
+      "skillFolderHash": "037e8078db4b20b4aa25c04f21c6de7d335ec449",
       "installedAt": "2026-01-23T10:27:13.327Z",
-      "updatedAt": "2026-05-06T14:33:09.836Z"
+      "updatedAt": "2026-07-27T11:58:30.404Z"
     },
     "linear-cli": {
       "source": "schpet/linear-cli",
       "sourceType": "github",
       "sourceUrl": "https://github.com/schpet/linear-cli.git",
       "skillPath": "skills/linear-cli/SKILL.md",
-      "skillFolderHash": "6f29c4345b675d4787e82ded44b90dd78625d50a",
+      "skillFolderHash": "9498a678c738a19b81e2583d7745464539208d20",
       "installedAt": "2026-02-23T15:22:13.776Z",
-      "updatedAt": "2026-04-05T09:20:35.241Z"
+      "updatedAt": "2026-07-27T11:58:32.475Z"
     },
     "test-driven-development": {
       "source": "addyosmani/agent-skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/addyosmani/agent-skills.git",
       "skillPath": "skills/test-driven-development/SKILL.md",
-      "skillFolderHash": "f042b13b4a85bd4e430347394adee937a7560b85",
+      "skillFolderHash": "76329a278f51360e7ee20c7a37db46cc8142b7fe",
       "installedAt": "2026-04-05T10:31:13.257Z",
-      "updatedAt": "2026-05-06T14:33:11.859Z"
+      "updatedAt": "2026-07-27T11:58:34.048Z"
     },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/frontend-design/SKILL.md",
-      "skillFolderHash": "928950704df8a8b885c03de5da626331e6f29cf8",
-      "pluginName": "example-skills",
+      "skillFolderHash": "0d5b74a14bdf3ebcd64f352d06376a2ef05ed296",
       "installedAt": "2026-05-06T14:33:55.469Z",
-      "updatedAt": "2026-05-06T14:33:55.469Z"
+      "updatedAt": "2026-07-27T11:58:37.445Z"
     },
     "skill-creator": {
       "source": "anthropics/skills",

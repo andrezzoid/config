@@ -1,7 +1,7 @@
 ---
 name: comments-as-design
 description: |
-  Use comments as a design tool to capture abstractions, intent, and decisions code can't express. Mandatory use when writing, reviewing, or refactoring any module, interface, class, public function, or data structure — and when the user asks to "add comments", "document this", or "explain this code".
+  Use comments as a design tool to capture abstractions, intent, and decisions code can't express. Use when designing a module, interface, or data structure whose intent won't be obvious from the code alone, and when the user asks to "add comments", "document this", or "explain this code".
 ---
 
 # Comments as Design
@@ -15,8 +15,8 @@ Comments capture what code alone cannot: the abstraction, the intent, the invari
 
 ## When to Use
 
-- Writing, reviewing, or refactoring any module, class, function, public API, or data structure.
-- About to write any interface that other code will call.
+- Designing a module, interface, or data structure whose intent won't be obvious from the code alone.
+- About to write an interface other code will call, where the contract needs stating.
 - The user asks to "add comments", "document this", or "explain this code".
 
 ## When NOT to Use

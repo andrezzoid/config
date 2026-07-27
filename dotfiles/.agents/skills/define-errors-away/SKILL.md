@@ -1,6 +1,6 @@
 ---
 name: define-errors-away
-description: Eliminate error conditions through API redesign instead of handling them. Use this skill whenever you are about to write a try/catch block, throw an exception, return an error code, add a null check, or write a guard clause. Also trigger when the user asks to "simplify error handling", "reduce exceptions", or when you encounter code with dense error-handling logic. The instinct to add error handling is almost always a signal that the API should be redesigned instead — the best error handling is the error handling you didn't have to write.
+description: Eliminate error conditions through API redesign instead of handling them. Use when designing an API's error surface, when error handling in a module is getting dense, or when the user asks to "simplify error handling" or "reduce exceptions". Dense error handling is usually a signal that the API should be redesigned instead — the best error handling is the error handling you didn't have to write.
 ---
 
 # Define Errors Out of Existence
@@ -14,14 +14,14 @@ Exception handling is one of the worst sources of complexity in software. It's h
 
 ## When to Use
 
-Trigger when about to:
+Trigger when designing an API's error surface, or when error handling is accumulating in a module:
 
-- Write a try/catch or try/except block
-- Throw or raise an exception
-- Return an error code, error object, or Result type
-- Add a null/undefined/nil check
-- Write a guard clause for "invalid" input
-- Handle a "file not found", "key missing", or "index out of bounds" condition
+- Several try/catch blocks, or guard clauses stacking up across call sites
+- An error code, error object, or Result type threading through many layers
+- The same null/undefined/nil check repeated in multiple places
+- Deciding how "file not found", "key missing", or "index out of bounds" should behave
+
+The signal is accumulation, not any single check — one guard clause is usually just a guard clause.
 
 **Do NOT use** for genuine errors that must remain visible:
 

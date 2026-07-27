@@ -1,6 +1,6 @@
 ---
 name: design-it-twice
-description: Generate at least two fundamentally different designs and compare them before implementing. Use whenever you're about to design or implement a non-trivial module, class, API, data structure, service, or system component. Also trigger when refactoring, or when the user asks to "redesign", "rethink", or "explore alternatives". Be aggressive — committing to the first design that comes to mind is the single biggest source of mediocre software.
+description: Generate at least two fundamentally different designs and compare them before implementing. Use when the design space is genuinely open — a new module, API, data structure, or service where several shapes would plausibly work — or when the user asks to "redesign", "rethink", or "explore alternatives". Committing to the first design that comes to mind is a common source of mediocre software.
 ---
 
 # Design It Twice
@@ -24,7 +24,7 @@ Trigger this skill before:
 - Making an architectural decision (sync vs. async, push vs. pull, etc.)
 - Responding to "how should we build this?" or "what's the best approach?"
 
-Skip only for truly trivial changes — renaming a variable, fixing a typo, adding a log line. If you're unsure whether it's trivial, it isn't.
+Skip when the design space isn't actually open — a rename, a typo fix, or a change where one shape is clearly right.
 
 ## The Workflow
 

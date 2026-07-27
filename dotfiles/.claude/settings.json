@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "auto",
     "deny": [
       "EnterPlanMode",
       "ExitPlanMode",
@@ -10,6 +9,7 @@
       "PushNotification",
       "RemoteTrigger"
     ],
+    "defaultMode": "auto",
     "disableRemoteControl": true,
     "disableArtifact": true
   },
@@ -60,5 +60,6 @@
   "editorMode": "vim",
   "verbose": true,
   "preferredNotifChannel": "ghostty",
-  "voiceEnabled": true
+  "voiceEnabled": true,
+  "autoMemoryEnabled": false
 }

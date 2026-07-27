@@ -50,16 +50,16 @@
   "worktree": {
     "baseRef": "fresh"
   },
-  "effortLevel": "xhigh",
+  "effortLevel": "high",
   "tui": "fullscreen",
   "voice": {
     "enabled": true,
     "mode": "hold"
   },
+  "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "editorMode": "vim",
   "verbose": true,
   "preferredNotifChannel": "ghostty",
-  "voiceEnabled": true,
-  "autoMemoryEnabled": false
+  "voiceEnabled": true
 }

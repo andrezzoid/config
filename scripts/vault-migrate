@@ -1,0 +1,685 @@
+#!/usr/bin/env python3
+"""
+vault-migrate: one-off migration of the Second Brain vault from the PARA/Obsidian
+layout to the flat, standard-markdown structure described in the vault README.
+
+  vault-migrate --vault DIR            dry run: plan + report, writes nothing
+  vault-migrate --vault DIR --apply    perform the plan (run on a copy first)
+
+What it does
+  - Flattens live folders into the root. Folder becomes frontmatter:
+      00 Caixa de Entrada -> organized: false      02 Projetos -> type Project
+      03 Áreas -> type Responsibility              04 Cartões -> type Note
+      05 Recursos/Quotes -> type Quote             05 Recursos/* -> type Note
+      01 Calendário -> type Event, belongs_to the review Operation, related_to
+      the enclosing period
+    Notes inside a project subfolder belong_to that project.
+  - Gives every live note the README frontmatter keys, in order, converting
+    wikilinks in frontmatter values to markdown links.
+  - Rewrites every wikilink outside Archive/ to a standard markdown link with
+    an angle-bracket path relative to the note's new location. Dead links stay
+    dead (breadcrumbs); resolvable links must stay resolvable, asserted.
+  - 06 Arquivo -> Archive/ (renamed, contents untouched). Old Readwise notes,
+    Bases and Extras tooling move under Archive/. Links into old Readwise notes
+    point at the regenerated References/ notes when the title matches.
+  - 07 Extras/Templates -> Templates/. Attachments -> Attachments/.
+  - 08 Assistente AI stays in place; only its links are rewritten.
+  - Creates the type pages and the review Operation pages that links need.
+
+Run readwise-sync into <vault>/References first so the Readwise mapping exists.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import sys
+import unicodedata
+from collections import defaultdict
+from datetime import datetime, timezone
+
+# ---------------------------------------------------------------- constants
+ARCHIVE_SRC = "06 Arquivo"
+AGENT_DIR = "08 Assistente AI"
+READWISE_SRC = "05 Recursos/Readwise"
+TEMPLATES_SRC = "07 Extras/Templates"
+BASES_SRC = "07 Extras/Bases"
+EXTRAS_SRC = "07 Extras"
+SKIP_DIRS = {".obsidian", ".trash", ".claude", ".git"}
+ROOT_KEEP_AS_IS = {"README.md"}  # conventions file: not a note
+FORBIDDEN = re.compile(r"[<>#|]")
+WIKILINK = re.compile(r"(!?)\[\[([^\]\|#]*)(#[^\]\|]*)?(\|[^\]]*)?\]\]")
+IMG_EXT = re.compile(r"\.(png|jpe?g|gif|webp|svg|pdf|mp4|mov|mp3|csv|excalidraw)$", re.I)
+PERIOD = {
+    "year": re.compile(r"^(\d{4})$"),
+    "quarter": re.compile(r"^(\d{4})-Q([1-4])$"),
+    "month": re.compile(r"^(\d{4})-(\d{2})$"),
+    "week": re.compile(r"^(\d{4})-W(\d{2})$"),
+    "week_old": re.compile(r"^(\d{4})-(\d{2})-[wW](\d{2})$"),
+    "day": re.compile(r"^(\d{4})-(\d{2})-(\d{2})$"),
+}
+OPERATIONS = {"year": "Annual review", "quarter": "Quarterly review", "week": "Weekly review", "week_old": "Weekly review"}
+TYPE_PAGES = ["Project", "Operation", "Responsibility", "Task", "Event", "Note", "Topic", "Quote",
+              "Publication", "Person", "Organization", "Book", "Article"]
+
+
+def nfc(s):
+    return unicodedata.normalize("NFC", s)
+
+
+def log(*a):
+    print(*a, file=sys.stderr)
+
+
+def slug_anchor(heading):
+    h = nfc(heading).strip().lower()
+    h = re.sub(r"[^\w\s-]", "", h)
+    return re.sub(r"\s+", "-", h)
+
+
+def yaml_quote(s):
+    return json.dumps(s, ensure_ascii=False)
+
+
+def rel(from_dir, to_path):
+    """Path of to_path relative to from_dir, POSIX separators."""
+    r = os.path.relpath(to_path, from_dir or ".")
+    return r.replace(os.sep, "/")
+
+
+def md_link(text, from_dir, to_path, anchor=""):
+    return f"[{text}](<{rel(from_dir, to_path)}{anchor}>)"
+
+
+# ---------------------------------------------------------------- inventory
+class Item:
+    __slots__ = ("old", "new", "kind", "is_md", "type", "organized", "belongs_to", "related_to", "content", "new_content")
+
+    def __init__(self, old, kind, is_md):
+        self.old, self.kind, self.is_md = old, kind, is_md
+        self.new = None
+        self.type = self.organized = self.belongs_to = None
+        self.related_to = []
+        self.content = self.new_content = None
+
+    @property
+    def stem(self):
+        return nfc(os.path.splitext(os.path.basename(self.old))[0])
+
+    @property
+    def new_stem(self):
+        return nfc(os.path.splitext(os.path.basename(self.new))[0])
+
+
+def classify(rel_path, is_dir_agent):
+    top = rel_path.split("/")[0]
+    if rel_path.startswith(READWISE_SRC + "/"):
+        return "readwise_old"
+    if top == ARCHIVE_SRC:
+        return "archive"
+    if top == AGENT_DIR:
+        return "agent"
+    if rel_path.startswith(TEMPLATES_SRC + "/"):
+        return "template"
+    if rel_path.startswith(BASES_SRC + "/") or rel_path.endswith(".base"):
+        return "base"
+    if top == EXTRAS_SRC:
+        return "extras"
+    if "/" not in rel_path and rel_path in ROOT_KEEP_AS_IS:
+        return "keep"
+    return "live"
+
+
+def inventory(vault):
+    items = []
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for f in sorted(files):
+            if f == ".DS_Store":
+                continue
+            p = os.path.join(root, f)
+            r = nfc(os.path.relpath(p, vault)).replace(os.sep, "/")
+            if r.split("/")[0] == "References" or r.split("/")[0] in ("Archive", "Templates", "Attachments"):
+                kind = "done"  # already in target layout (e.g. References from readwise-sync)
+            else:
+                kind = classify(r, False)
+            items.append(Item(r, kind, f.endswith(".md")))
+    return items
+
+
+# ---------------------------------------------------------------- planning
+def period_of(stem):
+    for kind, rx in PERIOD.items():
+        m = rx.match(stem)
+        if m:
+            return kind, m
+    return None, None
+
+
+def enclosing_period(kind, m):
+    """Related periods per README: quarter->year, week->quarter, day->week."""
+    if kind == "quarter":
+        return [m.group(1)]
+    if kind == "month":
+        return [m.group(1)]
+    if kind == "week":
+        return []  # quarter of an ISO week is fuzzy; keep only what is certain
+    if kind == "week_old":
+        return [f"{m.group(1)}-{m.group(2)}"]
+    if kind == "day":
+        d = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return [d.strftime("%G-W%V")]
+    return []
+
+
+def plan_moves(items, report):
+    live = [i for i in items if i.kind == "live"]
+    for it in live:
+        parts = it.old.split("/")
+        top = parts[0] if len(parts) > 1 else ""
+        sub = parts[1] if len(parts) > 2 else None
+        stem = it.stem
+        if not it.is_md:
+            it.new = f"Attachments/{os.path.basename(it.old)}"
+            continue
+        name = FORBIDDEN.sub("-", stem).strip()
+        if name != stem:
+            report["renamed"].append((it.old, name))
+        it.new = f"{name}.md"
+        it.organized = top != "00 Caixa de Entrada"
+        if top == "01 Calendário":
+            it.type = "Event"
+            kind, m = period_of(stem)
+            it.belongs_to = OPERATIONS.get(kind)
+            it.related_to = enclosing_period(kind, m) if kind else []
+        elif top in ("02 Projetos", "06 Projectos"):
+            if sub and sub != stem:
+                it.type = "Note"
+                it.belongs_to = sub
+            else:
+                it.type = "Project"
+        elif top == "03 Áreas":
+            it.type = "Responsibility"
+        elif top == "04 Cartões":
+            it.type = "Note"
+            if sub:
+                it.related_to = [sub]
+        elif top == "05 Recursos":
+            it.type = "Quote" if sub == "Quotes" else "Note"
+        else:
+            kind, _ = period_of(stem)
+            it.type = "Event" if kind else "Note"
+            if kind:
+                it.belongs_to = OPERATIONS.get(kind)
+    # archive, readwise, bases, extras, templates
+    for it in items:
+        if it.kind == "archive":
+            it.new = "Archive/" + it.old[len(ARCHIVE_SRC) + 1:]
+        elif it.kind == "readwise_old":
+            it.new = "Archive/Readwise (Obsidian plugin)/" + it.old[len(READWISE_SRC) + 1:]
+        elif it.kind == "template":
+            it.new = "Templates/" + it.old[len(TEMPLATES_SRC) + 1:]
+        elif it.kind == "base":
+            it.new = "Archive/Obsidian bases/" + os.path.basename(it.old)
+        elif it.kind == "extras":
+            it.new = "Archive/Extras/" + it.old[len(EXTRAS_SRC) + 1:]
+        elif it.kind in ("agent", "keep", "done"):
+            it.new = it.old
+
+
+def project_stubs(items):
+    """Projects referenced by belongs_to from a subfolder but without an index note."""
+    have = {i.new_stem for i in items if i.kind == "live" and i.is_md}
+    need = {i.belongs_to for i in items if i.kind == "live" and i.type == "Note" and i.belongs_to}
+    return sorted(n for n in need if n not in have and n not in OPERATIONS.values())
+
+
+# ---------------------------------------------------------------- link resolution
+class Resolver:
+    def __init__(self, items, vault, stubs):
+        self.by_stem = defaultdict(list)     # NFC stem -> items (old layout)
+        self.by_oldpath = {}
+        for it in items:
+            if it.new is None:
+                continue
+            self.by_oldpath[it.old] = it
+            self.by_stem[it.stem].append(it)
+        self.readwise_map = self._readwise_map(items, vault)
+        self.stubs = set(stubs)
+        self.new_files = {it.new for it in items if it.new} | {f"{s}.md" for s in stubs}
+        self.stats = defaultdict(int)
+        self.ambiguous = []
+
+    def _readwise_map(self, items, vault):
+        """old Readwise note stem -> References/<name>.md when the regenerated note exists."""
+        refs = {nfc(os.path.splitext(f)[0]) for f in os.listdir(os.path.join(vault, "References"))} \
+            if os.path.isdir(os.path.join(vault, "References")) else set()
+        m = {}
+        for it in items:
+            if it.kind != "readwise_old" or not it.is_md:
+                continue
+            try:
+                head = open(os.path.join(vault, it.old), encoding="utf-8", errors="replace").read(600)
+            except OSError:
+                continue
+            t = re.search(r'^title: "\[\[(.*?)\]\]"', head, re.M)
+            if t:
+                name = re.sub(r"\s+", " ", re.sub(r"[<>#|:/\\]", "-", nfc(t.group(1)))).strip(" .")
+                if name in refs:
+                    m[it.stem] = f"References/{name}.md"
+        return m
+
+    def resolve(self, target, from_item):
+        """-> (new_path or None, kind) for a wikilink target string (no anchor/alias)."""
+        t = nfc(target.strip())
+        if t.endswith(".md"):
+            t = t[:-3]
+        if "/" in t:  # path-qualified: relative to the source folder, its ancestors, then the vault root
+            base = os.path.dirname(from_item.old)
+            bases = []
+            while True:
+                bases.append(base)
+                if not base:
+                    break
+                base = os.path.dirname(base)
+            for b in bases:
+                cand = os.path.normpath(os.path.join(b, t)).replace(os.sep, "/") if b else t
+                it = self.by_oldpath.get(cand) or self.by_oldpath.get(cand + ".md")
+                if it:
+                    return self._target_of(it)
+        stem = t.split("/")[-1]
+        cands = self.by_stem.get(stem, [])
+        if not cands:
+            if stem in self.stubs or stem in OPERATIONS.values():
+                return f"{stem}.md", "stub", False
+            return None, "dead", False
+        if len(cands) > 1:
+            # prefer live notes; otherwise the candidate in the nearest ancestor folder of the source
+            live = [c for c in cands if c.kind == "live"]
+            if live:
+                cands = live
+            else:
+                src_dir = os.path.dirname(from_item.old)
+                def closeness(c):
+                    d = os.path.dirname(c.old)
+                    return len(d) if (src_dir == d or src_dir.startswith(d + "/")) else -1
+                best = max(closeness(c) for c in cands)
+                cands = [c for c in cands if closeness(c) == best]
+            if len(cands) > 1:
+                self.stats["ambiguous"] += 1
+                self.ambiguous.append((from_item.old, stem, [c.old for c in cands]))
+        return self._target_of(cands[0])
+
+    def _target_of(self, it):
+        """-> (new_path, kind, remapped_to_regenerated_readwise_note)"""
+        if it.kind == "readwise_old" and it.stem in self.readwise_map:
+            self.stats["readwise_remapped"] += 1
+            return self.readwise_map[it.stem], "resolved", True
+        return it.new, "resolved", False
+
+
+# ---------------------------------------------------------------- rewriting
+def rewrite_links(text, item, res, report):
+    from_dir = os.path.dirname(item.new)
+    dead_dir = from_dir  # dead breadcrumbs point next to the source, or into root for root notes
+
+    def repl(m):
+        embed, target, anchor, alias = m.group(1), m.group(2), m.group(3) or "", m.group(4)
+        alias = alias[1:] if alias else None
+        target = target.strip()
+        if not target:  # [[#heading]] same-file
+            return f"[{alias or anchor[1:]}](#{slug_anchor(anchor[1:])})"
+        if target.lower().endswith(".base"):
+            report["base_embeds"].append((item.old, target))
+            return f"<!-- base: {target} -->"
+        if IMG_EXT.search(target):
+            path, kind, _ = res.resolve(target, item)
+            if path is None:
+                path = f"Attachments/{os.path.basename(target)}"
+                res.stats["dead_attachment"] += 1
+            text_ = alias or ""
+            return f"![{text_}](<{rel(from_dir, path)}>)"
+        path, kind, remapped = res.resolve(target, item)
+        res.stats[kind] += 1
+        if path is None:
+            stem = nfc(target.split("/")[-1])
+            stem = FORBIDDEN.sub("-", stem)
+            path = os.path.join(dead_dir, stem + ".md") if dead_dir else stem + ".md"
+        if anchor.startswith("#^"):  # Obsidian block reference: no markdown equivalent
+            report["block_refs"].append((item.old, target + anchor))
+            anchor = ""
+        if remapped:  # regenerated Readwise note: old headings are gone, name changed
+            anchor = ""
+            default_text = os.path.splitext(os.path.basename(path))[0]
+        else:
+            default_text = nfc(target.split("/")[-1]) + (anchor if anchor else "")
+        text_ = alias if alias is not None else default_text
+        a = f"#{slug_anchor(anchor[1:])}" if anchor else ""
+        if embed:
+            report["note_embeds"].append((item.old, target))
+        return md_link(text_, from_dir, path, a)
+
+    return WIKILINK.sub(repl, text)
+
+
+def split_frontmatter(text):
+    if text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        if end != -1:
+            after = text[end + 4:]
+            if after.startswith("\n"):
+                after = after[1:]
+            return text[4:end], after
+    return None, text
+
+
+def parse_blocks(fm):
+    """Frontmatter text -> ordered list of [key, [lines]]; a block is a key line plus its indented continuation."""
+    blocks, cur = [], None
+    for line in fm.splitlines():
+        m = re.match(r"^([A-Za-z_][\w-]*):(.*)$", line)
+        if m and not line.startswith((" ", "\t", "-")):
+            cur = [m.group(1), [line]]
+            blocks.append(cur)
+        elif cur is not None:
+            cur[1].append(line)
+    return blocks
+
+
+def block_value_is_empty(lines):
+    first = lines[0].split(":", 1)[1].strip()
+    rest = [l for l in lines[1:] if l.strip() and l.strip() != "-"]
+    return first in ("", "[]", '""', "''") and not rest
+
+
+def list_items(lines):
+    """Values of a YAML list block (or a single scalar) as raw strings."""
+    first = lines[0].split(":", 1)[1].strip()
+    vals = []
+    if first and first not in ("[]",):
+        if first.startswith("[") and first.endswith("]"):
+            vals += [v.strip() for v in first[1:-1].split(",") if v.strip()]
+        else:
+            vals.append(first)
+    for l in lines[1:]:
+        s = l.strip()
+        if s.startswith("- ") and s[2:].strip():
+            vals.append(s[2:].strip())
+    return [v.strip('"').strip("'") for v in vals]
+
+
+def build_frontmatter(item, fm_text, res, report, birth):
+    from_dir = os.path.dirname(item.new)
+    blocks = parse_blocks(fm_text or "")
+    by_key = {b[0]: b for b in blocks}
+
+    def link_val(stem_or_path):
+        return yaml_quote(md_link(os.path.splitext(os.path.basename(stem_or_path))[0], from_dir, stem_or_path))
+
+    # date_created
+    if "date_created" in by_key and not block_value_is_empty(by_key["date_created"][1]):
+        dc = by_key["date_created"][1]
+        v = dc[0].split(":", 1)[1].strip().strip('"')
+        dc_lines = [f"date_created: {yaml_quote(v)}"]
+    else:
+        dc_lines = [f"date_created: {yaml_quote(birth)}"]
+    # type
+    if "type" in by_key and not block_value_is_empty(by_key["type"][1]):
+        # a hand-set type wins over the folder rule; convert its link
+        raw = by_key["type"][1][0].split(":", 1)[1].strip().strip('"')
+        conv = rewrite_links(raw, item, res, report)
+        if conv == raw and not raw.startswith("["):
+            conv = md_link(raw, from_dir, f"{raw}.md")
+        type_lines = [f"type: {yaml_quote(conv)}"]
+        report["type_kept"].append((item.old, raw))
+    else:
+        type_lines = [f"type: {link_val(item.type + '.md')}"]
+    # organized
+    org_lines = [f"organized: {'true' if item.organized else 'false'}"]
+    if "organized" in by_key and not block_value_is_empty(by_key["organized"][1]):
+        org_lines = [by_key["organized"][1][0]]
+    # belongs_to
+    if "belongs_to" in by_key and not block_value_is_empty(by_key["belongs_to"][1]):
+        bt_lines = rewrite_links("\n".join(by_key["belongs_to"][1]), item, res, report).splitlines()
+    elif item.belongs_to:
+        bt_lines = [f"belongs_to: {link_val(item.belongs_to + '.md')}"]
+    else:
+        bt_lines = ["belongs_to:"]
+    # related_to: merge related_to + wikilinks_related + related + computed
+    rel_vals = []
+    for k in ("related_to", "wikilinks_related", "related"):
+        if k in by_key:
+            rel_vals += list_items(by_key[k][1])
+    computed = [f"[[{r}]]" for r in item.related_to]
+    seen, merged = set(), []
+    for v in rel_vals + computed:
+        if v and v not in seen:
+            seen.add(v)
+            merged.append(v)
+    rt_lines = ["related_to:"]
+    for v in merged:
+        conv = rewrite_links(v, item, res, report)
+        if conv == v and not v.startswith("["):
+            # plain text value: make it a link by name (breadcrumb if missing)
+            conv = md_link(v, from_dir, f"{FORBIDDEN.sub('-', v)}.md")
+        rt_lines.append(f"  - {yaml_quote(conv)}")
+    # tags
+    tag_lines = by_key["tags"][1] if "tags" in by_key else ["tags:"]
+    tag_lines = [l for l in tag_lines if l.strip() != "-"]
+    # everything else, links converted and quoted
+    rest = []
+    for k, lines in blocks:
+        if k in ("date_created", "type", "organized", "belongs_to", "related_to", "wikilinks_related", "related", "tags"):
+            continue
+        for l in lines:
+            conv = rewrite_links(l, item, res, report)
+            if conv != l:
+                # ensure the value is quoted now that it holds markdown
+                m = re.match(r"^(\s*(?:[\w-]+:|-)\s*)(.*)$", conv)
+                if m and not m.group(2).startswith('"'):
+                    conv = m.group(1) + yaml_quote(m.group(2).strip('"'))
+            rest.append(conv)
+    return "\n".join(["---"] + dc_lines + type_lines + org_lines + bt_lines + rt_lines + tag_lines + rest + ["---"]) + "\n"
+
+
+def birth_time(path):
+    st = os.stat(path)
+    ts = getattr(st, "st_birthtime", st.st_mtime)
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def type_page(name, from_dir=""):
+    return (f"# {name}\n\nDescribe what a {name} is and which extra frontmatter keys its template adds.\n\n"
+            f"## Notes of this type\n\n<!-- query: type = {name} -->\n")
+
+
+def operation_page(name, vault_now):
+    return (f"---\ndate_created: {yaml_quote(vault_now)}\ntype: \"[Operation](<Operation.md>)\"\norganized: true\n"
+            f"belongs_to:\nrelated_to:\ntags:\n---\n# {name}\n")
+
+
+# ---------------------------------------------------------------- invariant
+LINK_MD = re.compile(r"\]\((<([^>]+)>|([^)\s]+))\)")
+
+
+def resolvable_before(items, res):
+    pairs = set()
+    for it in items:
+        if it.kind not in ("live", "agent", "template") or not it.is_md or it.content is None:
+            continue
+        for m in WIKILINK.finditer(it.content):
+            t = m.group(2).strip()
+            if not t or IMG_EXT.search(t) or t.lower().endswith(".base"):
+                continue
+            path, kind, _ = res.resolve(t, it)
+            if path:
+                pairs.add((it.old, path))
+    return pairs
+
+
+def resolvable_after(items, res):
+    pairs = set()
+    for it in items:
+        if it.new_content is None or not it.is_md:
+            continue
+        from_dir = os.path.dirname(it.new)
+        for m in LINK_MD.finditer(it.new_content):
+            raw = m.group(2) or m.group(3)
+            if not raw or raw.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            raw = raw.split("#", 1)[0]
+            raw = re.sub(r"%([0-9A-Fa-f]{2})", lambda h: chr(int(h.group(1), 16)), raw)
+            p = os.path.normpath(os.path.join(from_dir, raw)).replace(os.sep, "/")
+            if p in res.new_files:
+                pairs.add((it.old, p))
+    return pairs
+
+
+# ---------------------------------------------------------------- main
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--vault", required=True)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--report", default=None, help="markdown report path (default: <vault>/../vault-migrate-report.md)")
+    args = ap.parse_args()
+    vault = os.path.abspath(args.vault)
+    report = defaultdict(list)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    items = inventory(vault)
+    plan_moves(items, report)
+    stubs = project_stubs(items)
+    res = Resolver(items, vault, stubs)
+
+    # collisions among new paths
+    dests = defaultdict(list)
+    for it in items:
+        if it.new:
+            dests[it.new.lower()].append(it.old)
+    for s in stubs:
+        dests[f"{s}.md".lower()].append(f"(project stub) {s}")
+    for t in TYPE_PAGES:
+        dests[f"{t}.md".lower()].append(f"(type page) {t}")
+    for o in set(OPERATIONS.values()):
+        dests[f"{o}.md".lower()].append(f"(operation page) {o}")
+    collisions = {k: v for k, v in dests.items() if len(v) > 1 and not all(x == v[0] for x in v)}
+
+    # read + rewrite
+    for it in items:
+        if it.kind in ("live", "agent", "template") and it.is_md:
+            with open(os.path.join(vault, it.old), encoding="utf-8", errors="replace") as f:
+                it.content = f.read()
+    before = resolvable_before(items, res)
+    for it in items:
+        if it.content is None:
+            continue
+        fm, body = split_frontmatter(it.content)
+        body = rewrite_links(body, it, res, report)
+        if it.kind == "live":
+            fm_new = build_frontmatter(it, fm, res, report, birth_time(os.path.join(vault, it.old)))
+            it.new_content = fm_new + body
+        else:  # agent, template: links only, frontmatter links converted in place
+            fm_new = ("---\n" + rewrite_links(fm, it, res, report) + "\n---\n") if fm is not None else ""
+            it.new_content = fm_new + body
+    after = resolvable_after(items, res)
+    lost = sorted(p for p in before if p not in after)
+
+    # ---------------------------------------------------------- report
+    counts = defaultdict(int)
+    for it in items:
+        counts[it.kind] += 1
+    types = defaultdict(int)
+    for it in items:
+        if it.kind == "live" and it.is_md:
+            types[it.type] += 1
+    lines = [f"# vault-migrate report ({'APPLY' if args.apply else 'dry run'}, {now})", "",
+             f"Vault: `{vault}`", "", "## Inventory", ""]
+    lines += [f"- {k}: {v}" for k, v in sorted(counts.items())]
+    lines += ["", "## Live notes by type", ""] + [f"- {k}: {v}" for k, v in sorted(types.items())]
+    lines += ["", "## Links", ""] + [f"- {k}: {v}" for k, v in sorted(res.stats.items())]
+    lines += [f"- resolvable before: {len(before)}, after: {len(after)}, lost: {len(lost)}"]
+    lines += ["", f"## Collisions ({len(collisions)})", ""] + [f"- `{k}` <- {v}" for k, v in sorted(collisions.items())]
+    lines += ["", f"## Renamed for forbidden characters ({len(report['renamed'])})", ""] + [f"- `{a}` -> `{b}`" for a, b in report["renamed"]]
+    lines += ["", f"## Project stubs to create ({len(stubs)})", ""] + [f"- {s}" for s in stubs]
+    lines += ["", f"## Note embeds turned into links ({len(report['note_embeds'])})", ""] + [f"- `{a}`: {b}" for a, b in report["note_embeds"]]
+    lines += ["", f"## Base embeds turned into comments ({len(report['base_embeds'])})", ""] + [f"- `{a}`: {b}" for a, b in report["base_embeds"]]
+    lines += ["", f"## Hand-set `type:` values kept ({len(report['type_kept'])})", ""] + [f"- `{a}`: {b}" for a, b in report["type_kept"]]
+    amb = {}
+    for src, stem, cands in res.ambiguous:
+        amb.setdefault((stem, tuple(cands)), []).append(src)
+    lines += ["", f"## Ambiguous link targets ({len(amb)})", ""] + [f"- `{stem}` from {len(srcs)} note(s), picked `{c[0]}` over {list(c[1:])}" for (stem, c), srcs in sorted(amb.items())]
+    lines += ["", f"## Block references dropped to file links ({len(report['block_refs'])})", ""] + [f"- `{a}`: {b}" for a, b in report["block_refs"]]
+    lines += ["", f"## Lost links ({len(lost)})", ""] + [f"- `{a}` -> `{b}`" for a, b in lost[:100]]
+    lines += ["", "## Moves (live notes)", ""] + [f"- `{it.old}` -> `{it.new}`" for it in items if it.kind == "live" and it.is_md][:2000]
+    report_path = args.report or os.path.join(os.path.dirname(vault), "vault-migrate-report.md")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    log(f"report: {report_path}")
+    log(f"inventory: {dict(counts)}")
+    log(f"types: {dict(types)}")
+    log(f"links: {dict(res.stats)} | resolvable before {len(before)} after {len(after)} lost {len(lost)}")
+    log(f"collisions: {len(collisions)} | renamed: {len(report['renamed'])} | stubs: {len(stubs)}")
+
+    if collisions or lost:
+        log("BLOCKED: fix collisions / lost links before applying")
+        if args.apply:
+            sys.exit(2)
+    if not args.apply:
+        return
+
+    # ---------------------------------------------------------- apply
+    def dst(p):
+        return os.path.join(vault, p)
+
+    # 1. archive folder rename first (contents untouched), then other moves
+    if os.path.isdir(dst(ARCHIVE_SRC)):
+        os.makedirs(dst("Archive"), exist_ok=True)
+        for name in os.listdir(dst(ARCHIVE_SRC)):
+            shutil.move(os.path.join(dst(ARCHIVE_SRC), name), os.path.join(dst("Archive"), name))
+        os.rmdir(dst(ARCHIVE_SRC))
+    for it in items:
+        if it.kind == "archive":
+            continue  # moved with the folder
+        if it.new and it.new != it.old and it.new_content is None:
+            os.makedirs(os.path.dirname(dst(it.new)) or vault, exist_ok=True)
+            shutil.move(dst(it.old), dst(it.new))
+    # 2. rewritten notes: write new, remove old
+    for it in items:
+        if it.new_content is None:
+            continue
+        os.makedirs(os.path.dirname(dst(it.new)) or vault, exist_ok=True)
+        with open(dst(it.new), "w", encoding="utf-8") as f:
+            f.write(it.new_content)
+        if it.new != it.old:
+            os.remove(dst(it.old))
+    # 3. stubs, type pages, operation pages
+    for s in stubs:
+        p = dst(f"{s}.md")
+        if not os.path.exists(p):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(f"---\ndate_created: {yaml_quote(now)}\ntype: \"[Project](<Project.md>)\"\norganized: false\n"
+                        f"belongs_to:\nrelated_to:\ntags:\n---\n# {s}\n")
+    used_types = set(TYPE_PAGES) | {it.type for it in items if it.kind == "live" and it.type} \
+        | {re.sub(r"\.md$", "", raw.strip("[]")) for _, raw in report["type_kept"] if raw.startswith("[[")}
+    for t in sorted(used_types):
+        p = dst(f"{t}.md")
+        if not os.path.exists(p):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(type_page(t))
+    for o in sorted(set(OPERATIONS.values())):
+        p = dst(f"{o}.md")
+        if not os.path.exists(p):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(operation_page(o, now))
+    # 4. remove emptied folders
+    for root, dirs, files in os.walk(vault, topdown=False):
+        if os.path.relpath(root, vault).split(os.sep)[0] in SKIP_DIRS | {AGENT_DIR, "Archive", "References", "Templates", "Attachments"}:
+            continue
+        if root != vault and not os.listdir(root):
+            os.rmdir(root)
+    log("applied")
+
+
+if __name__ == "__main__":
+    main()

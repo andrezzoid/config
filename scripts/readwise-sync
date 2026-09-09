@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""
+readwise-sync: mirror Readwise highlights into the Second Brain vault.
+
+One note per book/article in <vault>/References/, following the vault's
+README conventions. Everything above the `<!-- readwise -->` marker in a
+note is yours and never touched; everything below it is regenerated on
+every run, so edits and deletions in Readwise propagate and nothing is
+ever appended twice.
+
+Incremental: the Readwise export API returns only highlights updated since
+`updatedAfter`, so a local mirror of all highlights is kept in the state
+dir and notes are regenerated from that mirror.
+
+Usage:
+  readwise-sync [--vault DIR] [--state-dir DIR] [--full] [--dry-run] [-v]
+
+Token, first match wins:
+  --token, $READWISE_TOKEN, or the login keychain item
+  `security find-generic-password -s readwise -w`.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+
+API = "https://readwise.io/api/v2/export/"
+MARKER = "<!-- readwise -->"
+DEFAULT_VAULT = os.path.expanduser("~/SynologyDrive/home/Documentos/Second Brain")
+DEFAULT_STATE = os.path.expanduser("~/.local/state/readwise-sync")
+# Readwise categories -> vault types (README: only Book and Article exist)
+TYPE_BY_CATEGORY = {"books": "Book"}
+FORBIDDEN_IN_NAMES = re.compile(r"[<>#|:/\\]")
+
+
+def log(msg):
+    print(msg, file=sys.stderr)
+
+
+# ---------------------------------------------------------------- token
+def get_token(explicit):
+    if explicit:
+        return explicit
+    if os.environ.get("READWISE_TOKEN"):
+        return os.environ["READWISE_TOKEN"]
+    try:
+        out = subprocess.run(
+            ["security", "find-generic-password", "-s", "readwise", "-w"],
+            capture_output=True, text=True, check=True,
+        )
+        return out.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        sys.exit("no token: pass --token, set READWISE_TOKEN, or add a keychain item "
+                 "with: security add-generic-password -s readwise -a readwise -w <token>")
+
+
+# ---------------------------------------------------------------- api
+def fetch_export(token, updated_after=None, verbose=False):
+    """Yield book dicts (each with its updated highlights) across all pages."""
+    cursor = None
+    while True:
+        params = {}
+        if updated_after:
+            params["updatedAfter"] = updated_after
+        if cursor:
+            params["pageCursor"] = cursor
+        url = API + ("?" + urllib.parse.urlencode(params) if params else "")
+        req = urllib.request.Request(url, headers={"Authorization": f"Token {token}"})
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    data = json.load(resp)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    wait = int(e.headers.get("Retry-After", "10"))
+                    log(f"rate limited, waiting {wait}s")
+                    time.sleep(wait)
+                    continue
+                raise
+        else:
+            sys.exit("gave up after repeated rate limiting")
+        if verbose:
+            log(f"page: {len(data.get('results', []))} books")
+        yield from data.get("results", [])
+        cursor = data.get("nextPageCursor")
+        if not cursor:
+            return
+
+
+# ---------------------------------------------------------------- mirror
+def load_mirror(state_dir):
+    path = os.path.join(state_dir, "mirror.json")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return {"books": {}, "last_sync": None}
+
+
+def save_mirror(state_dir, mirror):
+    os.makedirs(state_dir, exist_ok=True)
+    path = os.path.join(state_dir, "mirror.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(mirror, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+def merge(mirror, books):
+    """Merge API results into the mirror. Returns ids of books that changed."""
+    changed = set()
+    for b in books:
+        bid = str(b["user_book_id"])
+        entry = mirror["books"].setdefault(bid, {"highlights": {}})
+        for k in ("title", "author", "readable_title", "category", "source", "source_url",
+                  "cover_image_url", "readwise_url", "document_note", "summary", "book_tags", "asin", "is_deleted"):
+            if k in b:
+                entry[k] = b[k]
+        for h in b.get("highlights", []):
+            hid = str(h["id"])
+            if h.get("is_deleted"):
+                entry["highlights"].pop(hid, None)
+            else:
+                entry["highlights"][hid] = {k: h.get(k) for k in (
+                    "text", "note", "location", "location_type", "highlighted_at",
+                    "updated_at", "url", "readwise_url", "tags", "is_favorite", "color")}
+        changed.add(bid)
+    return changed
+
+
+# ---------------------------------------------------------------- naming
+def nfc(s):
+    return unicodedata.normalize("NFC", s or "")
+
+
+def safe_name(title):
+    """Filename from a title: drop the characters the README forbids, tidy spaces."""
+    name = FORBIDDEN_IN_NAMES.sub("-", nfc(title)).strip()
+    name = re.sub(r"\s+", " ", name).strip(" .")
+    return name or "Untitled"
+
+
+def split_authors(author):
+    if not author:
+        return []
+    parts = re.split(r",\s*|\s+and\s+|\s*&\s*", nfc(author))
+    return [p.strip() for p in parts if p.strip()]
+
+
+def day(ts):
+    return ts[:10] if ts else ""
+
+
+def iso_z(ts):
+    """Readwise timestamps ('2024-03-02T10:11:12.123Z' or with offset) -> 'YYYY-MM-DDTHH:mm:ssZ'."""
+    if not ts:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        d = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return ts
+
+
+def yaml_str(s):
+    return json.dumps(nfc(s), ensure_ascii=False)  # JSON strings are valid YAML double-quoted scalars
+
+
+def link(title, path):
+    return f"[{nfc(title)}](<{path}>)"
+
+
+WIKILINK = re.compile(r"\[\[([^\]\|#]*)(#[^\]\|]*)?(\|[^\]]*)?\]\]")
+
+
+def dewiki(text):
+    """[[Name|alias]] written in Readwise notes -> [alias](<../Name.md>) (notes live in the vault root)."""
+    def repl(m):
+        target, alias = nfc(m.group(1).strip()), m.group(3)
+        if not target:
+            return m.group(0)
+        return f"[{alias[1:] if alias else target}](<../{safe_name(target)}.md>)"
+    return WIKILINK.sub(repl, text)
+
+
+# ---------------------------------------------------------------- rendering
+def render_head(book, name, first_highlighted):
+    """Frontmatter + title. Written once, on creation; never regenerated."""
+    typ = TYPE_BY_CATEGORY.get(book.get("category"), "Article")
+    authors = split_authors(book.get("author"))
+    lines = ["---",
+             f"date_created: {yaml_str(iso_z(first_highlighted))}",
+             f"type: {yaml_str(link(typ, f'../{typ}.md'))}",
+             "organized: false",
+             "belongs_to:",
+             "related_to:"]
+    if authors:
+        lines.append("authored_by:")
+        lines += [f"  - {yaml_str(link(a, f'{safe_name(a)}.md'))}" for a in authors]
+    if book.get("source_url"):
+        lines.append(f"url: {yaml_str(book['source_url'])}")
+    if book.get("readwise_url"):
+        lines.append(f"readwise: {yaml_str(book['readwise_url'])}")
+    lines.append(f"readwise_id: {book['id']}")
+    tags = ["readwise"] + [nfc(t.get("name") if isinstance(t, dict) else t) for t in (book.get("book_tags") or [])]
+    lines.append("tags:")
+    lines += [f"  - {t}" for t in tags]
+    lines.append("---")
+    lines.append(f"# {nfc(book.get('readable_title') or book.get('title') or name)}")
+    if authors:
+        lines.append("by " + ", ".join(link(a, f"{safe_name(a)}.md") for a in authors))
+    if book.get("cover_image_url"):
+        lines.append("")
+        lines.append(f"![cover]({book['cover_image_url']})")
+    if book.get("document_note"):
+        lines += ["", nfc(book["document_note"]).strip()]
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def render_highlights(book):
+    """Everything below the marker. Regenerated on every run."""
+    hs = sorted(book["highlights"].values(),
+                key=lambda h: ((h.get("location") is None), h.get("location") or 0, h.get("highlighted_at") or ""))
+    dates = sorted(day(h.get("highlighted_at")) for h in hs if h.get("highlighted_at"))
+    out = [MARKER, "",
+           f"## Highlights",
+           "",
+           f"{len(hs)} highlights" + (f", {dates[0]} to {dates[-1]}" if dates else "") + ".",
+           ""]
+    if book.get("summary"):
+        out += ["> " + l for l in nfc(book["summary"]).strip().splitlines()] + [""]
+    for h in hs:
+        text = " ".join(nfc(h.get("text")).split())
+        meta = []
+        if h.get("location") is not None:
+            unit = {"page": "p.", "order": "#", "time_offset": "t="}.get(h.get("location_type"), "loc")
+            where = f"{unit} {h['location']}"
+            meta.append(f"[{where}]({h['url']})" if h.get("url") else where)
+        if h.get("highlighted_at"):
+            meta.append(day(h["highlighted_at"]))
+        if h.get("is_favorite"):
+            meta.append("★")
+        line = f"- {text}"
+        if meta:
+            line += " — " + " · ".join(meta)
+        out.append(line)
+        if h.get("note"):
+            for nl in dewiki(nfc(h["note"]).strip()).splitlines():
+                out.append(f"  - {nl}")
+        for t in h.get("tags") or []:
+            tn = t.get("name") if isinstance(t, dict) else t
+            if tn:
+                out.append(f"  - #{tn}")
+    out.append("")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------- writing
+def unique_names(mirror):
+    """book id -> filename stem, disambiguating duplicate titles with the author."""
+    by_name = {}
+    for bid, b in mirror["books"].items():
+        if b.get("is_deleted"):
+            continue
+        by_name.setdefault(safe_name(b.get("readable_title") or b.get("title")), []).append(bid)
+    names = {}
+    for name, ids in by_name.items():
+        if len(ids) == 1:
+            names[ids[0]] = name
+        else:
+            for bid in ids:
+                a = split_authors(mirror["books"][bid].get("author"))
+                names[bid] = f"{name} ({a[0]})" if a else f"{name} ({bid})"
+    return names
+
+
+def write_note(refs_dir, name, book, dry_run):
+    path = os.path.join(refs_dir, name + ".md")
+    body = render_highlights(book)
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            current = f.read()
+        head = current.split(MARKER, 1)[0] if MARKER in current else current.rstrip("\n") + "\n\n"
+        new = head + body
+        if new == current:
+            return "unchanged"
+        action = "updated"
+    else:
+        hs = book["highlights"].values()
+        first = min((h.get("highlighted_at") for h in hs if h.get("highlighted_at")), default=None)
+        new = render_head(book, name, first) + "\n" + body
+        action = "created"
+    if not dry_run:
+        os.makedirs(refs_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new)
+    return action
+
+
+# ---------------------------------------------------------------- main
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--vault", default=DEFAULT_VAULT)
+    ap.add_argument("--state-dir", default=DEFAULT_STATE)
+    ap.add_argument("--token")
+    ap.add_argument("--full", action="store_true", help="ignore last_sync and refetch everything")
+    ap.add_argument("--dry-run", action="store_true", help="fetch and report, write nothing")
+    ap.add_argument("-v", "--verbose", action="store_true")
+    args = ap.parse_args()
+
+    token = get_token(args.token)
+    mirror = load_mirror(args.state_dir)
+    since = None if args.full else mirror.get("last_sync")
+    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    log(f"fetching {'everything' if not since else 'updates since ' + since}")
+    try:
+        changed = merge(mirror, fetch_export(token, since, args.verbose))
+    except urllib.error.URLError as e:
+        sys.exit(f"offline or API unreachable: {e.reason}")
+    log(f"{len(changed)} books with updates, {len(mirror['books'])} in mirror")
+
+    names = unique_names(mirror)
+    refs_dir = os.path.join(args.vault, "References")
+    counts = {"created": 0, "updated": 0, "unchanged": 0}
+    # With --full every note is regenerated; otherwise only changed books, plus any note missing on disk.
+    for bid, name in names.items():
+        book = mirror["books"][bid]
+        book["id"] = bid
+        if bid not in changed and os.path.exists(os.path.join(refs_dir, name + ".md")):
+            continue
+        action = write_note(refs_dir, name, book, args.dry_run)
+        counts[action] += 1
+        if args.verbose and action != "unchanged":
+            log(f"{action}: References/{name}.md")
+
+    if not args.dry_run:
+        mirror["last_sync"] = started
+        save_mirror(args.state_dir, mirror)
+    log(f"{'would write' if args.dry_run else 'wrote'}: {counts['created']} created, "
+        f"{counts['updated']} updated, {counts['unchanged']} unchanged")
+
+
+if __name__ == "__main__":
+    main()

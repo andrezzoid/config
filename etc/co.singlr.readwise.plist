@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Deployed to ~/Library/LaunchAgents/. An agent, not a daemon: readwise-sync
+  reads the Readwise token from the login keychain.
+
+  Runs once a day at 08:00. If the Mac is asleep then, launchd runs the missed
+  job at the next wake. The script exits quietly when offline and resumes from
+  its last_sync timestamp, so a skipped day just means a bigger fetch next time.
+  Run `readwise-sync` by hand, or `:ReadwiseSync` in Neovim, to sync now.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>co.singlr.readwise</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/andrejonas/.local/bin/readwise-sync</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>/Users/andrejonas/.local/state/readwise-sync/launchd.log</string>
+  <key>StandardOutPath</key>
+  <string>/Users/andrejonas/.local/state/readwise-sync/launchd.log</string>
+</dict>
+</plist>

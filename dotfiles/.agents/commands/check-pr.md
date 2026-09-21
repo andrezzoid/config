@@ -24,4 +24,8 @@ Let's put this PR in shape to get merged as a Senior Engineer would:
 
 4. Resolve conversation for addressed comments that were either fixed or ignored
 
-5. Let the cron fire up to 10 times. Then cancel the cron and /loop again every 6h.
+5. Let the cron fire up to 10 times. Then cancel the cron and /loop again every 1h.
+
+6. Notify me if there are
+
+Be aware of reaching diminishing returns. Specifically AI code reviews tend to go over multiple rounds costing time, money and LOCs for the sake of covering unnecessary edge cases. These need a special kind of skepticism.

@@ -26,8 +26,9 @@ peach = "#ff966c"
 agent_panel_sort = "spaces"
 
 show_agent_labels_on_pane_borders = true
+status_indicators = "dots"
 [ui.toast]
-delivery = "terminal"
+delivery = "system"
 
 [experimental]
 pane_history = true

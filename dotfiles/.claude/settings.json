@@ -5,7 +5,6 @@
       "ExitPlanMode",
       "DesignSync",
       "NotebookEdit",
-      "SendMessage",
       "PushNotification",
       "RemoteTrigger"
     ],
@@ -13,6 +12,7 @@
     "disableRemoteControl": true,
     "disableArtifact": true
   },
+  "model": "opus",
   "hooks": {
     "SessionStart": [
       {
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pgrep -x caffeinate > /dev/null || (caffeinate -i & disown)"
+            "command": "pgrep -x caffeinate > /dev/null || (caffeinate -is & disown)"
           }
         ]
       },
@@ -50,7 +50,11 @@
   "worktree": {
     "baseRef": "fresh"
   },
+  "enableArtifact": false,
+  "enableWorkflows": false,
+  "workflowKeywordTriggerEnabled": false,
   "effortLevel": "high",
+  "promptSuggestionEnabled": false,
   "tui": "fullscreen",
   "voice": {
     "enabled": true,
@@ -58,8 +62,13 @@
   },
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark",
   "editorMode": "vim",
   "verbose": true,
   "preferredNotifChannel": "ghostty",
+  "autoCompactEnabled": false,
+  "remoteControlAtStartup": false,
+  "agentPushNotifEnabled": true,
   "voiceEnabled": true
 }

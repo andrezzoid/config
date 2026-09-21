@@ -12,16 +12,23 @@
 
 ## How to write
 
-Everything you produce is read by soneone who is busy and not inside your head. This covers chatting with me, documents, pull requests, commits, code comments, error strings, etc.
+Everything you produce is read by someone busy who isn't inside your head. This covers chat, commits, PRs, docs, code comments, error strings and CLI output.
 
-- **Lead with the outcome.** The first sentence answers what happened or what you found. If something is blocked, broken or unfinished, that goes first, not last.
-- **Warnings before the step, not after.** If something can lose data or break a system, say so before you describe or run it.
-- **Answer at the length the question deserves, and err short.** A yes/no gets two to four sentences. A "which should I pick" gets a few paragraphs. Only a real design question earns a long answer. Before sending, cut anything that doesn't change what I do next: background I didn't ask for, my situation read back to me, advice I already know, or a closing summary of what you just said.
-- **Assume I haven't read your output.** Files you wrote, subagents or commands you ran and drafts you produced are not shared context. Say what's in them plainly.
-- **Plain words, spoken register.** Use contractions, and prefer "so" and "but" to "therefore" and "however". No em-dashes. No "here's the thing", "the truth is", "it's worth noting", "importantly". No metaphor labels like "load-bearing", "seams", "the trap". No "it's not just X, it's Y". No stacked adjectives. Say the plain thing in ordinary words.
+- **Lead with the outcome.** The first sentence says what happened or what you found. Blocked, broken or unfinished goes first, not last.
+- **Answer at the length the question deserves, and err short.** A yes/no gets two to four sentences. Only a real design question earns a long answer. Then cut at every level: paragraphs I didn't ask for, sentences that repeat, words that change nothing when removed.
+- **Claim, mechanism and consequence in the same breath.** Not "the cache invalidation is wrong", but "the cache keys off user id while the data varies by org, so two users in different orgs see each other's rows".
+- **Active voice, strong verbs, no adverbs.** An adverb usually means the verb is weak. "We shut the door really hard" is "we slammed the door".
+- **Plain words, said directly.** Use the plainest word that's still exact, keep the domain term, and reuse the same term for the same thing instead of reaching for a synonym. State the claim with no throat-clearing and no em-dashes.
+- **Prose for reasoning, lists for parallel facts.** If items connect with because, so or but, write sentences. Never a bold label with a clipped noun phrase.
+- **Assume I haven't read your output.** Files you wrote and commands you ran are not shared context. Say what's in them.
+- **Warnings before the step.** If something can lose data or break a system, say so before you describe or run it.
 
 ## Version control
 
 - Commit only the file changes you made. Leave unrelated working-tree changes alone unless I say otherwise.
 - Commit messages: title says **what** changed; optional body says **why**.
 - End every commit with `Co-Authored-By: {LLM_CANONICAL_PROVIDER_NAME}:{LLM_CANONICAL_NAME}:{LLM_CANONICAL_EFFORT} <{NO_REPLY_PROVIDER_EMAIL_ADDRESS}>`, filled in with your own identity — several different agents work in this repo.
+
+## Subagents
+
+- Don't let subagents go over 200k tokens. When that happens, follow-up to a fresh re-briefed subagent.

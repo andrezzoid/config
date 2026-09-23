@@ -7,7 +7,7 @@ description: Spawn fresh adversarial agents to find what confident work got wron
 
 The enemy isn't dishonesty — it's confident gap-filling. An author's context cannot see its own fills: every unknown it met got silently papered with a plausible guess, and the result *reads* right to everyone downstream of the same guesses. The only reliable detector is fresh context grounded in the territory: agents who didn't make the guesses, checking claims against what's actually there.
 
-Any claim-bearing artifact is a target — a delta's Theory, a PRD, plan-mode output, a design doc, a PR and its diff.
+Any claim-bearing artifact is a target — a ticket's spec, a PRD, plan-mode output, a design doc, a PR and its diff.
 
 ## Three targets
 
@@ -30,7 +30,7 @@ Fresh subagent(s), briefed with the theory plus the diff:
 
 ### The harvest — after knowledge moves to its long-term homes
 
-One fresh agent, briefed with only the repo — never the plan, delta, or conversation. From the code, comments, tests, and docs of the changed area alone, it states what must remain true and why. Lay its reconstruction beside the plan: gaps are knowledge that exists only in the plan or conversation, which is about to be lost — move it into the repo, then re-run. This is the only check on whether the change's *why* survives once the conversation is gone.
+One fresh agent, briefed with only the repo — never the plan, the ticket, or the conversation. From the code, comments, tests, and docs of the changed area alone, it states what must remain true and why. Lay its reconstruction beside the plan: gaps are knowledge that exists only in the plan or conversation, which is about to be lost — move it into the repo, then re-run. This is the only check on whether the change's *why* survives once the conversation is gone.
 
 ## Rules
 
@@ -39,11 +39,11 @@ One fresh agent, briefed with only the repo — never the plan, delta, or conver
 3. **Read-only on the shared tree.** A reviewer that must build or run gets its own copy — spawn it with worktree isolation, or have it `git worktree add` a scratch checkout it removes when done.
 4. **Decorrelate when stakes are high.** Same-model reviewers share the author's priors, so they can share its blind spots — use a different model for the territory lens on anything expensive to unwind.
 5. **A reviewer you didn't spawn produced no findings.** If you can't spawn, say so plainly — a narrated review is worse than none, because it looks like one.
-6. **Scale to the work, out loud.** A small change earns a single territory-lens agent; that reduction is fine when it's on the record (in the delta file, or stated to the human) — and a silent skip never is.
+6. **Scale to the work, out loud.** A small change earns a single territory-lens agent; that reduction is fine when it's on the record (in the working notes, or stated to the human) — and a silent skip never is.
 7. **Await what you spawn.** A session that ends while a reviewer is still running loses the findings yet looks like a completed check — wait for it, or record the reduction.
 
 ## Findings triage
 
-Every finding gets a disposition, on the record — in the delta's `## Findings` when inside a delta, stated to the human otherwise: **fix now**, **followup**, or **rejected** with the reason. Anything touching intent is the human's call. After a fix-now repair, the re-check is a fresh pass over the repaired area plus the acceptance checks — never a walk through the finding list, because confirming a list is how the list gets gamed.
+Every finding gets a disposition, on the record — as comments on the ticket when there is one, stated to the human otherwise: **fix now**, **followup**, or **rejected** with the reason. Anything touching intent is the human's call. After a fix-now repair, the re-check is a fresh pass over the repaired area plus the acceptance checks — never a walk through the finding list, because confirming a list is how the list gets gamed.
 
 **Done when:** every finding has a disposition and none was silently dropped.

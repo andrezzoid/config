@@ -1,25 +1,26 @@
 ---
 name: prototype
-description: Build throwaway code that answers one named design question — logic harnesses to feel out a state model, or side-by-side variants the human reacts to. Use when a decision is stuck on "I'll know it when I see it", when a fork needs grounding before anyone commits to it, or when the human is choosing between approaches they haven't seen.
+description: Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.
 ---
 
 # Prototype
 
-A prototype is **throwaway code that answers one named question**. Write the question down first — literally, at the top of the file. If you can't name the question, you're not prototyping; you're starting the implementation early.
+A prototype is **throwaway code that answers a question**. The question decides the shape.
 
-Prototypes exist because reacting beats reading: a human staring at three running variants makes a better call in five minutes than one reading three pages of tradeoffs in thirty. And they de-risk unknown knowns — the criteria the human can only state after seeing something violate them.
+## Pick a branch
 
-## Shape follows question
+Identify which question is being answered, using the user's prompt, the surrounding code, or by asking if the user is around:
 
-- **"Does this logic / state model / algorithm hold up?"** → the smallest runnable harness: a script or tiny CLI that pushes the model through the cases that are hard to reason about on paper. Print the full state after every step — the human aligns by watching it move.
-- **"Which of these should it be?"** (design fork, look-and-feel, interaction) → one variant per defensible stance, side by side. For anything visual or interactive, a single HTML file with a variant switcher (load visualize). Variants must be *genuinely* different — same shape with renamed parts wastes the human's reaction (design-it-twice's cosmetic-variation test applies).
+- **"Does this logic / state model feel right?"** → [LOGIC.md](LOGIC.md). Build a single shareable HTML file (free-play buttons plus tabbed guided walkthroughs) that pushes the state machine through cases that are hard to reason about on paper, and that a non-developer can drive.
+- **"What should this look like?"** → [UI.md](UI.md). Generate several radically different UI variations on a single route, switchable via a URL search param and a floating bottom bar.
 
-## Rules
+The two branches produce very different artifacts, so getting this wrong wastes the whole prototype. If the question is genuinely ambiguous and the user isn't reachable, default to whichever branch better matches the surrounding code (a backend module → logic; a page or component → UI) and state the assumption at the top of the prototype.
 
-1. **Marked throwaway from the first line.** Name and header comment say PROTOTYPE. It lives in the scratchpad unless it must import project code — then in-repo, still PROTOTYPE-named, never committed.
-2. **One command to run.** The human must be able to start it without thinking.
-3. **No polish.** No tests, no error handling beyond runnable, no abstractions. Polish spends time and — worse — makes the human polite about it.
-4. **Fake everything you're not testing.** In-memory state, hardcoded data. Persistence, auth, wiring: faked unless one of them *is* the question.
-5. **The answer is the only deliverable.** Capture it where it outlives the prototype — the delta's Theory (decision plus rejected alternative), a commit message, a comment — then delete the prototype.
+## Rules that apply to both
 
-**Done when:** the named question has a written answer in a durable home, and the prototype is deleted (or explicitly parked with the human's nod).
+1. **Throwaway from day one, and clearly marked as such.** Locate the prototype code close to where it will actually be used (next to the module or page it's prototyping for) so context is obvious, but name it so a casual reader can see it's a prototype, not production. For throwaway UI routes, obey whatever routing convention the project already uses; don't invent a new top-level structure.
+2. **Trivial to run.** A UI prototype starts from one command in the project's task runner: `pnpm <name>`, `python <path>`, `bun <path>`, etc. A logic demo is a single HTML file the user double-clicks. Either way, no thinking required to start it.
+3. **No persistence by default.** State lives in memory. Persistence is the thing the prototype is _checking_, not something it should depend on. If the question explicitly involves a database, hit a scratch DB or a local file with a clear "PROTOTYPE, wipe me" name.
+4. **Skip the polish.** No tests, no error handling beyond what makes the prototype _runnable_, no abstractions. The point is to learn something fast.
+5. **Surface the state.** After every action (logic) or on every variant switch (UI), print or render the full relevant state so the user can see what changed.
+6. **Capture it when done.** Fold any validated decision into the real code, then capture the prototype itself as a **primary source**: commit it to a throwaway branch, out of main, and leave a context pointer to that branch on the implementation issue. Capture the answer too (the verdict and the question it settled) in the issue or a commit. The main branch keeps only the validated decision.

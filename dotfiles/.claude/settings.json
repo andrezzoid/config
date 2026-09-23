@@ -12,7 +12,6 @@
     "disableRemoteControl": true,
     "disableArtifact": true
   },
-  "model": "opus",
   "hooks": {
     "SessionStart": [
       {
@@ -53,7 +52,15 @@
   "enableArtifact": false,
   "enableWorkflows": false,
   "workflowKeywordTriggerEnabled": false,
+  "sandbox": {
+    "enabled": true
+  },
   "effortLevel": "high",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  },
   "promptSuggestionEnabled": false,
   "tui": "fullscreen",
   "voice": {

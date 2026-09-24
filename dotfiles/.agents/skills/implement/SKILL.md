@@ -41,10 +41,7 @@ Verify before you call it done:
 
 - Run lint, typecheck and the test suite.
 - Follow the complexity-red-flags skill.
-- Spawn poke-holes at the artifact target: a fresh subagent briefed with the
-  ticket and the diff, which runs the acceptance checks itself and attempts
-  refutation rather than confirmation.
-  the gate.
+- Load and follow the poke-holes skills at the artifact target for findings
 - Every finding gets a disposition: fix now, followup, or rejected with a
   reason.
 - If the same check fails three times running, stop and brief. Grinding at a red

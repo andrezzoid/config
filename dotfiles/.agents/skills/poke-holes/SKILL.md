@@ -44,6 +44,6 @@ One fresh agent, briefed with only the repo — never the plan, the ticket, or t
 
 ## Findings triage
 
-Every finding gets a disposition, on the record — as comments on the ticket when there is one, stated to the human otherwise: **fix now**, **followup**, or **rejected** with the reason. Anything touching intent is the human's call. After a fix-now repair, the re-check is a fresh pass over the repaired area plus the acceptance checks — never a walk through the finding list, because confirming a list is how the list gets gamed.
+Every finding gets a disposition, written down where the work's record lives: **fix now**, **followup**, or **rejected** with the reason. Anything touching intent is the human's call. After a fix-now repair, the re-check is a fresh pass over the repaired area plus the acceptance checks — never a walk through the finding list, because confirming a list is how the list gets gamed.
 
 **Done when:** every finding has a disposition and none was silently dropped.

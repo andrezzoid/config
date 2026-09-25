@@ -2,7 +2,7 @@
 description: Review a pull request in a loop until ready to merge
 ---
 
-/loop 5m
+/loop 10m
 
 Let's put this PR in shape to get merged as a Senior Engineer would:
 

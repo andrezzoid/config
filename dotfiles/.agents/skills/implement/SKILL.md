@@ -83,7 +83,13 @@ checkpoint, and never push, merge or deploy without being told.
 
 When the work is done, or the moment you stop, brief the human:
 
-- They have not read the ticket, the notes or the diff. Write for that.
+- Lead with what happened. If the work is blocked, broken or unfinished, that
+  goes in the first sentence.
+- They have not read the ticket, the notes or the diff. Write for that, and
+  never describe the work as a change against something they have not read.
 - Never use an id they did not type.
-- Lead with what it means for the thing they asked for, not with the mechanism.
-- If a decision is needed: the options, a recommendation, the question. Short.
+- Say what it means for the thing they asked for before you say how it works.
+- Where the point is a structure or a comparison, show it. Follow `show-me`
+  conventions instead of describing a shape in prose.
+- If a decision is needed: the options, a recommendation, the question.
+- Keep it short. A brief that needs scrolling has buried its own question.

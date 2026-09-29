@@ -53,7 +53,8 @@
   "enableWorkflows": false,
   "workflowKeywordTriggerEnabled": false,
   "sandbox": {
-    "enabled": true
+    "enabled": true,
+    "allowUnsandboxedCommands": false
   },
   "effortLevel": "high",
   "modelSettings": {

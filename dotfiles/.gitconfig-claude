@@ -1,0 +1,11 @@
+# Global git config for Claude Code sessions (GIT_CONFIG_GLOBAL in .claude/settings.json).
+# The sandbox can't tunnel SSH (anthropics/claude-code#98350), so GitHub SSH
+# remotes go over HTTPS with the gh token instead. Remotes on disk stay SSH.
+[include]
+	path = ~/.gitconfig
+[url "https://github.com/"]
+	insteadOf = git@github.com:
+	insteadOf = ssh://git@github.com/
+[credential "https://github.com"]
+	helper =
+	helper = !gh auth git-credential

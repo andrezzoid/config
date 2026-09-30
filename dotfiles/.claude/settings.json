@@ -52,10 +52,21 @@
   "enableArtifact": false,
   "enableWorkflows": false,
   "workflowKeywordTriggerEnabled": false,
+  "env": {
+    "SSL_CERT_FILE": "/etc/ssl/cert.pem",
+    "GIT_CONFIG_GLOBAL": "/Users/andrejonas/.gitconfig-claude"
+  },
   "sandbox": {
     "enabled": true,
     "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "allowWrite": ["/tmp", "/private/tmp"],
+      "denyWrite": ["**/.git/hooks", "**/.git/config", "~/Projects/config/dotfiles"],
+      "denyRead": ["~/.npmrc", "~/.config/gcloud", "~/.zsh_history"]
+    },
     "network": {
+      "allowLocalBinding": true,
+      "allowedDomains": ["github.com", "api.github.com"],
       "allowUnixSockets": [
         "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
       ]

@@ -30,6 +30,9 @@ Before any code:
    current: what you tried, deviations, decisions, open threads. It is yours, it
    is disposable, and it only has to survive until the next writeback.
    - Add `.factory/` to the .gitignore if it is being tracked.
+4. Make sure the branch is up to date with the remote base branch
+5. Make sure dependencies are installed and the project is ready to be worked on
+   according to their README.md.
 
 Build it with TDD. Load the test-driven-development skill. Red before green.
 
@@ -81,15 +84,5 @@ within it. Absent, unreadable, or working without a ticket, take the most
 conservative reading: commit as you go with the end of the work as the
 checkpoint, and never push, merge or deploy without being told.
 
-When the work is done, or the moment you stop, brief the human:
-
-- Lead with what happened. If the work is blocked, broken or unfinished, that
-  goes in the first sentence.
-- They have not read the ticket, the notes or the diff. Write for that, and
-  never describe the work as a change against something they have not read.
-- Never use an id they did not type.
-- Say what it means for the thing they asked for before you say how it works.
-- Where the point is a structure or a comparison, show it. Follow `show-me`
-  conventions instead of describing a shape in prose.
-- If a decision is needed: the options, a recommendation, the question.
-- Keep it short. A brief that needs scrolling has buried its own question.
+When the work is done, or the moment you stop, brief the human. Follow
+`references/briefing.md`.

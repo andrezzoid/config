@@ -17,13 +17,17 @@
  *   PENDING             checks running or GitHub still computing mergeability
  *   DRAFT               green, but still a draft
  *   WAITING_REPLY       green, and every open thread or review is waiting on its reviewer
- *   WAITING_REVIEW      green, and a required approval is missing
+ *   WAITING_REVIEW      green, and waiting on a requested or required approval
  *   BLOCKED             green and approved, but a protection rule still blocks the merge
  *   READY               GitHub says it can merge
  *
  * "You" is the authenticated gh user. When that user also leaves review comments for the
  * agent on its own PR, a thread it opened still counts as THREADS, but its reply inside
  * someone else's thread reads as waiting.
+ *
+ * Everything goes through gh's REST API, because Claude Code cloud sessions block GraphQL.
+ * Review threads are the exception: GraphQL on a laptop, the proxy's
+ * /pulls/{n}/ccr/review_threads route in the cloud.
  *
  * --wait blocks until the verdict changes, the head commit moves, or review activity lands
  * (new thread, reply, review or comment), then prints the new state. It polls gh every
@@ -37,7 +41,8 @@ import { spawnSync } from "node:child_process"
 import { parseArgs } from "node:util"
 
 type Json = Record<string, any>
-export type Gh = (args: string[]) => Json
+export type Gh = (args: string[]) => any
+export type Repo = { host: string; owner: string; name: string }
 
 export type Verdict =
   | "MERGED" | "CLOSED" | "CONFLICT" | "THREADS" | "CHANGES_REQUESTED" | "CI_RED" | "BEHIND"
@@ -58,19 +63,21 @@ export type Thread = {
 export type State = {
   pr: number
   url: string
-  state: string
+  state: "OPEN" | "MERGED" | "CLOSED"
   draft: boolean
   head: string
   base: string
   head_sha: string
   viewer: string | null
-  mergeable: string | null
-  merge_state: string | null
-  review_decision: string | null
+  mergeable: boolean | null
+  merge_state: string
+  review_decision: "APPROVED" | "CHANGES_REQUESTED" | null
+  review_requested: boolean
   changes_answered: boolean
   checks: { failing: Json[]; pending: Json[]; passing: number }
   actionable_threads: Thread[]
   waiting_threads: Thread[]
+  unparsed_threads: number
   reviews: number
   latest_reviews: { author: string | null; state: string }[]
   comments: number
@@ -80,13 +87,8 @@ export type State = {
   timed_out?: boolean
 }
 
-const FIELDS =
-  "number,url,state,isDraft,headRefName,headRefOid,baseRefName,mergeable," +
-  "mergeStateStatus,reviewDecision,statusCheckRollup,reviews,comments,commits"
-
 const THREADS_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
-  viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100) {
@@ -100,8 +102,8 @@ query($owner: String!, $name: String!, $number: Int!) {
   }
 }`
 
-const PASS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"])
-const FAIL = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"])
+const PASS = new Set(["success", "neutral", "skipped"])
+const FAIL = new Set(["failure", "error", "timed_out", "cancelled", "action_required", "startup_failure", "stale"])
 
 export const NEXT: Record<Verdict, string> = {
   MERGED: "Nothing to do.",
@@ -114,22 +116,20 @@ export const NEXT: Record<Verdict, string> = {
   PENDING: "Wait. Run pr-state.ts --wait.",
   DRAFT: "Green but draft. Marking it ready is the human's call unless they delegated it.",
   WAITING_REPLY: "Every open thread or review is waiting on its reviewer. Wait.",
-  WAITING_REVIEW: "Green and missing a required approval. Nothing for an agent to fix.",
+  WAITING_REVIEW: "Green and waiting on an approval. Nothing for an agent to fix.",
   BLOCKED: "Green and approved, but a protection rule still blocks the merge (a required check that never reported, signed commits, a ruleset). Report it to the human.",
   READY: "Merge-ready. Stop and report, unless the human delegated the merge (a ticket at autonomy `merge`).",
 }
 
 export class GhError extends Error {}
 
-export const realGh: Gh = (args) => {
-  const out = spawnSync("gh", args, { encoding: "utf8", timeout: 120_000 })
+export const makeGh = (bin = "gh"): Gh => (args) => {
+  const out = spawnSync(bin, args, { encoding: "utf8", timeout: 120_000 })
   if (out.error) {
     const code = (out.error as NodeJS.ErrnoException).code
     throw new GhError(code === "ENOENT" ? "gh is not installed" : `gh ${args.slice(0, 2).join(" ")}: ${out.error.message}`)
   }
-  if (out.status !== 0) {
-    throw new GhError((out.stderr || out.stdout).trim() || `gh exited ${out.status}`)
-  }
+  if (out.status !== 0) throw new GhError((out.stderr || out.stdout).trim() || `gh exited ${out.status}`)
   try {
     return JSON.parse(out.stdout)
   } catch {
@@ -137,43 +137,126 @@ export const realGh: Gh = (args) => {
   }
 }
 
-function bucket(check: Json): "pass" | "fail" | "pending" {
-  if (check.__typename === "StatusContext") {
-    const state = check.state ?? ""
-    return PASS.has(state) ? "pass" : FAIL.has(state) ? "fail" : "pending"
-  }
-  if ((check.status ?? "") !== "COMPLETED") return "pending"
-  const conclusion = check.conclusion ?? ""
-  return PASS.has(conclusion) ? "pass" : FAIL.has(conclusion) ? "fail" : "pending"
+export const realGh = makeGh()
+
+/** `gh api <path>`, with --hostname for GitHub Enterprise. */
+export function api(gh: Gh, repo: Repo, path: string, extra: string[] = []): any {
+  return gh(["api", ...(repo.host === "github.com" ? [] : ["--hostname", repo.host]), path, ...extra])
 }
 
-function threadsFor(gh: Gh, url: string, number: number): { viewer: string | null; nodes: Json[] } {
-  const m = (url ?? "").match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/)
-  if (!m) throw new GhError(`cannot parse PR url ${JSON.stringify(url)}`)
-  const [, host, owner, name] = m
-  const args = ["api", "graphql", "-f", `query=${THREADS_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`]
-  if (host !== "github.com") args.splice(1, 0, "--hostname", host)
-  const data = gh(args).data ?? {}
-  return {
-    viewer: data.viewer?.login ?? null,
-    nodes: data.repository?.pullRequest?.reviewThreads?.nodes ?? [],
+export function parseRepo(url: string): Repo | null {
+  const m = url.trim().match(/^(?:https?:\/\/|ssh:\/\/git@|git@)([^/:]+)[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
+  return m ? { host: m[1], owner: m[2], name: m[3] } : null
+}
+
+export function currentRepo(): Repo {
+  const out = spawnSync("git", ["remote", "get-url", "origin"], { encoding: "utf8" })
+  const repo = out.status === 0 ? parseRepo(out.stdout) : null
+  if (!repo) throw new GhError("can't tell the GitHub repo: `git remote get-url origin` gave no GitHub URL")
+  return repo
+}
+
+function currentBranch(): string {
+  const out = spawnSync("git", ["branch", "--show-current"], { encoding: "utf8" })
+  const branch = out.stdout?.trim()
+  if (!branch) throw new GhError("no PR given and HEAD is not on a branch")
+  return branch
+}
+
+/** The PR a number, URL or branch names, and the repo it lives in. */
+export function resolvePr(gh: Gh, arg?: string, repo?: Repo): { repo: Repo; number: number } {
+  const url = arg?.match(/^(https?:\/\/[^/]+\/[^/]+\/[^/]+)\/pull\/(\d+)/)
+  if (url) return { repo: parseRepo(url[1])!, number: Number(url[2]) }
+  const r = repo ?? currentRepo()
+  if (arg && /^\d+$/.test(arg)) return { repo: r, number: Number(arg) }
+  const branch = arg ?? currentBranch()
+  const prs: Json[] = api(gh, r, `repos/${r.owner}/${r.name}/pulls?head=${r.owner}:${encodeURIComponent(branch)}&state=all&per_page=10`)
+  const pick = prs.find((p) => p.state === "open") ?? prs[0]
+  if (!pick) throw new GhError(`no pull request for branch ${branch}`)
+  return { repo: r, number: pick.number }
+}
+
+function threadsViaGraphql(gh: Gh, repo: Repo, number: number): Json[] {
+  const args = ["api", "graphql", "-f", `query=${THREADS_QUERY}`, "-f", `owner=${repo.owner}`, "-f", `name=${repo.name}`, "-F", `number=${number}`]
+  if (repo.host !== "github.com") args.splice(1, 0, "--hostname", repo.host)
+  return gh(args).data?.repository?.pullRequest?.reviewThreads?.nodes ?? []
+}
+
+/**
+ * Normalise the cloud proxy's review-thread route. Its shape isn't documented, so this
+ * accepts the GraphQL field names and their snake_case REST cousins; a thread it can't
+ * read is counted in unparsed_threads instead of silently dropped.
+ */
+export function normaliseCcrThreads(raw: any): { nodes: Json[]; unparsed: number } {
+  const list: any[] = Array.isArray(raw) ? raw : raw?.threads ?? raw?.review_threads ?? raw?.nodes ?? []
+  const nodes: Json[] = []
+  let unparsed = 0
+  for (const t of list) {
+    // Already in the GraphQL node shape: take it as it is.
+    if (t?.first?.nodes && t?.id !== undefined && t?.isResolved !== undefined) {
+      nodes.push(t)
+      continue
+    }
+    const comments: any[] = Array.isArray(t?.comments) ? t.comments : t?.comments?.nodes ?? []
+    const id = t?.id ?? t?.node_id ?? t?.thread_id
+    const resolved = t?.isResolved ?? t?.is_resolved ?? t?.resolved
+    if (id === undefined || resolved === undefined || !comments.length) {
+      unparsed += 1
+      continue
+    }
+    const who = (c: any) => c?.author?.login ?? c?.user?.login ?? (typeof c?.author === "string" ? c.author : null)
+    nodes.push({
+      id: String(id),
+      isResolved: Boolean(resolved),
+      isOutdated: Boolean(t.isOutdated ?? t.is_outdated ?? t.outdated),
+      path: t.path ?? comments[0]?.path ?? null,
+      line: t.line ?? comments[0]?.line ?? comments[0]?.original_line ?? null,
+      first: {
+        totalCount: comments.length,
+        nodes: [{ author: { login: who(comments[0]) }, body: comments[0]?.body ?? "", url: comments[0]?.html_url ?? comments[0]?.url ?? null }],
+      },
+      last: { nodes: [{ author: { login: who(comments.at(-1)) } }] },
+    })
+  }
+  return { nodes, unparsed }
+}
+
+function threadsFor(gh: Gh, repo: Repo, number: number): { nodes: Json[]; unparsed: number } {
+  const ccr = () => normaliseCcrThreads(api(gh, repo, `repos/${repo.owner}/${repo.name}/pulls/${number}/ccr/review_threads`))
+  if (process.env.CLAUDE_CODE_REMOTE === "true") return ccr()
+  try {
+    return { nodes: threadsViaGraphql(gh, repo, number), unparsed: 0 }
+  } catch (e) {
+    if (e instanceof GhError && /GraphQL is not available/i.test(e.message)) return ccr()
+    throw e
   }
 }
 
-const login = (node: Json | undefined): string | null => node?.author?.login ?? null
+const login = (node: Json | undefined): string | null => node?.user?.login ?? node?.author?.login ?? null
+
+/** The latest non-comment review per reviewer decides, the way GitHub's review decision does. */
+function reviewDecision(reviews: Json[]): State["review_decision"] {
+  const latest = new Map<string, string>()
+  for (const r of reviews) {
+    if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED" || r.state === "DISMISSED") latest.set(login(r) ?? "?", r.state)
+  }
+  const states = [...latest.values()]
+  if (states.includes("CHANGES_REQUESTED")) return "CHANGES_REQUESTED"
+  if (states.includes("APPROVED")) return "APPROVED"
+  return null
+}
 
 /** True when the latest changes-requested review has a push or a reply from us after it. */
-function changesAnswered(view: Json, viewer: string | null): boolean {
-  const reviews: Json[] = view.reviews ?? []
+function changesAnswered(reviews: Json[], comments: Json[], commits: Json[], viewer: string | null): boolean {
   const requested = reviews.filter((r) => r.state === "CHANGES_REQUESTED")
   if (!requested.length) return false
-  const since = requested.map((r) => r.submittedAt ?? "").sort().at(-1)!
-  const commits: Json[] = view.commits ?? []
-  if (commits.length && (commits.at(-1)!.committedDate ?? "") > since) return true
+  const since = requested.map((r) => r.submitted_at ?? "").sort().at(-1)!
+  const lastCommit = commits.at(-1)?.commit?.committer?.date ?? ""
+  if (lastCommit > since) return true
   if (!viewer) return false
   const ours = [
-    ...(view.comments ?? []).filter((c: Json) => login(c) === viewer).map((c: Json) => c.createdAt ?? ""),
-    ...reviews.filter((r) => login(r) === viewer).map((r) => r.submittedAt ?? ""),
+    ...comments.filter((c) => login(c) === viewer).map((c) => c.created_at ?? ""),
+    ...reviews.filter((r) => login(r) === viewer).map((r) => r.submitted_at ?? ""),
   ]
   return ours.some((t) => t > since)
 }
@@ -181,49 +264,60 @@ function changesAnswered(view: Json, viewer: string | null): boolean {
 export function verdict(s: Omit<State, "verdict" | "next">): Verdict {
   const changesRequested = s.review_decision === "CHANGES_REQUESTED"
   if (s.state === "MERGED" || s.state === "CLOSED") return s.state
-  if (s.mergeable === "CONFLICTING" || s.merge_state === "DIRTY") return "CONFLICT"
+  if (s.mergeable === false || s.merge_state === "DIRTY") return "CONFLICT"
   if (s.actionable_threads.length) return "THREADS"
   if (changesRequested && !s.changes_answered) return "CHANGES_REQUESTED"
   if (s.checks.failing.length) return "CI_RED"
   if (s.merge_state === "BEHIND") return "BEHIND"
-  if (s.checks.pending.length || s.mergeable === null || s.mergeable === "UNKNOWN" || s.merge_state === "UNKNOWN") {
-    return "PENDING"
-  }
+  if (s.checks.pending.length || s.mergeable === null || s.merge_state === "UNKNOWN") return "PENDING"
   if (s.draft) return "DRAFT"
   if (s.waiting_threads.length || changesRequested) return "WAITING_REPLY"
-  if (s.review_decision === "REVIEW_REQUIRED") return "WAITING_REVIEW"
-  if (s.merge_state === "BLOCKED") return "BLOCKED"
+  if (s.merge_state === "BLOCKED") {
+    return s.review_decision === "APPROVED" && !s.review_requested ? "BLOCKED" : "WAITING_REVIEW"
+  }
   return "READY"
 }
 
-export function snapshot(gh: Gh, pr?: string): State {
-  const view = gh(["pr", "view", ...(pr ? [pr] : []), "--json", FIELDS])
+export function snapshot(gh: Gh, pr?: string, repoHint?: Repo): State {
+  const { repo, number } = resolvePr(gh, pr, repoHint)
+  const base = `repos/${repo.owner}/${repo.name}`
+  const pull: Json = api(gh, repo, `${base}/pulls/${number}`)
+  const sha: string = pull.head?.sha
+  const runs: Json[] = api(gh, repo, `${base}/commits/${sha}/check-runs?per_page=100`).check_runs ?? []
+  const statuses: Json[] = api(gh, repo, `${base}/commits/${sha}/status`).statuses ?? []
+  const reviews: Json[] = api(gh, repo, `${base}/pulls/${number}/reviews?per_page=100`)
+  const comments: Json[] = api(gh, repo, `${base}/issues/${number}/comments?per_page=100`)
+  const commits: Json[] = api(gh, repo, `${base}/pulls/${number}/commits?per_page=100`)
+  const viewer: string | null = api(gh, repo, "user").login ?? null
+
   const checks: State["checks"] = { failing: [], pending: [], passing: 0 }
-  for (const c of view.statusCheckRollup ?? []) {
-    const b = bucket(c)
-    if (b === "pass") {
-      checks.passing += 1
-      continue
-    }
-    const entry: Json = { name: c.name ?? c.context ?? "?", url: c.detailsUrl ?? c.targetUrl ?? "" }
-    if (b === "fail") entry.conclusion = c.conclusion ?? c.state
-    checks[b === "fail" ? "failing" : "pending"].push(entry)
+  const tally = (bucket: "pass" | "fail" | "pending", name: string, url: string, conclusion?: string) => {
+    if (bucket === "pass") return void (checks.passing += 1)
+    checks[bucket === "fail" ? "failing" : "pending"].push(bucket === "fail" ? { name, url, conclusion } : { name, url })
+  }
+  for (const r of runs) {
+    const c = (r.conclusion ?? "").toLowerCase()
+    const bucket = r.status !== "completed" ? "pending" : PASS.has(c) ? "pass" : FAIL.has(c) ? "fail" : "pending"
+    tally(bucket, r.name ?? "?", r.html_url ?? r.details_url ?? "", c.toUpperCase())
+  }
+  for (const s of statuses) {
+    const st = (s.state ?? "").toLowerCase()
+    tally(st === "success" ? "pass" : FAIL.has(st) ? "fail" : "pending", s.context ?? "?", s.target_url ?? "", st.toUpperCase())
   }
 
-  const { viewer, nodes } = threadsFor(gh, view.url, view.number)
+  const { nodes, unparsed } = threadsFor(gh, repo, number)
   const actionable: Thread[] = []
   const waiting: Thread[] = []
   for (const t of nodes) {
     if (t.isResolved) continue
     const first = t.first?.nodes?.[0] ?? {}
-    const last = t.last?.nodes?.[0] ?? {}
     const thread: Thread = {
       id: t.id,
       path: t.path ?? null,
       line: t.line ?? null,
       outdated: Boolean(t.isOutdated),
-      author: login(first),
-      last_author: login(last),
+      author: first.author?.login ?? null,
+      last_author: t.last?.nodes?.[0]?.author?.login ?? null,
       comments: t.first?.totalCount ?? 0,
       url: first.url ?? null,
       body: (first.body ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 280),
@@ -232,30 +326,32 @@ export function snapshot(gh: Gh, pr?: string): State {
     ;(oursLast ? waiting : actionable).push(thread)
   }
 
-  const reviews: Json[] = view.reviews ?? []
   const partial = {
-    pr: view.number,
-    url: view.url,
-    state: view.state,
-    draft: Boolean(view.isDraft),
-    head: view.headRefName,
-    base: view.baseRefName,
-    head_sha: view.headRefOid,
+    pr: number,
+    url: pull.html_url,
+    state: (pull.merged || pull.merged_at ? "MERGED" : pull.state === "closed" ? "CLOSED" : "OPEN") as State["state"],
+    draft: Boolean(pull.draft),
+    head: pull.head?.ref,
+    base: pull.base?.ref,
+    head_sha: sha,
     viewer,
-    mergeable: view.mergeable ?? null,
-    merge_state: view.mergeStateStatus ?? null,
-    review_decision: view.reviewDecision || null,
-    changes_answered: changesAnswered(view, viewer),
+    mergeable: pull.mergeable ?? null,
+    merge_state: String(pull.mergeable_state ?? "unknown").toUpperCase(),
+    review_decision: reviewDecision(reviews),
+    review_requested: (pull.requested_reviewers ?? []).length + (pull.requested_teams ?? []).length > 0,
+    changes_answered: changesAnswered(reviews, comments, commits, viewer),
     checks,
     actionable_threads: actionable,
     waiting_threads: waiting,
+    unparsed_threads: unparsed,
     reviews: reviews.length,
     latest_reviews: reviews.slice(-3).map((r) => ({ author: login(r), state: r.state })),
-    comments: (view.comments ?? []).length,
+    comments: comments.length,
   }
   const v = verdict(partial)
   const state: State = { ...partial, verdict: v, next: NEXT[v] }
-  if (!(view.statusCheckRollup ?? []).length && v === "READY") {
+  if (unparsed) state.note = `${unparsed} review thread(s) came back in a shape this script can't read. Check them with the GitHub tools before trusting the verdict.`
+  else if (!runs.length && !statuses.length && v === "READY") {
     state.note = "No checks reported on the head commit. Right after a push this means CI has not registered yet."
   }
   return state
@@ -270,17 +366,19 @@ export function fingerprint(s: State): string {
 export async function waitForChange(
   gh: Gh,
   pr: string | undefined,
-  opts: { intervalMs: number; timeoutMs: number; sleep?: (ms: number) => Promise<void> },
+  opts: { intervalMs: number; timeoutMs: number; sleep?: (ms: number) => Promise<void>; repo?: Repo },
 ): Promise<State> {
   const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
-  let state = snapshot(gh, pr)
+  let state = snapshot(gh, pr, opts.repo)
   if (state.verdict === "MERGED" || state.verdict === "CLOSED") return state
+  // Pin the PR number so a branch argument can't drift to another PR mid-wait.
+  const pinned = String(state.pr)
   const start = Date.now()
   const seen = fingerprint(state)
   while (fingerprint(state) === seen) {
     if (Date.now() - start + opts.intervalMs > opts.timeoutMs) return { ...state, timed_out: true }
     await sleep(opts.intervalMs)
-    state = snapshot(gh, pr)
+    state = snapshot(gh, pinned, parseRepo(state.url.replace(/\/pull\/\d+$/, "")) ?? opts.repo)
   }
   return state
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type Deps, type Plan, type Pr, cycles, mark, problems, tick } from "./backlog.ts"
+import { type Deps, type Plan, type Pr, cycles, frontier, mark, problems, publishPlan, pullPlan, tick } from "./backlog.ts"
 
 const ticket = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -171,5 +171,84 @@ describe("mark", () => {
   it("rejects an id that isn't in the plan", () => {
     const w = world([ticket("A")])
     expect(() => mark(w.store, "NOPE", "stopped", "now")).toThrow("no ticket `NOPE` in the plan. Ids: A")
+  })
+})
+
+describe("frontier (cloud mode)", () => {
+  const plan = {
+    tickets: [
+      ticket("A"),
+      ticket("B", { blocked_by: ["A"] }),
+      ticket("C", { blocked_by: ["A"], serial: "api" }),
+      ticket("D", { serial: "api" }),
+      ticket("E"),
+    ],
+  } as Plan
+
+  it("derives state from PRs and tagged sessions, with no ledger", () => {
+    const w = world([])
+    w.prs["eng-a"] = { number: 1, state: "MERGED", url: "u1" }
+    w.prs["eng-d"] = { number: 4, state: "OPEN", url: "u4" }
+    const { ready, tickets } = frontier(plan, new Set(["E"]), new Set(), 3, w.deps)
+    expect(ready.map((t) => t.id)).toEqual(["B"])
+    expect(Object.fromEntries(tickets.map((t) => [t.id, t.state]))).toEqual({
+      A: "done", B: "ready", C: "held", D: "running", E: "running",
+    })
+  })
+
+  it("counts a merged PR as done even after its session is gone", () => {
+    const w = world([])
+    w.branches.add("eng-a")
+    w.prs["eng-a"] = { number: 1, state: "MERGED", url: "u1" }
+    expect(frontier(plan, new Set(), new Set(), 3, w.deps).tickets[0].state).toBe("done")
+  })
+
+  it("stops a ticket whose session failed before opening a PR, and holds an orphan branch", () => {
+    const w = world([])
+    w.branches.add("eng-e")
+    const { tickets } = frontier(plan, new Set(), new Set(["A"]), 3, w.deps)
+    expect(tickets.find((t) => t.id === "A")!.state).toBe("stopped")
+    expect(tickets.find((t) => t.id === "E")!.state).toBe("held")
+  })
+})
+
+describe("plan branch", () => {
+  const sh = (cmd: string, cwd: string) => {
+    const out = Bun.spawnSync(["sh", "-c", cmd], { cwd, env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } })
+    if (out.exitCode !== 0) throw new Error(out.stderr.toString())
+    return out.stdout.toString().trim()
+  }
+
+  it("publishes as fast-forward commits and pulls into another clone", () => {
+    const root = mkdtempSync(join(tmpdir(), "planbranch-"))
+    sh("git init -q --bare origin.git && git clone -q origin.git a && git clone -q origin.git b", root)
+    const a = join(root, "a")
+    const b = join(root, "b")
+    const cwd = process.cwd()
+    const env = { ...process.env }
+    Object.assign(process.env, { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" })
+    try {
+      process.chdir(a)
+      writeFileSync("plan.json", JSON.stringify({ tickets: [ticket("A")] }))
+      expect(publishPlan("plan.json")).toMatch(/^published [0-9a-f]{7} to factory\/plan$/)
+      expect(publishPlan("plan.json")).toBe("factory/plan already holds this plan")
+      writeFileSync("plan.json", JSON.stringify({ tickets: [ticket("A"), ticket("B")] }))
+      publishPlan("plan.json")
+      expect(sh("git --git-dir=../origin.git rev-list --count factory/plan", a)).toBe("2")
+
+      process.chdir(b)
+      expect(pullPlan("plan.json")).toMatch(/^pulled [0-9a-f]{7} from factory\/plan$/)
+      expect(JSON.parse(readFileSync("plan.json", "utf8")).tickets.map((t: { id: string }) => t.id)).toEqual(["A", "B"])
+    } finally {
+      process.chdir(cwd)
+      process.env = env
+    }
+  })
+
+  it("refuses to publish a broken plan", () => {
+    const dir = mkdtempSync(join(tmpdir(), "planbad-"))
+    const path = join(dir, "plan.json")
+    writeFileSync(path, JSON.stringify({ tickets: [ticket("A", { blocked_by: ["Z"] })] }))
+    expect(() => publishPlan(path)).toThrow("blocker `Z` is not in the plan")
   })
 })

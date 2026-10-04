@@ -7,6 +7,12 @@
  *   backlog.ts run    [--dir DIR] [--max N] [--interval S] [--once] [--dry-run]
  *   backlog.ts mark   ID done|stopped|running|reset [--dir DIR]
  *
+ * Cloud mode, for the coordinator Routine (no ledger, no lfg):
+ *   backlog.ts pull                                  plan branch -> DIR/plan.json
+ *   backlog.ts publish                               DIR/plan.json -> plan branch
+ *   backlog.ts frontier [--sessions ID,..] [--failed ID,..] [--max N]
+ *                                                    JSON: which tickets to launch now
+ *
  * /run-backlog writes DIR/plan.json (default DIR: .factory/backlog): which tickets, their
  * blockers, branches and serial groups. This script does the mechanics. It keeps
  * DIR/ledger.json, works out which tickets can start, launches each one in its own worktree
@@ -37,7 +43,7 @@ import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseArgs } from "node:util"
-import { realGh, snapshot } from "./pr-state.ts"
+import { GhError, type Repo, api, currentRepo, realGh, snapshot } from "./pr-state.ts"
 
 export type Autonomy = "commit" | "pr" | "merge"
 export type Ticket = {
@@ -161,7 +167,7 @@ export function states(plan: Plan, ledger: Ledger, maxRunning: number, orphans: 
     else if (t.external_blockers?.length) result.set(t.id, ["blocked", `external: ${t.external_blockers.join(", ")}`])
     else if (waiting.length) result.set(t.id, ["blocked", `waits on ${waiting.join(", ")}`])
     else if (orphans.has(t.id)) {
-      result.set(t.id, ["held", `branch exists with no session I launched: \`backlog.ts mark ${t.id} running\` or \`reset\``])
+      result.set(t.id, ["held", "branch exists but no known session owns it"])
     } else if (t.serial && busy.has(t.serial)) result.set(t.id, ["held", `serial group ${t.serial} is busy`])
     else if (slots <= 0) result.set(t.id, ["held", `${maxRunning} sessions already running`])
     else {
@@ -189,6 +195,70 @@ export function refresh(plan: Plan, ledger: Ledger, deps: Deps) {
 
 export function orphansOf(plan: Plan, ledger: Ledger, deps: Deps): Set<string> {
   return new Set(plan.tickets.filter((t) => !(t.id in ledger) && deps.branchExists(t.branch)).map((t) => t.id))
+}
+
+/**
+ * Cloud mode: there's no ledger file, because a cloud container doesn't outlive its session.
+ * Each ticket's state comes from GitHub (its branch's PR) and from the coordinator's list of
+ * cloud sessions tagged with the ticket id. Stateless, so any firing can run it.
+ */
+export function frontier(plan: Plan, sessions: Set<string>, failed: Set<string>, max: number, deps: Deps) {
+  const ledger: Ledger = {}
+  for (const t of plan.tickets) {
+    const pr = deps.findPr(t.branch)
+    if (pr?.state === "MERGED") ledger[t.id] = { state: "done", branch: t.branch, pr: pr.number, url: pr.url }
+    else if (pr?.state === "CLOSED") ledger[t.id] = { state: "stopped", branch: t.branch, pr: pr.number, reason: "PR closed without merging" }
+    else if (pr) ledger[t.id] = { state: "running", branch: t.branch, pr: pr.number, url: pr.url }
+    else if (failed.has(t.id)) ledger[t.id] = { state: "stopped", branch: t.branch, reason: "session failed before opening a PR" }
+    else if (sessions.has(t.id)) ledger[t.id] = { state: "running", branch: t.branch }
+  }
+  const current = states(plan, ledger, max, orphansOf(plan, ledger, deps))
+  const tickets = plan.tickets.map((t) => {
+    const [state, why] = current.get(t.id)!
+    return { id: t.id, state, why, pr: ledger[t.id]?.pr ?? null }
+  })
+  const ready = plan.tickets
+    .filter((t) => current.get(t.id)![0] === "ready")
+    .map(({ id, title, ref, branch, autonomy }) => ({ id, title, ref, branch, autonomy }))
+  return { ready, tickets }
+}
+
+/** The plan lives on its own branch in the cloud, since a container's files die with it. */
+export const PLAN_BRANCH = "factory/plan"
+
+function git(args: string[], input?: string) {
+  const out = spawnSync("git", args, { encoding: "utf8", input })
+  return { ok: out.status === 0, stdout: (out.stdout ?? "").trim(), stderr: (out.stderr ?? "").trim() }
+}
+
+function fetchPlanBranch(): string | null {
+  git(["fetch", "--quiet", "origin", `+refs/heads/${PLAN_BRANCH}:refs/remotes/origin/${PLAN_BRANCH}`])
+  const tip = git(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${PLAN_BRANCH}`])
+  return tip.ok ? tip.stdout : null
+}
+
+/** Push plan.json to the plan branch as a fast-forward commit; the cloud proxy refuses deletes and force-pushes. */
+export function publishPlan(planPath: string): string {
+  const content = readFileSync(planPath, "utf8")
+  const errs = problems(JSON.parse(content))
+  if (errs.length) throw new Fail(`plan.json has problems:\n  ${errs.join("\n  ")}`)
+  const parent = fetchPlanBranch()
+  if (parent && git(["show", `${parent}:plan.json`]).stdout === content.trim()) return `${PLAN_BRANCH} already holds this plan`
+  const blob = git(["hash-object", "-w", "--stdin"], content).stdout
+  const tree = git(["mktree"], `100644 blob ${blob}\tplan.json\n`).stdout
+  const commit = git(["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", "Update factory plan"])
+  if (!commit.ok) throw new Fail(`git commit-tree failed: ${commit.stderr}`)
+  const push = git(["push", "--quiet", "origin", `${commit.stdout}:refs/heads/${PLAN_BRANCH}`])
+  if (!push.ok) throw new Fail(`pushing ${PLAN_BRANCH} failed: ${push.stderr}`)
+  return `published ${commit.stdout.slice(0, 7)} to ${PLAN_BRANCH}`
+}
+
+/** Fetch the plan branch's plan.json into planPath. */
+export function pullPlan(planPath: string): string {
+  const tip = fetchPlanBranch()
+  if (!tip) throw new Fail(`no ${PLAN_BRANCH} branch on origin yet. Run /run-backlog to write and publish a plan.`)
+  writeFileSync(planPath, git(["show", `${tip}:plan.json`]).stdout + "\n")
+  return `pulled ${tip.slice(0, 7)} from ${PLAN_BRANCH}`
 }
 
 type Store = { plan: string; ledger: string }
@@ -278,20 +348,28 @@ export function mark(store: Store, id: string, to: "done" | "stopped" | "running
   return `${id}: ${to === "reset" ? "queued for a fresh launch" : to}`
 }
 
+let cachedRepo: Repo | undefined
+const repo = () => (cachedRepo ??= currentRepo())
+
 function run(cmd: string, args: string[], capture = true) {
   return spawnSync(cmd, args, { encoding: "utf8", stdio: capture ? "pipe" : "inherit" })
 }
 
 export const realDeps: Deps = {
   findPr(branch) {
-    const out = run("gh", ["pr", "list", "--head", branch, "--state", "all", "--json", "number,state,url", "--limit", "5"])
-    if (out.status !== 0) throw new Transient(`gh pr list failed: ${(out.stderr || out.stdout || String(out.error)).trim()}`)
-    let prs: Pr[]
+    // REST, not `gh pr list`: Claude Code cloud sessions block GitHub's GraphQL API.
+    let raw: any[]
     try {
-      prs = JSON.parse(out.stdout || "[]")
-    } catch {
-      throw new Transient(`gh pr list printed non-JSON: ${JSON.stringify(out.stdout.slice(0, 200))}`)
+      const r = repo()
+      raw = api(realGh, r, `repos/${r.owner}/${r.name}/pulls?head=${r.owner}:${encodeURIComponent(branch)}&state=all&per_page=5`)
+    } catch (e) {
+      throw e instanceof GhError ? new Transient(`gh api pulls failed: ${e.message}`) : e
     }
+    const prs: Pr[] = raw.map((p) => ({
+      number: p.number,
+      url: p.html_url,
+      state: p.merged_at ? "MERGED" : p.state === "open" ? "OPEN" : "CLOSED",
+    }))
     return prs.find((p) => p.state === "MERGED") ?? prs.find((p) => p.state === "OPEN") ?? prs[0] ?? null
   },
   branchExists(branch) {
@@ -328,6 +406,8 @@ async function main() {
       interval: { type: "string", default: "300" },
       once: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
+      sessions: { type: "string" },
+      failed: { type: "string" },
     },
   })
   const [cmd, ...rest] = positionals
@@ -344,6 +424,13 @@ async function main() {
     const current = states(plan, ledger, max, orphansOf(plan, ledger, realDeps))
     const ready = [...current].filter(([, [s]]) => s === "ready").map(([id]) => id)
     console.log(`plan ok: ${plan.tickets.length} tickets, ready now: ${ready.join(", ") || "none"}`)
+  } else if (cmd === "frontier") {
+    const list = (v?: string) => new Set((v ?? "").split(",").map((x) => x.trim()).filter(Boolean))
+    console.log(JSON.stringify(frontier(loadPlan(store), list(values.sessions), list(values.failed), max, realDeps), null, 2))
+  } else if (cmd === "publish") {
+    console.log(publishPlan(store.plan))
+  } else if (cmd === "pull") {
+    console.log(pullPlan(store.plan))
   } else if (cmd === "status") {
     tick(store, { max, dryRun: false, startWork: false }, realDeps)
   } else if (cmd === "mark") {
@@ -373,7 +460,7 @@ async function main() {
       await sleep(Number(values.interval))
     }
   } else {
-    throw new Fail("usage: backlog.ts check|status|run|mark  (see the header of this file)")
+    throw new Fail("usage: backlog.ts check|status|run|mark|frontier|publish|pull  (see the header of this file)")
   }
 }
 

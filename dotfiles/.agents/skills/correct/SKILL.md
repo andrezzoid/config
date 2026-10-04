@@ -1,6 +1,6 @@
 ---
 name: correct
-description: Find the mistakes agents keep repeating, from your past sessions, reverts and review comments, and make each one impossible to repeat. Fixes each class at the highest level that holds (architecture, types, a lint whose error names the fix, a test, agent docs last) and proves every new check fails on a real past instance. Use for /correct, after correcting an agent for something it has done before, or when sampling agent-landed work turns up the same slip twice.
+description: Find the mistakes agents keep repeating, from your past sessions, reverts and review comments, and make each one impossible to repeat. Fixes each class at the highest level that holds (architecture, types, a lint whose error names the fix, a test, agent docs last) and proves every new check fails on a real past instance. Run /correct when you've corrected agents for the same thing twice, or when sampling agent-landed work turns up the same slip twice.
 disable-model-invocation: true
 argument-hint: "[repo | harness] [days]"
 ---
@@ -9,7 +9,7 @@ argument-hint: "[repo | harness] [days]"
 
 Every correction you type is a lesson the environment failed to teach. A written rule needs the agent to notice it, remember it and comply. A check fails without anyone's cooperation, at the moment the mistake happens. So the job is to change the repo, or the harness, so the next agent can't make the mistake, and to prove it can't.
 
-Design for the contributor you actually have: an agent that sees only the files it opened, copies the nearest example, and takes the shortest path that compiles. A change that looks right from one file has to be right for the whole repo.
+Design for the contributor you have: an agent that sees only the files it opened, copies the nearest example, and takes the shortest path that compiles. A change that looks right from one file has to be right for the whole repo.
 
 ## 1. Lock the scope
 

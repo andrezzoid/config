@@ -9,19 +9,26 @@ an agent should clear them:
 
   MERGED | CLOSED       nothing left to do
   CONFLICT              merge the base branch in
-  THREADS               unresolved review threads
-  CHANGES_REQUESTED     a review asks for changes with no open thread to answer
+  THREADS               unresolved review threads where someone else spoke last
+  CHANGES_REQUESTED     a changes-requested review with no push or reply from you since
   CI_RED                failing checks on the head commit
   BEHIND                base moved and branch protection wants it merged in
   PENDING               checks running or GitHub still computing mergeability
   DRAFT                 green, but still a draft
-  WAITING_REVIEW        green, waiting on a human approval
-  READY                 GitHub says it can merge. Merging is still the human's call.
+  WAITING_REPLY         green, and every open thread or review is waiting on its reviewer
+  WAITING_REVIEW        green, and a required approval is missing
+  BLOCKED               green and approved, but a protection rule still blocks the merge
+  READY                 GitHub says it can merge
+
+"You" is the authenticated gh user. When that user also leaves review comments for the
+agent on its own PR, a thread it opened still counts as THREADS, but its reply inside
+someone else's thread reads as waiting.
 
 --wait blocks until the verdict changes, the head commit moves, or review activity lands
 (new thread, reply, review or comment), then prints the new state. It polls gh every
---interval seconds (default 60) and gives up after --timeout seconds (default 540, under
-Claude Code's 10-minute Bash cap). A timeout prints the unchanged state with "timed_out".
+--interval seconds (default 60) and gives up after --timeout seconds (default 540). Give
+the Bash tool a 600000 ms timeout for it: the tool's default of two minutes kills it.
+A timeout prints the unchanged state with "timed_out".
 Exit codes: 0 state printed, 2 gh failed (not installed, not authenticated, no PR).
 """
 
@@ -34,11 +41,12 @@ import time
 
 FIELDS = (
     "number,url,state,isDraft,headRefName,headRefOid,baseRefName,mergeable,"
-    "mergeStateStatus,reviewDecision,statusCheckRollup,reviews,comments"
+    "mergeStateStatus,reviewDecision,statusCheckRollup,reviews,comments,commits"
 )
 
 THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
+  viewer { login }
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100) {
@@ -60,14 +68,16 @@ NEXT = {
     "MERGED": "Nothing to do.",
     "CLOSED": "Nothing to do. The PR was closed without merging.",
     "CONFLICT": "Merge the base branch into the head branch and resolve the conflicts. No rebase or force-push.",
-    "THREADS": "Triage each unresolved thread on its merit: fix and reply with the commit, or reply with the disproof and resolve.",
+    "THREADS": "Triage each thread in actionable_threads on its merit: fix and reply with the commit, or reply with the disproof and resolve.",
     "CHANGES_REQUESTED": "Read the latest changes-requested review and answer it.",
     "CI_RED": "Classify each failing check before touching code: stale base, infrastructure, or the diff's own code.",
     "BEHIND": "Merge the base branch in so the head is up to date.",
     "PENDING": "Wait. Run pr-state --wait.",
     "DRAFT": "Green but draft. Marking it ready is the human's call unless they delegated it.",
-    "WAITING_REVIEW": "Green and waiting on a human approval. Nothing for an agent to fix.",
-    "READY": "Merge-ready. Stop and report. Merging is the human's call.",
+    "WAITING_REPLY": "Every open thread or review is waiting on its reviewer. Wait.",
+    "WAITING_REVIEW": "Green and missing a required approval. Nothing for an agent to fix.",
+    "BLOCKED": "Green and approved, but a protection rule still blocks the merge (a required check that never reported, signed commits, a ruleset). Report it to the human.",
+    "READY": "Merge-ready. Stop and report, unless the human delegated the merge (a ticket at autonomy `merge`).",
 }
 
 
@@ -84,7 +94,10 @@ def gh(*args):
         raise GhError(f"gh {' '.join(args[:2])} timed out")
     if out.returncode != 0:
         raise GhError((out.stderr or out.stdout).strip() or f"gh exited {out.returncode}")
-    return json.loads(out.stdout)
+    try:
+        return json.loads(out.stdout)
+    except ValueError:
+        raise GhError(f"gh {' '.join(args[:2])} printed non-JSON: {out.stdout[:200]!r}")
 
 
 def bucket(check):
@@ -106,9 +119,28 @@ def threads_for(url, number):
             "-f", f"name={name}", "-F", f"number={number}"]
     if host != "github.com":
         args[1:1] = ["--hostname", host]
-    data = gh(*args)
-    nodes = (((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {})
-    return ((nodes.get("reviewThreads") or {}).get("nodes")) or []
+    data = gh(*args).get("data") or {}
+    viewer = (data.get("viewer") or {}).get("login")
+    pull = (data.get("repository") or {}).get("pullRequest") or {}
+    return viewer, ((pull.get("reviewThreads") or {}).get("nodes")) or []
+
+
+def login(node):
+    return (node.get("author") or {}).get("login")
+
+
+def changes_answered(view, viewer):
+    """True when the latest changes-requested review has a push or a reply from us after it."""
+    requested = [r for r in view.get("reviews") or [] if r.get("state") == "CHANGES_REQUESTED"]
+    if not requested:
+        return False
+    since = max(r.get("submittedAt") or "" for r in requested)
+    commits = view.get("commits") or []
+    if commits and (commits[-1].get("committedDate") or "") > since:
+        return True
+    ours = [c.get("createdAt") or "" for c in view.get("comments") or [] if viewer and login(c) == viewer]
+    ours += [r.get("submittedAt") or "" for r in view.get("reviews") or [] if viewer and login(r) == viewer]
+    return any(t > since for t in ours)
 
 
 def snapshot(pr):
@@ -125,23 +157,26 @@ def snapshot(pr):
             entry["conclusion"] = c.get("conclusion") or c.get("state")
         checks["failing" if b == "fail" else "pending"].append(entry)
 
-    unresolved = []
-    for t in threads_for(view.get("url"), view.get("number")):
+    viewer, nodes = threads_for(view.get("url"), view.get("number"))
+    actionable, waiting = [], []
+    for t in nodes:
         if t.get("isResolved"):
             continue
         first = ((t.get("first") or {}).get("nodes") or [{}])[0]
         last = ((t.get("last") or {}).get("nodes") or [{}])[0]
-        unresolved.append({
+        thread = {
             "id": t.get("id"),
             "path": t.get("path"),
             "line": t.get("line"),
             "outdated": bool(t.get("isOutdated")),
-            "author": (first.get("author") or {}).get("login"),
-            "last_author": (last.get("author") or {}).get("login"),
+            "author": login(first),
+            "last_author": login(last),
             "comments": (t.get("first") or {}).get("totalCount", 0),
             "url": first.get("url"),
             "body": " ".join((first.get("body") or "").split())[:280],
-        })
+        }
+        ours_last = viewer and thread["last_author"] == viewer and thread["author"] != viewer
+        (waiting if ours_last else actionable).append(thread)
 
     reviews = view.get("reviews") or []
     state = {
@@ -152,16 +187,16 @@ def snapshot(pr):
         "head": view.get("headRefName"),
         "base": view.get("baseRefName"),
         "head_sha": view.get("headRefOid"),
+        "viewer": viewer,
         "mergeable": view.get("mergeable"),
         "merge_state": view.get("mergeStateStatus"),
         "review_decision": view.get("reviewDecision") or None,
+        "changes_answered": changes_answered(view, viewer),
         "checks": checks,
-        "unresolved_threads": unresolved,
+        "actionable_threads": actionable,
+        "waiting_threads": waiting,
         "reviews": len(reviews),
-        "latest_reviews": [
-            {"author": (r.get("author") or {}).get("login"), "state": r.get("state")}
-            for r in reviews[-3:]
-        ],
+        "latest_reviews": [{"author": login(r), "state": r.get("state")} for r in reviews[-3:]],
         "comments": len(view.get("comments") or []),
     }
     state["verdict"] = verdict(state)
@@ -172,13 +207,14 @@ def snapshot(pr):
 
 
 def verdict(s):
+    changes_requested = s["review_decision"] == "CHANGES_REQUESTED"
     if s["state"] in ("MERGED", "CLOSED"):
         return s["state"]
     if s["mergeable"] == "CONFLICTING" or s["merge_state"] == "DIRTY":
         return "CONFLICT"
-    if s["unresolved_threads"]:
+    if s["actionable_threads"]:
         return "THREADS"
-    if s["review_decision"] == "CHANGES_REQUESTED":
+    if changes_requested and not s["changes_answered"]:
         return "CHANGES_REQUESTED"
     if s["checks"]["failing"]:
         return "CI_RED"
@@ -188,16 +224,21 @@ def verdict(s):
         return "PENDING"
     if s["draft"]:
         return "DRAFT"
-    if s["review_decision"] == "REVIEW_REQUIRED" or s["merge_state"] == "BLOCKED":
+    if s["waiting_threads"] or changes_requested:
+        return "WAITING_REPLY"
+    if s["review_decision"] == "REVIEW_REQUIRED":
         return "WAITING_REVIEW"
+    if s["merge_state"] == "BLOCKED":
+        return "BLOCKED"
     return "READY"
 
 
 def fingerprint(s):
+    threads = s["actionable_threads"] + s["waiting_threads"]
     return (
         s["verdict"],
         s["head_sha"],
-        tuple(sorted((t["id"], t["comments"]) for t in s["unresolved_threads"])),
+        tuple(sorted((t["id"], t["comments"]) for t in threads)),
         s["reviews"],
         s["comments"],
     )

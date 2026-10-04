@@ -99,9 +99,10 @@ asking:
   checkpoint. Never push.
 - `pr`: push the branch, open the PR, and drive it to merge-ready with
   `/check-pr`. Never merge.
-- `merge`: merge once a `verifier` passes on the exact head commit and CI is
-  green. Only for two-way doors: a change a revert fully undoes, in a project
-  whose verify skill covers it.
+- `merge`: merge once `pr-state` reads `READY` and a `verifier` passed on that
+  same head commit. Only for two-way doors: a change a revert fully undoes, in
+  a project whose verify skill covers it. Inside a ddd2 delta, ship stays the
+  human's word whatever the ticket says.
 
 Read it before the first commit and work within it. Absent, unreadable, or
 working without a ticket, take `commit`. No level covers deploys, data

@@ -101,6 +101,8 @@ def human_text(rec):
     """The human's own words in a user record, or None for tool results and harness noise."""
     if rec.get("type") != "user" or rec.get("isMeta") or rec.get("isSidechain"):
         return None
+    if rec.get("isCompactSummary") or rec.get("isVisibleInTranscriptOnly"):
+        return None
     if (rec.get("origin") or {}).get("kind") not in (None, "human"):
         return None
     raw = text_of((rec.get("message") or {}).get("content"))
@@ -144,6 +146,8 @@ def iter_turns(files, days):
 
 
 def clip(s, n, tail=False):
+    if n <= 0:
+        return ""
     s = " ".join(s.split())
     if len(s) <= n:
         return s

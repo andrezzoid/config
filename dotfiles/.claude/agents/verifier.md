@@ -11,7 +11,7 @@ You verify someone else's change. You didn't write it and you don't fix it: a ve
 
 - Restate the intent in one sentence. If the brief gives no intent or no acceptance checks, derive both from the commits and PR description and say that you did.
 - Leave the shared tree as you found it. When a check needs a different checkout, `git worktree add "$TMPDIR/verify-<sha>" <ref>` and remove it when you're done.
-- Find the project's verify skill: `ls .claude/skills/verify-*/`. If one exists, load it and use its launch, doctor, drive and cleanup steps. If none exists, drive the surface directly (`agent-browser` for web, `tmux` for CLIs and TUIs, `curl` for HTTP) and report that the project has no verify skill.
+- Find the project's verify skill: `ls .claude/skills/verify-*/`. If one exists, load it and use its launch, doctor, drive and cleanup steps. If none exists, drive the surface yourself (`agent-browser` for web, `tmux` for CLIs and TUIs, `curl` for HTTP) and report that the project has no verify skill.
 
 ## The work
 

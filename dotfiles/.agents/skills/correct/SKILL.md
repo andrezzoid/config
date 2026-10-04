@@ -23,7 +23,7 @@ State the scope back in one line before mining.
 
 Fan this out to subagents and keep only their classified findings in your context. Raw transcripts stay with them.
 
-- **Your corrections.** `~/.agents/scripts/transcripts turns --corrections --days 14` lists human turns that read like corrections, each with the agent text it answered. The filter is a regex. It over-matches and it misses polite corrections, so when the window holds only a few sessions, also read `transcripts turns` unfiltered. `transcripts sessions` lists what's in the window.
+- **Your corrections.** `~/.agents/scripts/transcripts.ts turns --corrections --days 14` lists human turns that read like corrections, each with the agent text it answered. The filter is a regex. It over-matches and it misses polite corrections, so when the window holds only a few sessions, also read `transcripts.ts turns` unfiltered. `transcripts.ts sessions` lists what's in the window.
 - **Reverts and fixups.** `git log --since=<window> --oneline -i --grep='revert\|fixup\|fix'`, then the diffs of what got reverted.
 - **Review comments** on recently merged PRs: `gh pr list --state merged --search "merged:>=<date>"`, then each PR's review comments.
 - **Rules that already exist.** CLAUDE.md, AGENTS.md and skill lines that say "never" or "always". Each one is a past correction. If its mistake is in this window's evidence too, the rule failed.

@@ -9,7 +9,7 @@ Put PR $ARGUMENTS (default: the current branch's PR) in shape to merge, as a sen
 
 ## Read state from the script, not by hand
 
-`~/.agents/scripts/pr-state $ARGUMENTS` prints one JSON verdict with the failing checks and unresolved threads already listed. Run it at the start of every round instead of re-deriving state from separate `gh` calls. Verdicts come in the order you clear them: `CONFLICT`, `THREADS`, `CHANGES_REQUESTED`, `CI_RED`, `BEHIND`, then the waiting states `PENDING`, `DRAFT`, `WAITING_REPLY`, `WAITING_REVIEW` and `BLOCKED`, then `READY`, `MERGED` and `CLOSED`. A thread where you spoke last, or a changes-requested review you pushed or replied to since, counts as waiting on the reviewer, not as work.
+`~/.agents/scripts/pr-state.ts $ARGUMENTS` prints one JSON verdict with the failing checks and unresolved threads already listed. Run it at the start of every round instead of re-deriving state from separate `gh` calls. Verdicts come in the order you clear them: `CONFLICT`, `THREADS`, `CHANGES_REQUESTED`, `CI_RED`, `BEHIND`, then the waiting states `PENDING`, `DRAFT`, `WAITING_REPLY`, `WAITING_REVIEW` and `BLOCKED`, then `READY`, `MERGED` and `CLOSED`. A thread where you spoke last, or a changes-requested review you pushed or replied to since, counts as waiting on the reviewer, not as work.
 
 ## Each round
 
@@ -32,7 +32,7 @@ Work the verdict, then everything you already know about below it, and batch all
 
 ## Waiting
 
-When nothing is left for you (any waiting state, or right after a push), run `~/.agents/scripts/pr-state --wait $ARGUMENTS` with the Bash tool's timeout set to 600000 ms, because the default two minutes kills it. It blocks until the verdict changes, the head commit moves, or new review activity lands, for at most nine minutes, then prints the new state. That makes each loop iteration wake on an event instead of a fixed timer. When it returns `timed_out`, nothing happened: let `/loop` pace the next check and widen the gap while the PR stays quiet.
+When nothing is left for you (any waiting state, or right after a push), run `~/.agents/scripts/pr-state.ts --wait $ARGUMENTS` with the Bash tool's timeout set to 600000 ms, because the default two minutes kills it. It blocks until the verdict changes, the head commit moves, or new review activity lands, for at most nine minutes, then prints the new state. That makes each loop iteration wake on an event instead of a fixed timer. When it returns `timed_out`, nothing happened: let `/loop` pace the next check and widen the gap while the PR stays quiet.
 
 ## Stop
 

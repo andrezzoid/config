@@ -7,7 +7,7 @@ argument-hint: "[parent issue | label | project | .scratch/<feature>/issues]"
 
 # Run backlog
 
-You write the plan, a script dispatches it, and every ticket gets its own session. Deciding what blocks what and which tickets would collide is judgment, so it happens here. Launching sessions, remembering what's running and noticing merges is mechanics, so `~/.agents/scripts/backlog` does it the same way every tick and picks up where it left off after a restart. You never write product code and never launch a session yourself.
+You write the plan, a script dispatches it, and every ticket gets its own session. Deciding what blocks what and which tickets would collide is judgment, so it happens here. Launching sessions, remembering what's running and noticing merges is mechanics, so `~/.agents/scripts/backlog.ts` does it the same way every tick and picks up where it left off after a restart. You never write product code and never launch a session yourself.
 
 ## 1. Find the approved tickets
 
@@ -47,7 +47,7 @@ Write `.factory/backlog/plan.json` at the repo root, with `.factory/` ignored by
 ]}
 ```
 
-Order the tickets blockers first. Add `"done": true` for a ticket finished outside the runner. Run `~/.agents/scripts/backlog check` and fix every problem it names; a plan it rejects is not a plan. Then `backlog run --dry-run` shows the first wave.
+Order the tickets blockers first. Add `"done": true` for a ticket finished outside the runner. Run `~/.agents/scripts/backlog.ts check` and fix every problem it names; a plan it rejects is not a plan. Then `backlog.ts run --dry-run` shows the first wave.
 
 Running `/run-backlog` again on the same scope rewrites `plan.json`, for example after the human labels more tickets. The ledger beside it remembers what's running, so nothing launches twice.
 
@@ -56,18 +56,18 @@ Running `/run-backlog` again on the same scope rewrites `plan.json`, for example
 The dispatcher can't run from inside this session: it opens zellij tabs, and it's a loop that outlives the session. Reply with:
 
 - **The first wave**, what each waiting ticket waits on, and the serial groups.
-- **Tickets at `commit`.** Their sessions stop at local commits and never open a PR, so the dispatcher never sees them merge. Each one holds a session slot and blocks its dependents until the human runs `backlog mark <id> done`.
+- **Tickets at `commit`.** Their sessions stop at local commits and never open a PR, so the dispatcher never sees them merge. Each one holds a session slot and blocks its dependents until the human runs `backlog.ts mark <id> done`.
 - **Tickets left out**, and why.
 - **The command**, run from a zellij pane at the repo root:
 
   ```
-  ~/.agents/scripts/backlog run
+  ~/.agents/scripts/backlog.ts run
   ```
 
 - **What the human does while it runs:**
   - Every ticket is an ordinary `lfg` tab running `/implement`, visible in herdr, and it can be answered like any session.
   - A `pr` ticket ends merge-ready. Merging stays the human's call, and each merge unlocks the next wave on the dispatcher's next tick (five minutes by default).
-  - `backlog status` shows every ticket's state and each open PR's `pr-state` verdict, so the `READY` ones are the PRs waiting on a merge.
-  - A session that gives up gets `backlog mark <id> stopped`, which keeps the tickets it blocks waiting. `backlog mark <id> reset` launches a fresh session on the same branch after a fix. A failed launch shows as stopped with the reason.
-  - A ticket whose branch already exists, without a session the dispatcher launched, waits as `held`. `backlog mark <id> running` tells it a session the human started owns it. `reset` launches a fresh one.
-  - Ctrl-C stops the dispatcher at any time, and `backlog run` resumes.
+  - `backlog.ts status` shows every ticket's state and each open PR's `pr-state.ts` verdict, so the `READY` ones are the PRs waiting on a merge.
+  - A session that gives up gets `backlog.ts mark <id> stopped`, which keeps the tickets it blocks waiting. `backlog.ts mark <id> reset` launches a fresh session on the same branch after a fix. A failed launch shows as stopped with the reason.
+  - A ticket whose branch already exists, without a session the dispatcher launched, waits as `held`. `backlog.ts mark <id> running` tells it a session the human started owns it. `reset` launches a fresh one.
+  - Ctrl-C stops the dispatcher at any time, and `backlog.ts run` resumes.

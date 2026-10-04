@@ -102,7 +102,7 @@ asking:
   `/check-pr`. Never merge. Link the PR so merging it closes the ticket:
   `Closes #<n>` in the body on GitHub, the ticket id in the PR title on
   Linear.
-- `merge`: merge once `pr-state` reads `READY` and a `verifier` passed on that
+- `merge`: merge once `pr-state.ts` reads `READY` and a `verifier` passed on that
   same head commit. Only for two-way doors: a change a revert fully undoes, in
   a project whose verify skill covers it.
 

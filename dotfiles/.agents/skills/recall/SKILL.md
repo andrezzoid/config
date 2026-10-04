@@ -19,7 +19,7 @@ The topic, a window (default 7 days), and the current project. Read other projec
 
 ## 3. Mine your sessions
 
-`~/.agents/scripts/transcripts sessions --days 7` lists the window's sessions with their first prompt. `transcripts turns --grep '<topic>'` pulls the human turns about the topic along with the agent text each one answered. For one or two sessions, read them directly. For more, give each subagent a few session ids and have it return, per session: the goal, decisions made, open threads, corrections the human made, and artifacts (branches, PRs, tickets, files), each tagged with its session id. The raw transcripts stay in the subagents.
+`~/.agents/scripts/transcripts.ts sessions --days 7` lists the window's sessions with their first prompt. `transcripts.ts turns --grep '<topic>'` pulls the human turns about the topic along with the agent text each one answered. For one or two sessions, read them directly. For more, give each subagent a few session ids and have it return, per session: the goal, decisions made, open threads, corrections the human made, and artifacts (branches, PRs, tickets, files), each tagged with its session id. The raw transcripts stay in the subagents.
 
 ## 4. Sweep the shared record
 

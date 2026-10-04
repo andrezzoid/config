@@ -1,0 +1,175 @@
+import { beforeEach, describe, expect, it } from "bun:test"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { type Deps, type Plan, type Pr, cycles, mark, problems, tick } from "./backlog.ts"
+
+const ticket = (id: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  title: id,
+  ref: `ENG-${id}`,
+  branch: `eng-${id.toLowerCase()}`,
+  autonomy: "pr",
+  ...extra,
+})
+
+function world(tickets: object[]) {
+  const dir = mkdtempSync(join(tmpdir(), "backlog-"))
+  const store = { plan: join(dir, "plan.json"), ledger: join(dir, "ledger.json") }
+  writeFileSync(store.plan, JSON.stringify({ tickets }))
+  const prs: Record<string, Pr> = {}
+  const branches = new Set<string>()
+  const failing = new Set<string>()
+  const launches: string[] = []
+  const deps: Deps = {
+    findPr: (branch) => prs[branch] ?? null,
+    branchExists: (branch) => branches.has(branch),
+    launch: (branch, prompt) => {
+      launches.push(`${branch}|${prompt}`)
+      if (failing.has(branch)) throw new Error("exited 1")
+      branches.add(branch)
+    },
+    verdict: () => "PENDING",
+    now: () => "2026-10-04T12:00:00",
+    print: () => {},
+  }
+  const run = (max = 3, startWork = true) => tick(store, { max, dryRun: false, startWork }, deps)
+  const stateOf = (map: ReturnType<typeof run>, id: string) => map.get(id)![0]
+  const ledger = () => JSON.parse(readFileSync(store.ledger, "utf8"))
+  return { store, prs, branches, failing, launches, run, stateOf, ledger, deps }
+}
+
+describe("problems", () => {
+  it("accepts a well-formed plan", () => {
+    expect(problems({ tickets: [ticket("A"), ticket("B", { blocked_by: ["A"], serial: "api" })] })).toEqual([])
+  })
+
+  it("names every structural problem", () => {
+    const errs = problems({
+      tickets: [
+        ticket("P", { branch: "p q", autonomy: "yolo" }),
+        ticket("Q", { branch: "q" }),
+        ticket("Q", { branch: "q", serial: 7, ref: `it's "$HOME"` }),
+      ],
+    })
+    expect(errs).toEqual([
+      "ticket 1 (P): `p q` is not a valid branch name",
+      "ticket 1 (P): `autonomy` must be one of commit, merge, pr",
+      "ticket 3 (Q): duplicate id",
+      "ticket 3 (Q): branch `q` is used twice",
+      "ticket 3 (Q): ref `it's \"$HOME\"` holds characters lfg can't carry (quotes, $, backticks, spaces)",
+      "ticket 3 (Q): `serial` must be a non-empty string when present",
+    ])
+  })
+
+  it("rejects blockers outside the plan and cycles", () => {
+    expect(problems({ tickets: [ticket("A", { blocked_by: ["Z"] })] })).toEqual([
+      "A: blocker `Z` is not in the plan. Move it to external_blockers or add it.",
+    ])
+    const loop = [ticket("P", { blocked_by: ["Q"] }), ticket("Q", { blocked_by: ["R"] }), ticket("R", { blocked_by: ["P"] })]
+    expect(cycles(loop as Plan["tickets"])).toEqual([["P", "Q", "R", "P"]])
+    expect(problems({ tickets: [ticket("S", { blocked_by: ["S"] })] })).toEqual(["blocking cycle: S -> S"])
+  })
+
+  it("rejects an empty or missing ticket list", () => {
+    expect(problems({ tickets: [] })).toEqual(["plan.json needs a non-empty `tickets` list"])
+    expect(problems(null)).toEqual(["plan.json needs a non-empty `tickets` list"])
+  })
+})
+
+describe("tick", () => {
+  let w: ReturnType<typeof world>
+  beforeEach(() => {
+    w = world([
+      ticket("A"),
+      ticket("B", { blocked_by: ["A"], serial: "api" }),
+      ticket("C", { blocked_by: ["A"], serial: "api" }),
+      ticket("D"),
+      ticket("E"),
+      ticket("F", { external_blockers: ["ENG-99"] }),
+      ticket("G", { done: true }),
+    ])
+  })
+
+  it("launches the frontier up to --max and holds the rest", () => {
+    const s = w.run(2)
+    expect(w.launches).toEqual(["eng-a|/implement ENG-A", "eng-d|/implement ENG-D"])
+    expect([..."ABCDEFG"].map((id) => w.stateOf(s, id))).toEqual([
+      "running", "blocked", "blocked", "running", "held", "blocked", "done",
+    ])
+  })
+
+  it("never launches a running ticket twice", () => {
+    w.run(2)
+    w.run(2)
+    expect(w.launches).toHaveLength(2)
+  })
+
+  it("unlocks dependents on merge, one per serial group", () => {
+    w.run(5)
+    w.prs["eng-a"] = { number: 11, state: "MERGED", url: "u11" }
+    const s = w.run(5)
+    expect(w.stateOf(s, "A")).toBe("done")
+    expect(w.stateOf(s, "B")).toBe("running")
+    expect(w.stateOf(s, "C")).toBe("held")
+  })
+
+  it("stops a ticket whose PR closed unmerged, and keeps its dependents blocked", () => {
+    w.run(5)
+    w.prs["eng-a"] = { number: 11, state: "CLOSED", url: "u11" }
+    const s = w.run(5)
+    expect(w.stateOf(s, "A")).toBe("stopped")
+    expect(w.stateOf(s, "B")).toBe("blocked")
+  })
+
+  it("records a failed launch as stopped and keeps the others from the same tick", () => {
+    w.failing.add("eng-d")
+    const s = w.run(3)
+    expect(w.stateOf(s, "A")).toBe("running")
+    expect(w.stateOf(s, "D")).toBe("stopped")
+    expect(w.stateOf(s, "E")).toBe("running")
+    expect(w.ledger().D.reason).toBe("launch failed: exited 1")
+  })
+
+  it("holds a branch it didn't launch until told who owns it", () => {
+    w.branches.add("eng-d")
+    expect(w.stateOf(w.run(5), "D")).toBe("held")
+    expect(w.launches).not.toContain("eng-d|/implement ENG-D")
+    mark(w.store, "D", "running", "now")
+    expect(w.stateOf(w.run(5), "D")).toBe("running")
+    expect(w.launches).not.toContain("eng-d|/implement ENG-D")
+  })
+
+  it("relaunches on reset, even though the branch exists", () => {
+    w.failing.add("eng-d")
+    w.run(5)
+    w.failing.delete("eng-d")
+    w.branches.add("eng-d")
+    mark(w.store, "D", "reset", "now")
+    expect(w.stateOf(w.run(5), "D")).toBe("running")
+    expect(w.launches.filter((l) => l.startsWith("eng-d"))).toHaveLength(2)
+  })
+
+  it("follows the ledger's branch when a re-plan renames it", () => {
+    w.run(5)
+    const plan = JSON.parse(readFileSync(w.store.plan, "utf8"))
+    plan.tickets[0].branch = "eng-a-renamed"
+    writeFileSync(w.store.plan, JSON.stringify(plan))
+    w.prs["eng-a"] = { number: 11, state: "MERGED", url: "u11" }
+    const s = w.run(5)
+    expect(w.stateOf(s, "A")).toBe("done")
+    expect(w.stateOf(s, "B")).toBe("running")
+  })
+
+  it("status refreshes without launching", () => {
+    w.run(5, false)
+    expect(w.launches).toEqual([])
+  })
+})
+
+describe("mark", () => {
+  it("rejects an id that isn't in the plan", () => {
+    const w = world([ticket("A")])
+    expect(() => mark(w.store, "NOPE", "stopped", "now")).toThrow("no ticket `NOPE` in the plan. Ids: A")
+  })
+})

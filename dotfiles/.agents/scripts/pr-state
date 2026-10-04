@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Print one JSON verdict for a pull request, so a babysitting agent reads state instead of
+re-deriving it from a dozen gh calls every round.
+
+  pr-state [PR] [--wait] [--interval S] [--timeout S] [--pretty]
+
+PR is a number, URL or branch; default is the current branch's PR. Verdicts, in the order
+an agent should clear them:
+
+  MERGED | CLOSED       nothing left to do
+  CONFLICT              merge the base branch in
+  THREADS               unresolved review threads
+  CHANGES_REQUESTED     a review asks for changes with no open thread to answer
+  CI_RED                failing checks on the head commit
+  BEHIND                base moved and branch protection wants it merged in
+  PENDING               checks running or GitHub still computing mergeability
+  DRAFT                 green, but still a draft
+  WAITING_REVIEW        green, waiting on a human approval
+  READY                 GitHub says it can merge. Merging is still the human's call.
+
+--wait blocks until the verdict changes, the head commit moves, or review activity lands
+(new thread, reply, review or comment), then prints the new state. It polls gh every
+--interval seconds (default 60) and gives up after --timeout seconds (default 540, under
+Claude Code's 10-minute Bash cap). A timeout prints the unchanged state with "timed_out".
+Exit codes: 0 state printed, 2 gh failed (not installed, not authenticated, no PR).
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import time
+
+FIELDS = (
+    "number,url,state,isDraft,headRefName,headRefOid,baseRefName,mergeable,"
+    "mergeStateStatus,reviewDecision,statusCheckRollup,reviews,comments"
+)
+
+THREADS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes {
+          id isResolved isOutdated path line
+          first: comments(first: 1) { totalCount nodes { author { login } body url } }
+          last: comments(last: 1) { nodes { author { login } } }
+        }
+      }
+    }
+  }
+}
+"""
+
+PASS = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+FAIL = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"}
+
+NEXT = {
+    "MERGED": "Nothing to do.",
+    "CLOSED": "Nothing to do. The PR was closed without merging.",
+    "CONFLICT": "Merge the base branch into the head branch and resolve the conflicts. No rebase or force-push.",
+    "THREADS": "Triage each unresolved thread on its merit: fix and reply with the commit, or reply with the disproof and resolve.",
+    "CHANGES_REQUESTED": "Read the latest changes-requested review and answer it.",
+    "CI_RED": "Classify each failing check before touching code: stale base, infrastructure, or the diff's own code.",
+    "BEHIND": "Merge the base branch in so the head is up to date.",
+    "PENDING": "Wait. Run pr-state --wait.",
+    "DRAFT": "Green but draft. Marking it ready is the human's call unless they delegated it.",
+    "WAITING_REVIEW": "Green and waiting on a human approval. Nothing for an agent to fix.",
+    "READY": "Merge-ready. Stop and report. Merging is the human's call.",
+}
+
+
+class GhError(Exception):
+    pass
+
+
+def gh(*args):
+    try:
+        out = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=120)
+    except FileNotFoundError:
+        raise GhError("gh is not installed")
+    except subprocess.TimeoutExpired:
+        raise GhError(f"gh {' '.join(args[:2])} timed out")
+    if out.returncode != 0:
+        raise GhError((out.stderr or out.stdout).strip() or f"gh exited {out.returncode}")
+    return json.loads(out.stdout)
+
+
+def bucket(check):
+    if check.get("__typename") == "StatusContext":
+        state = check.get("state") or ""
+        return "pass" if state in PASS else "fail" if state in FAIL else "pending"
+    if (check.get("status") or "") != "COMPLETED":
+        return "pending"
+    conclusion = check.get("conclusion") or ""
+    return "pass" if conclusion in PASS else "fail" if conclusion in FAIL else "pending"
+
+
+def threads_for(url, number):
+    m = re.match(r"https?://([^/]+)/([^/]+)/([^/]+)/pull/\d+", url or "")
+    if not m:
+        raise GhError(f"cannot parse PR url {url!r}")
+    host, owner, name = m.groups()
+    args = ["api", "graphql", "-f", f"query={THREADS_QUERY}", "-f", f"owner={owner}",
+            "-f", f"name={name}", "-F", f"number={number}"]
+    if host != "github.com":
+        args[1:1] = ["--hostname", host]
+    data = gh(*args)
+    nodes = (((data.get("data") or {}).get("repository") or {}).get("pullRequest") or {})
+    return ((nodes.get("reviewThreads") or {}).get("nodes")) or []
+
+
+def snapshot(pr):
+    view = gh("pr", "view", *([pr] if pr else []), "--json", FIELDS)
+    checks = {"failing": [], "pending": [], "passing": 0}
+    for c in view.get("statusCheckRollup") or []:
+        b = bucket(c)
+        if b == "pass":
+            checks["passing"] += 1
+            continue
+        entry = {"name": c.get("name") or c.get("context") or "?",
+                 "url": c.get("detailsUrl") or c.get("targetUrl") or ""}
+        if b == "fail":
+            entry["conclusion"] = c.get("conclusion") or c.get("state")
+        checks["failing" if b == "fail" else "pending"].append(entry)
+
+    unresolved = []
+    for t in threads_for(view.get("url"), view.get("number")):
+        if t.get("isResolved"):
+            continue
+        first = ((t.get("first") or {}).get("nodes") or [{}])[0]
+        last = ((t.get("last") or {}).get("nodes") or [{}])[0]
+        unresolved.append({
+            "id": t.get("id"),
+            "path": t.get("path"),
+            "line": t.get("line"),
+            "outdated": bool(t.get("isOutdated")),
+            "author": (first.get("author") or {}).get("login"),
+            "last_author": (last.get("author") or {}).get("login"),
+            "comments": (t.get("first") or {}).get("totalCount", 0),
+            "url": first.get("url"),
+            "body": " ".join((first.get("body") or "").split())[:280],
+        })
+
+    reviews = view.get("reviews") or []
+    state = {
+        "pr": view.get("number"),
+        "url": view.get("url"),
+        "state": view.get("state"),
+        "draft": bool(view.get("isDraft")),
+        "head": view.get("headRefName"),
+        "base": view.get("baseRefName"),
+        "head_sha": view.get("headRefOid"),
+        "mergeable": view.get("mergeable"),
+        "merge_state": view.get("mergeStateStatus"),
+        "review_decision": view.get("reviewDecision") or None,
+        "checks": checks,
+        "unresolved_threads": unresolved,
+        "reviews": len(reviews),
+        "latest_reviews": [
+            {"author": (r.get("author") or {}).get("login"), "state": r.get("state")}
+            for r in reviews[-3:]
+        ],
+        "comments": len(view.get("comments") or []),
+    }
+    state["verdict"] = verdict(state)
+    state["next"] = NEXT[state["verdict"]]
+    if not view.get("statusCheckRollup") and state["verdict"] == "READY":
+        state["note"] = "No checks reported on the head commit. Right after a push this means CI has not registered yet."
+    return state
+
+
+def verdict(s):
+    if s["state"] in ("MERGED", "CLOSED"):
+        return s["state"]
+    if s["mergeable"] == "CONFLICTING" or s["merge_state"] == "DIRTY":
+        return "CONFLICT"
+    if s["unresolved_threads"]:
+        return "THREADS"
+    if s["review_decision"] == "CHANGES_REQUESTED":
+        return "CHANGES_REQUESTED"
+    if s["checks"]["failing"]:
+        return "CI_RED"
+    if s["merge_state"] == "BEHIND":
+        return "BEHIND"
+    if s["checks"]["pending"] or s["mergeable"] in (None, "UNKNOWN") or s["merge_state"] == "UNKNOWN":
+        return "PENDING"
+    if s["draft"]:
+        return "DRAFT"
+    if s["review_decision"] == "REVIEW_REQUIRED" or s["merge_state"] == "BLOCKED":
+        return "WAITING_REVIEW"
+    return "READY"
+
+
+def fingerprint(s):
+    return (
+        s["verdict"],
+        s["head_sha"],
+        tuple(sorted((t["id"], t["comments"]) for t in s["unresolved_threads"])),
+        s["reviews"],
+        s["comments"],
+    )
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("pr", nargs="?", help="PR number, URL or branch (default: current branch)")
+    p.add_argument("--wait", action="store_true", help="block until something on the PR changes")
+    p.add_argument("--interval", type=float, default=60)
+    p.add_argument("--timeout", type=float, default=540)
+    p.add_argument("--pretty", action="store_true")
+    args = p.parse_args()
+
+    def emit(obj, code=0):
+        print(json.dumps(obj, indent=2 if args.pretty else None))
+        sys.exit(code)
+
+    try:
+        state = snapshot(args.pr)
+        if args.wait and state["verdict"] not in ("MERGED", "CLOSED"):
+            start, seen = time.monotonic(), fingerprint(state)
+            while fingerprint(state) == seen:
+                if time.monotonic() - start + args.interval > args.timeout:
+                    state["timed_out"] = True
+                    break
+                time.sleep(args.interval)
+                state = snapshot(args.pr)
+    except GhError as e:
+        emit({"error": str(e)}, 2)
+    emit(state)
+
+
+if __name__ == "__main__":
+    main()

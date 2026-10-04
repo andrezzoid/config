@@ -22,9 +22,10 @@ Spawn fresh subagents, one lens each — a single agent asked for everything reg
 
 ### The artifact — before anything merges
 
-Fresh subagent(s), briefed with the theory plus the diff:
+Fresh `verifier` subagent(s), briefed with the theory plus the commit or branch. The verifier has no edit tools, so rule 2 holds by construction:
 
 - **Run the acceptance checks.** Their run is the evidence; the author's run was only the gate.
+- **Drive the real app.** Through the project's `verify-*` skill when one exists. User-facing behavior verified only by unit tests is inconclusive, and the verdict says so.
 - **Attempt refutation.** Actively try to break it — don't confirm it passes.
 - **Audit the diff against the theory.** What landed that the theory never said; what the theory said that never landed. Both directions.
 
@@ -39,7 +40,7 @@ One fresh agent, briefed with only the repo — never the plan, the ticket, or t
 3. **Read-only on the shared tree.** A reviewer that must build or run gets its own copy — spawn it with worktree isolation, or have it `git worktree add` a scratch checkout it removes when done.
 4. **Decorrelate when stakes are high.** Same-model reviewers share the author's priors, so they can share its blind spots — use a different model for the territory lens on anything expensive to unwind.
 5. **A reviewer you didn't spawn produced no findings.** If you can't spawn, say so plainly — a narrated review is worse than none, because it looks like one.
-6. **Scale to the work, out loud.** A small change earns a single territory-lens agent; that reduction is fine when it's on the record (in the working notes, or stated to the human) — and a silent skip never is.
+6. **Scale to the work, out loud.** A small change earns a single territory-lens agent; that reduction is fine when it's on the record (in the working notes, or stated to the human) — and a silent skip never is. When agents land more than anyone can gate, sample instead: run the artifact target over a slice of recently landed commits, and send any mistake you see twice to `/correct` rather than patching the instance.
 7. **Await what you spawn.** A session that ends while a reviewer is still running loses the findings yet looks like a completed check — wait for it, or record the reduction.
 
 ## Findings triage

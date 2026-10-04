@@ -41,14 +41,27 @@ Also load the following skills when appropriate:
 - deep-module-design
 - define-errors-away
 
+When the same mechanical edit repeats across files, write the codemod or script
+and run it instead of editing by hand. The script is what a reviewer reruns to
+check the work; hand edits can only be checked by redoing them.
+
 If the work turns out to need something that belongs to another ticket, stop,
 name it, and wait. It is not yours to build.
 
 Verify before you call it done:
 
-- Run lint, typecheck and the test suite.
+- Run lint, typecheck and the test suite. That proves the code compiles and its
+  branches behave, not that the work does what the acceptance says.
+- Prove each acceptance line against the real artifact: drive the app through
+  the project's `verify-*` skill, run the real command, read back the stored
+  value. If the work is user-facing and the project has no verify skill, say so
+  in the brief and suggest `/verify-skill`. Inconclusive or wrong-surface
+  evidence is not a pass.
+- Rewrite or delete any test you wrote that would still pass if the code under
+  test returned nothing.
 - Follow the complexity-red-flags skill.
-- Load and follow the poke-holes skills at the artifact target for findings
+- Load and follow the poke-holes skill at the artifact target, spawning
+  `verifier` subagents for it.
 - Every finding gets a disposition: fix now, followup, or rejected with a
   reason.
 - If the same check fails three times running, stop and brief. Grinding at a red
@@ -79,10 +92,25 @@ Out-of-scope discoveries become new tickets in triage, filed after the final
 brief and human approval, never carried away in your head. Where there is no
 tracker, raise them in the brief and leave them there.
 
-A ticket carries an autonomy level. Read it before the first commit and work
-within it. Absent, unreadable, or working without a ticket, take the most
-conservative reading: commit as you go with the end of the work as the
-checkpoint, and never push, merge or deploy without being told.
+A ticket carries an autonomy level, the furthest you may take the work without
+asking:
+
+- `commit`: commit locally as you go, with the end of the work as the
+  checkpoint. Never push.
+- `pr`: push the branch, open the PR, and drive it to merge-ready with
+  `/check-pr`. Never merge.
+- `merge`: merge once a `verifier` passes on the exact head commit and CI is
+  green. Only for two-way doors: a change a revert fully undoes, in a project
+  whose verify skill covers it.
+
+Read it before the first commit and work within it. Absent, unreadable, or
+working without a ticket, take `commit`. No level covers deploys, data
+migrations or anything else a revert can't undo. Those wait for the human.
+
+Keep a list of every place the environment let you go wrong: a mistake a lint,
+type, test or clearer structure would have caught, or a convention you could
+only learn by being corrected. Don't fix them here. They go in the brief under
+environment gaps, and `/correct` fixes the ones that repeat.
 
 When the work is done, or the moment you stop, brief the human. Follow
 `references/briefing.md`.

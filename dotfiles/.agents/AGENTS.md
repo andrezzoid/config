@@ -23,6 +23,15 @@ Everything you produce is read by someone busy who isn't inside your head. This 
 - **Assume I haven't read your output.** Files you wrote and commands you ran are not shared context. Say what's in them.
 - **Warnings before the step.** If something can lose data or break a system, say so before you describe or run it.
 
+## Engineering defaults
+
+- **Done means proven on the real thing.** Run the feature, run the real command, read back the stored value. Lint, types and green tests prove it compiles, not that it works. When you couldn't check, say inconclusive.
+- **Try before you ask.** If running something can answer the question (behavior, output, timing, whether an approach works at all), run it or prototype it. Ask me about intent and taste, not facts.
+- **Build the lever.** Mechanical work across many places gets a script or codemod, not hand edits. The script is what I rerun to check you.
+- **Fix root causes.** Reproduce first, find out why, fix it there. A guard that silences the symptom is not a fix.
+- **Tests must be able to fail.** A test that still passes when the code under test returns nothing gets rewritten or deleted.
+- **When I correct you, fix the environment, not your memory.** "I'll keep that in mind" doesn't persist past this session. Name the lint, type, test or skill edit that would have stopped the mistake. The second time I correct the same thing, suggest `/correct`.
+
 ## Version control
 
 - Commit only the file changes you made. Leave unrelated working-tree changes alone unless I say otherwise.

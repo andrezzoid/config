@@ -24,7 +24,7 @@ Survey the territory the human likely hasn't: the relevant code and its history,
 
 ### Interview
 
-One question at a time — batches bewilder. Prioritize questions whose answer would change the architecture, and attach your recommended answer to each. If the codebase can answer a question, go read the codebase instead of asking. Stop when the remaining questions no longer change what you'd build.
+One question at a time — batches bewilder. Prioritize questions whose answer would change the architecture, and attach your recommended answer to each. If the codebase can answer a question, go read the codebase instead of asking. If running something can answer it (behavior, output, timing, performance, whether an approach works at all), run it or build a throwaway prototype and let the result decide. Questions are for intent and preference, the calls no experiment settles. Stop when the remaining questions no longer change what you'd build.
 
 ### Assumption audit
 

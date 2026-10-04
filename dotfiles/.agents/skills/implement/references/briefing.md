@@ -14,4 +14,6 @@ load-bearing, and writes a summary only it can read.
 - Where the point is a structure or a comparison, show it. Load the `show-me`
   skill and follow their conventions instead of describing a shape in prose.
 - If a decision is needed: the options, a recommendation, the question.
+- Close with the environment gaps, one line each, when there are any: what
+  went wrong, and what lint, type, test or structure would have stopped it.
 - Keep it short. A brief that needs scrolling has buried its own question.

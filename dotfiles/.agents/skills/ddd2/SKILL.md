@@ -22,6 +22,8 @@ ddd2 is a thin cycle over small skills. Load each with the Skill tool at the mom
 | Risky plan before go; large change before ship            | quiz-me                 |
 | Designing a fork's options                                | design-it-twice         |
 | Inside every implementation task                          | test-driven-development |
+| Proving behavior on the running app; no verify-* yet      | verify-skill            |
+| Cold session on work that has no delta file               | recall                  |
 
 ## The delta file
 

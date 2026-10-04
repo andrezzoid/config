@@ -78,6 +78,8 @@ Titles name the change. Write "App: acknowledge Kai's answer from the chat surfa
 
 **Testing.** One line naming the seam this slice tests at and the nearest similar test in the codebase. The parent's testing decisions are written before the slicing, so they may not describe this slice.
 
+**Autonomy.** The furthest an agent may take the ticket without asking, read by the implement skill: `commit`, `pr` or `merge`. Propose it from the door. A one-way door (schema, external contract, data you can't restore, anything a revert doesn't undo) gets `commit`. A two-way door gets `pr`. Propose `merge` only when the user asked for it and the project has a verify skill covering the slice. The user sets the final value.
+
 ### 6. Quiz the user
 
 Present the proposed breakdown as a numbered list. For each ticket, show:
@@ -85,6 +87,7 @@ Present the proposed breakdown as a numbered list. For each ticket, show:
 - **Title**: short descriptive name
 - **Blocked by**: which other tickets (if any) must complete first
 - **What it delivers**: the end-to-end behaviour this ticket makes work
+- **Autonomy**: the proposed level and the door that justifies it
 
 Ask the user:
 
@@ -120,6 +123,8 @@ Do NOT close or modify any parent issue.
 
 **Blocked by:** the numbers/titles of the tickets that gate this one, or "None (can start immediately)".
 
+**Autonomy:** `commit`, `pr` or `merge`.
+
 - [ ] Given <state>, when <trigger>, then <single observable outcome>.
 
 </local-ticket-template>
@@ -153,6 +158,10 @@ The seam this slice tests at, and the nearest similar test in the codebase. One 
 ## Blocked by
 
 A reference to each blocking ticket. Omit this section when there are none, rather than writing "none".
+
+## Autonomy
+
+`commit`, `pr` or `merge`.
 
 </issue-template>
 

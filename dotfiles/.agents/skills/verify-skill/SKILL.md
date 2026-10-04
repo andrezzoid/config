@@ -18,7 +18,7 @@ Answer these from the code and ask the human only what you can't observe:
 
 - **Surface.** What does a user touch: a web UI, a CLI or TUI, a desktop app, an HTTP API, a library? Pick the primary one and note the rest.
 - **Run.** How does it start locally? Prefer the repo's own dev command (package scripts, Makefile, README). Note ports, env vars, seed data and auth.
-- **Drive.** What can drive it from code? Existing harnesses first (Playwright or Cypress specs, expect scripts, a debug port). Then the generic tools in this harness: `agent-browser` for web and Electron, `tmux` for CLIs and TUIs, `curl` for HTTP.
+- **Drive.** What can drive it from code? Existing harnesses first (Playwright or Cypress specs, expect scripts, a debug port). Then the generic tools in this harness: `agent-browser` for web and Electron, `tmux` for CLIs and TUIs, `curl` for HTTP. A cloud session has Playwright with Chromium preinstalled (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`) and no `agent-browser`, so a skill that must also run in the cloud drives the browser through Playwright.
 - **Observe.** What evidence exists: screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, rows in a database.
 - **Isolate.** Can two instances run side by side (ports, data dirs, profiles)? If not, the skill says so and refuses to drive an instance it didn't start.
 

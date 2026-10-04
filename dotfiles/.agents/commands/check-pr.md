@@ -3,7 +3,7 @@ description: Drive a pull request to merge-ready in a loop, then stop at the hum
 argument-hint: "[pr number, url or branch]"
 ---
 
-/loop
+On a laptop, run this under `/loop` (self-paced). In a cloud session, don't loop: the Waiting section says how GitHub wakes you.
 
 Put PR $ARGUMENTS (default: the current branch's PR) in shape to merge, as a senior engineer would. Merge-ready is where you stop. Merging is my call, unless I delegated it for this work (a ticket at autonomy `merge`).
 
@@ -32,7 +32,10 @@ Work the verdict, then everything you already know about below it, and batch all
 
 ## Waiting
 
-When nothing is left for you (any waiting state, or right after a push), run `~/.agents/scripts/pr-state.ts --wait $ARGUMENTS` with the Bash tool's timeout set to 600000 ms, because the default two minutes kills it. It blocks until the verdict changes, the head commit moves, or new review activity lands, for at most nine minutes, then prints the new state. That makes each loop iteration wake on an event instead of a fixed timer. When it returns `timed_out`, nothing happened: let `/loop` pace the next check and widen the gap while the PR stays quiet.
+When nothing is left for you (any waiting state, or right after a push):
+
+- **On a laptop**, run `~/.agents/scripts/pr-state.ts --wait $ARGUMENTS` with the Bash tool's timeout set to 600000 ms, because the default two minutes kills it. It blocks until the verdict changes, the head commit moves, or new review activity lands, for at most nine minutes, then prints the new state. That makes each loop iteration wake on an event instead of a fixed timer. When it returns `timed_out`, nothing happened: let `/loop` pace the next check and widen the gap while the PR stays quiet.
+- **In a cloud session** (`CLAUDE_CODE_REMOTE=true`), call `subscribe_pr_activity` for the PR once, then end your turn after each round. CI results, reviews, pushes and the merge each wake you. Don't poll. `pr-state.ts` still gives the verdict at the start of every round, since it uses GitHub's REST API, which cloud sessions allow.
 
 ## Stop
 
@@ -43,4 +46,4 @@ When nothing is left for you (any waiting state, or right after a push), run `~/
 - `WAITING_REPLY` or `WAITING_REVIEW` for more than a few quiet rounds: stop, and tell me who it's waiting on.
 - The same blocker survives three rounds of fixes, or a call needs me (intent, product, anything hard to undo): stop and tell me what's blocking and what you need.
 
-When you stop, cancel the loop. Report once: what you fixed, what you dismissed and why, what's still pending, and what needs me.
+When the PR merges or closes and your prompt named a factory Routine, call `fire_trigger` on it so the next tickets start, then `unsubscribe_pr_activity`. When you stop, cancel the loop. Report once: what you fixed, what you dismissed and why, what's still pending, and what needs me.

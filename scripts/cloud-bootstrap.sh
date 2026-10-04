@@ -1,16 +1,19 @@
 #!/bin/bash
 # Install the agent harness from this repo into a Claude Code cloud container.
 #
-# Cloud sessions never see a laptop's ~/.claude, but they do read the container's own
-# ~/.claude before Claude Code starts. The cloud environment's setup script runs first, so
-# it can put the harness there. Paste this into the environment's Setup script:
+# Cloud sessions never see a laptop's ~/.claude, but they do read the container's own: a
+# skill linked into ~/.claude/skills shows up even mid-session. Paste this into the cloud
+# environment's Setup script, naming the branch that holds the harness:
 #
-#   git clone --depth 1 https://github.com/andrezzoid/config /opt/harness
+#   git clone --depth 1 -b master https://github.com/andrezzoid/config /opt/harness
 #   bash /opt/harness/scripts/cloud-bootstrap.sh
 #
-# Setup output is cached for days, so the harness is linked, not copied, and a SessionStart
-# hook pulls /opt/harness at the start of every session to keep skill bodies current.
-# Rerunning is safe. Local-only pieces (settings.json with macOS paths, zellij, herdr) stay out.
+# Setup output is cached for days, so everything is linked, not copied, and a SessionStart
+# hook pulls /opt/harness and reruns this script at the start of every session. Unverified:
+# whether that user-level hook and ~/.claude/CLAUDE.md load in the very first session, since
+# the environment log shows Claude Code preloading while setup still runs. Skills don't
+# depend on either. Rerunning is safe. Local-only pieces (the laptop settings.json with
+# macOS paths, zellij, herdr) stay out.
 set -euo pipefail
 
 harness="${HARNESS_DIR:-/opt/harness}"
@@ -37,7 +40,7 @@ if [ ! -e "$settings" ]; then
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "git -C $harness pull --ff-only --quiet || true", "timeout": 30 }] }
+      { "hooks": [{ "type": "command", "command": "git -C $harness pull --ff-only --quiet && bash $harness/scripts/cloud-bootstrap.sh >/dev/null; true", "timeout": 60 }] }
     ]
   }
 }

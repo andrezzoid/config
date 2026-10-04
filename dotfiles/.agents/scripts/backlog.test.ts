@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type Deps, type Plan, type Pr, cycles, frontier, mark, problems, publishPlan, pullPlan, tick } from "./backlog.ts"
+import { type Deps, type Plan, type Pr, claim, cycles, frontier, mark, problems, publishPlan, pullPlan, tick } from "./backlog.ts"
 
 const ticket = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -189,7 +189,7 @@ describe("frontier (cloud mode)", () => {
     const w = world([])
     w.prs["eng-a"] = { number: 1, state: "MERGED", url: "u1" }
     w.prs["eng-d"] = { number: 4, state: "OPEN", url: "u4" }
-    const { ready, tickets } = frontier(plan, new Set(["E"]), new Set(), 3, w.deps)
+    const { ready, tickets } = frontier(plan, new Set(["eng-e"]), new Set(), 3, w.deps)
     expect(ready.map((t) => t.id)).toEqual(["B"])
     expect(Object.fromEntries(tickets.map((t) => [t.id, t.state]))).toEqual({
       A: "done", B: "ready", C: "held", D: "running", E: "running",
@@ -206,9 +206,26 @@ describe("frontier (cloud mode)", () => {
   it("stops a ticket whose session failed before opening a PR, and holds an orphan branch", () => {
     const w = world([])
     w.branches.add("eng-e")
-    const { tickets } = frontier(plan, new Set(), new Set(["A"]), 3, w.deps)
+    const { tickets } = frontier(plan, new Set(), new Set(["eng-a"]), 3, w.deps)
     expect(tickets.find((t) => t.id === "A")!.state).toBe("stopped")
     expect(tickets.find((t) => t.id === "E")!.state).toBe("held")
+  })
+})
+
+describe("frontier cloud rules", () => {
+  it("never launches a commit-level ticket in the cloud, and says why", () => {
+    const w = world([])
+    const p = { tickets: [ticket("A", { autonomy: "commit" }), ticket("B", { blocked_by: ["A"] })] } as Plan
+    const { ready, tickets } = frontier(p, new Set(), new Set(), 3, w.deps)
+    expect(ready).toEqual([])
+    expect(tickets[0].why).toContain("autonomy commit can't run in the cloud")
+    expect(tickets[1].state).toBe("blocked")
+  })
+
+  it("treats a renamed branch as a fresh attempt", () => {
+    const w = world([])
+    const p = { tickets: [ticket("A", { branch: "eng-a-2" })] } as Plan
+    expect(frontier(p, new Set(), new Set(["eng-a"]), 3, w.deps).ready.map((t) => t.id)).toEqual(["A"])
   })
 })
 
@@ -252,3 +269,62 @@ describe("plan branch", () => {
     expect(() => publishPlan(path)).toThrow("blocker `Z` is not in the plan")
   })
 })
+
+describe("claim and concurrent publishes", () => {
+  const ids = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" }
+  function clones() {
+    const root = mkdtempSync(join(tmpdir(), "claim-"))
+    const out = Bun.spawnSync(["sh", "-c", "git init -q --bare origin.git && git clone -q origin.git a && git clone -q origin.git b"], { cwd: root })
+    if (out.exitCode !== 0) throw new Error(out.stderr.toString())
+    return { a: join(root, "a"), b: join(root, "b") }
+  }
+  function inDir<T>(dir: string, fn: () => T): T {
+    const cwd = process.cwd()
+    const env = { ...process.env }
+    Object.assign(process.env, ids)
+    process.chdir(dir)
+    try {
+      return fn()
+    } finally {
+      process.chdir(cwd)
+      process.env = env
+    }
+  }
+
+  it("lets exactly one of two firings claim a ticket", () => {
+    const { a, b } = clones()
+    expect(inDir(a, () => claim("eng-12"))).toBe(true)
+    expect(inDir(b, () => claim("eng-12"))).toBe(false)
+    expect(inDir(b, () => claim("eng-12-2"))).toBe(true)
+  })
+
+  it("rejects a publish built on a plan someone else has since replaced", () => {
+    const { a, b } = clones()
+    inDir(a, () => {
+      writeFileSync("plan.json", JSON.stringify({ tickets: [ticket("A")] }))
+      publishPlan("plan.json")
+    })
+    inDir(b, () => pullPlan("plan.json"))
+    inDir(a, () => {
+      writeFileSync("plan.json", JSON.stringify({ tickets: [ticket("A"), ticket("B")] }))
+      publishPlan("plan.json")
+    })
+    inDir(b, () => {
+      writeFileSync("plan.json", JSON.stringify({ tickets: [ticket("A"), ticket("C")] }))
+      expect(() => publishPlan("plan.json")).toThrow("moved since you pulled it")
+      pullPlan("plan.json")
+      expect(JSON.parse(readFileSync("plan.json", "utf8")).tickets.map((t: { id: string }) => t.id)).toEqual(["A", "B"])
+    })
+  })
+
+  it("fails a pull when the branch holds no plan.json", () => {
+    const { a, b } = clones()
+    inDir(a, () => {
+      const tree = Bun.spawnSync(["git", "mktree"], { stdin: new TextEncoder().encode("") }).stdout.toString().trim()
+      const commit = Bun.spawnSync(["git", "commit-tree", tree, "-m", "empty"], { env: { ...process.env, ...ids } }).stdout.toString().trim()
+      Bun.spawnSync(["git", "push", "-q", "origin", `${commit}:refs/heads/factory/plan`])
+    })
+    expect(() => inDir(b, () => pullPlan("plan.json"))).toThrow("holds no plan.json")
+  })
+})
+

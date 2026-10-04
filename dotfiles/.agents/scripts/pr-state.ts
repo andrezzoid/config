@@ -17,7 +17,7 @@
  *   PENDING             checks running or GitHub still computing mergeability
  *   DRAFT               green, but still a draft
  *   WAITING_REPLY       green, and every open thread or review is waiting on its reviewer
- *   WAITING_REVIEW      green, and waiting on a requested or required approval
+ *   WAITING_REVIEW      green and blocked, with a review still requested or no approval yet
  *   BLOCKED             green and approved, but a protection rule still blocks the merge
  *   READY               GitHub says it can merge
  *
@@ -116,7 +116,7 @@ export const NEXT: Record<Verdict, string> = {
   PENDING: "Wait. Run pr-state.ts --wait.",
   DRAFT: "Green but draft. Marking it ready is the human's call unless they delegated it.",
   WAITING_REPLY: "Every open thread or review is waiting on its reviewer. Wait.",
-  WAITING_REVIEW: "Green and waiting on an approval. Nothing for an agent to fix.",
+  WAITING_REVIEW: "Green, blocked, and waiting on a requested review or an approval. REST can't see how many approvals a rule needs, so if the approvals look sufficient, check the branch rules. Nothing for an agent to fix.",
   BLOCKED: "Green and approved, but a protection rule still blocks the merge (a required check that never reported, signed commits, a ruleset). Report it to the human.",
   READY: "Merge-ready. Stop and report, unless the human delegated the merge (a ticket at autonomy `merge`).",
 }
@@ -142,6 +142,12 @@ export const realGh = makeGh()
 /** `gh api <path>`, with --hostname for GitHub Enterprise. */
 export function api(gh: Gh, repo: Repo, path: string, extra: string[] = []): any {
   return gh(["api", ...(repo.host === "github.com" ? [] : ["--hostname", repo.host]), path, ...extra])
+}
+
+/** Every page of a list endpoint. Reviews, comments and commits come oldest first, so page one alone loses the newest. */
+export function apiAll(gh: Gh, repo: Repo, path: string): any[] {
+  const pages: any[] = api(gh, repo, path, ["--paginate", "--slurp"])
+  return pages.flatMap((page) => (Array.isArray(page) ? page : [page]))
 }
 
 export function parseRepo(url: string): Repo | null {
@@ -283,11 +289,11 @@ export function snapshot(gh: Gh, pr?: string, repoHint?: Repo): State {
   const base = `repos/${repo.owner}/${repo.name}`
   const pull: Json = api(gh, repo, `${base}/pulls/${number}`)
   const sha: string = pull.head?.sha
-  const runs: Json[] = api(gh, repo, `${base}/commits/${sha}/check-runs?per_page=100`).check_runs ?? []
-  const statuses: Json[] = api(gh, repo, `${base}/commits/${sha}/status`).statuses ?? []
-  const reviews: Json[] = api(gh, repo, `${base}/pulls/${number}/reviews?per_page=100`)
-  const comments: Json[] = api(gh, repo, `${base}/issues/${number}/comments?per_page=100`)
-  const commits: Json[] = api(gh, repo, `${base}/pulls/${number}/commits?per_page=100`)
+  const runs: Json[] = apiAll(gh, repo, `${base}/commits/${sha}/check-runs?per_page=100`).flatMap((p) => p.check_runs ?? [])
+  const statuses: Json[] = api(gh, repo, `${base}/commits/${sha}/status?per_page=100`).statuses ?? []
+  const reviews: Json[] = apiAll(gh, repo, `${base}/pulls/${number}/reviews?per_page=100`)
+  const comments: Json[] = apiAll(gh, repo, `${base}/issues/${number}/comments?per_page=100`)
+  const commits: Json[] = apiAll(gh, repo, `${base}/pulls/${number}/commits?per_page=100`)
   const viewer: string | null = api(gh, repo, "user").login ?? null
 
   const checks: State["checks"] = { failing: [], pending: [], passing: 0 }

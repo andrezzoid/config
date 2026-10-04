@@ -10,8 +10,9 @@
  * Cloud mode, for the coordinator Routine (no ledger, no lfg):
  *   backlog.ts pull                                  plan branch -> DIR/plan.json
  *   backlog.ts publish                               DIR/plan.json -> plan branch
- *   backlog.ts frontier [--sessions ID,..] [--failed ID,..] [--max N]
+ *   backlog.ts frontier [--sessions BRANCH,..] [--failed BRANCH,..] [--max N]
  *                                                    JSON: which tickets to launch now
+ *   backlog.ts claim BRANCH                          launch lock; exit 3 when taken
  *
  * /run-backlog writes DIR/plan.json (default DIR: .factory/backlog): which tickets, their
  * blockers, branches and serial groups. This script does the mechanics. It keeps
@@ -200,17 +201,24 @@ export function orphansOf(plan: Plan, ledger: Ledger, deps: Deps): Set<string> {
 /**
  * Cloud mode: there's no ledger file, because a cloud container doesn't outlive its session.
  * Each ticket's state comes from GitHub (its branch's PR) and from the coordinator's list of
- * cloud sessions tagged with the ticket id. Stateless, so any firing can run it.
+ * cloud sessions, which are tagged with the ticket's branch. Keying on the branch makes a
+ * renamed branch a fresh attempt: the old attempt's sessions and claim no longer match.
+ * Stateless, so any firing can run it.
  */
-export function frontier(plan: Plan, sessions: Set<string>, failed: Set<string>, max: number, deps: Deps) {
+export function frontier(plan: Plan, sessionBranches: Set<string>, failedBranches: Set<string>, max: number, deps: Deps) {
   const ledger: Ledger = {}
   for (const t of plan.tickets) {
     const pr = deps.findPr(t.branch)
     if (pr?.state === "MERGED") ledger[t.id] = { state: "done", branch: t.branch, pr: pr.number, url: pr.url }
     else if (pr?.state === "CLOSED") ledger[t.id] = { state: "stopped", branch: t.branch, pr: pr.number, reason: "PR closed without merging" }
     else if (pr) ledger[t.id] = { state: "running", branch: t.branch, pr: pr.number, url: pr.url }
-    else if (failed.has(t.id)) ledger[t.id] = { state: "stopped", branch: t.branch, reason: "session failed before opening a PR" }
-    else if (sessions.has(t.id)) ledger[t.id] = { state: "running", branch: t.branch }
+    else if (failedBranches.has(t.branch)) ledger[t.id] = { state: "stopped", branch: t.branch, reason: "session failed before opening a PR" }
+    else if (sessionBranches.has(t.branch)) ledger[t.id] = { state: "running", branch: t.branch }
+    else if (t.autonomy === "commit" && !t.done) {
+      // A commit-level session never pushes, so its work would die with the container and
+      // nothing here could ever see it finish.
+      ledger[t.id] = { state: "stopped", branch: t.branch, reason: "autonomy commit can't run in the cloud: set it to pr, or run it on the laptop" }
+    }
   }
   const current = states(plan, ledger, max, orphansOf(plan, ledger, deps))
   const tickets = plan.tickets.map((t) => {
@@ -231,25 +239,53 @@ function git(args: string[], input?: string) {
   return { ok: out.status === 0, stdout: (out.stdout ?? "").trim(), stderr: (out.stderr ?? "").trim() }
 }
 
+/**
+ * Take the launch lock for one attempt at a ticket: push a commit no other firing can have to
+ * factory/claim/<branch>. The first push creates the branch; any later one is rejected as a
+ * non-fast-forward, and the cloud proxy refuses force-pushes, so exactly one firing launches.
+ */
+export function claim(branch: string): boolean {
+  const tree = git(["mktree"], "").stdout
+  const commit = git(["commit-tree", tree, "-m", `claim ${branch} ${new Date().toISOString()} ${process.pid} ${Math.random()}`])
+  if (!commit.ok) throw new Fail(`git commit-tree failed: ${commit.stderr}`)
+  const push = git(["push", "--quiet", "origin", `${commit.stdout}:refs/heads/factory/claim/${branch}`])
+  if (push.ok) return true
+  if (/rejected|non-fast-forward|fetch first|already exists/i.test(push.stderr)) return false
+  throw new Fail(`claiming ${branch} failed: ${push.stderr}`)
+}
+
 function fetchPlanBranch(): string | null {
   git(["fetch", "--quiet", "origin", `+refs/heads/${PLAN_BRANCH}:refs/remotes/origin/${PLAN_BRANCH}`])
   const tip = git(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${PLAN_BRANCH}`])
   return tip.ok ? tip.stdout : null
 }
 
-/** Push plan.json to the plan branch as a fast-forward commit; the cloud proxy refuses deletes and force-pushes. */
+/**
+ * Push plan.json to the plan branch as a fast-forward commit; the cloud proxy refuses deletes
+ * and force-pushes. After a `pull`, the commit builds on the plan that was pulled, so if
+ * another firing published in between, the push is rejected instead of erasing its tickets.
+ * Without a pull (fresh planning), it builds on the branch's current tip and replaces the plan.
+ */
 export function publishPlan(planPath: string): string {
   const content = readFileSync(planPath, "utf8")
   const errs = problems(JSON.parse(content))
   if (errs.length) throw new Fail(`plan.json has problems:\n  ${errs.join("\n  ")}`)
-  const parent = fetchPlanBranch()
+  const baseFile = `${planPath}.base`
+  const tip = fetchPlanBranch()
+  const parent = existsSync(baseFile) ? readFileSync(baseFile, "utf8").trim() : tip
   if (parent && git(["show", `${parent}:plan.json`]).stdout === content.trim()) return `${PLAN_BRANCH} already holds this plan`
   const blob = git(["hash-object", "-w", "--stdin"], content).stdout
   const tree = git(["mktree"], `100644 blob ${blob}\tplan.json\n`).stdout
   const commit = git(["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", "Update factory plan"])
   if (!commit.ok) throw new Fail(`git commit-tree failed: ${commit.stderr}`)
   const push = git(["push", "--quiet", "origin", `${commit.stdout}:refs/heads/${PLAN_BRANCH}`])
-  if (!push.ok) throw new Fail(`pushing ${PLAN_BRANCH} failed: ${push.stderr}`)
+  if (!push.ok) {
+    if (/rejected|non-fast-forward|fetch first/i.test(push.stderr)) {
+      throw new Fail(`${PLAN_BRANCH} moved since you pulled it. Pull again and redo your additions.`)
+    }
+    throw new Fail(`pushing ${PLAN_BRANCH} failed: ${push.stderr}`)
+  }
+  writeFileSync(baseFile, commit.stdout + "\n")
   return `published ${commit.stdout.slice(0, 7)} to ${PLAN_BRANCH}`
 }
 
@@ -257,7 +293,10 @@ export function publishPlan(planPath: string): string {
 export function pullPlan(planPath: string): string {
   const tip = fetchPlanBranch()
   if (!tip) throw new Fail(`no ${PLAN_BRANCH} branch on origin yet. Run /run-backlog to write and publish a plan.`)
-  writeFileSync(planPath, git(["show", `${tip}:plan.json`]).stdout + "\n")
+  const shown = git(["show", `${tip}:plan.json`])
+  if (!shown.ok) throw new Fail(`${PLAN_BRANCH} at ${tip.slice(0, 7)} holds no plan.json`)
+  writeFileSync(planPath, shown.stdout + "\n")
+  writeFileSync(`${planPath}.base`, tip + "\n")
   return `pulled ${tip.slice(0, 7)} from ${PLAN_BRANCH}`
 }
 
@@ -427,6 +466,14 @@ async function main() {
   } else if (cmd === "frontier") {
     const list = (v?: string) => new Set((v ?? "").split(",").map((x) => x.trim()).filter(Boolean))
     console.log(JSON.stringify(frontier(loadPlan(store), list(values.sessions), list(values.failed), max, realDeps), null, 2))
+  } else if (cmd === "claim") {
+    const [branch] = rest
+    if (!branch) throw new Fail("usage: backlog.ts claim BRANCH")
+    if (!claim(branch)) {
+      console.log(`${branch}: already claimed by another firing`)
+      process.exit(3)
+    }
+    console.log(`${branch}: claimed`)
   } else if (cmd === "publish") {
     console.log(publishPlan(store.plan))
   } else if (cmd === "pull") {
@@ -460,7 +507,7 @@ async function main() {
       await sleep(Number(values.interval))
     }
   } else {
-    throw new Fail("usage: backlog.ts check|status|run|mark|frontier|publish|pull  (see the header of this file)")
+    throw new Fail("usage: backlog.ts check|status|run|mark|frontier|claim|publish|pull  (see the header of this file)")
   }
 }
 

@@ -42,6 +42,8 @@ function fakeGh(w: World, calls: string[][] = []): Gh {
       return { data: { repository: { pullRequest: { reviewThreads: { nodes: w.threads ?? [] } } } } }
     }
     const path = args[1]
+    // apiAll asks for --paginate --slurp, which wraps the pages in an outer array.
+    const slurp = args.includes("--slurp")
     const routes: [RegExp, () => unknown][] = [
       [/pulls\?head=/, () => [{ number: 7, state: "open" }]],
       [/pulls\/7\/reviews/, () => w.reviews ?? []],
@@ -59,7 +61,7 @@ function fakeGh(w: World, calls: string[][] = []): Gh {
     ]
     const hit = routes.find(([re]) => re.test(path))
     if (!hit) throw new Error(`unexpected gh ${args.join(" ")}`)
-    return hit[1]()
+    return slurp ? [hit[1]()] : hit[1]()
   }
 }
 
@@ -213,3 +215,12 @@ describe("realGh", () => {
     expect(() => makeGh("/nonexistent/gh")(["api", "user"])).toThrow("gh is not installed")
   })
 })
+
+describe("pagination", () => {
+  it("reads every page, so the newest review on page two decides", () => {
+    const pages = [[{ user: { login: "bob" }, state: "CHANGES_REQUESTED", submitted_at: "2026-10-04T10:00:00Z" }], [{ user: { login: "bob" }, state: "APPROVED", submitted_at: "2026-10-04T12:00:00Z" }]]
+    const gh: Gh = (args) => (/pulls\/7\/reviews/.test(args[1]) ? pages : fakeGh({})(args))
+    expect(snapshot(gh, "7", REPO).review_decision).toBe("APPROVED")
+  })
+})
+

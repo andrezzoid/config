@@ -1,6 +1,6 @@
 ---
 name: recall
-description: Rebuild your recent working context on a topic from past Claude Code sessions, git, GitHub, and any delta or factory notes, then hand back a short current-state brief and the next move. Use for "recall X", "catch me up on X", "where did I leave off", "what was I doing on X", or before resuming work that spans sessions.
+description: Rebuild your recent working context on a topic from past Claude Code sessions, git, GitHub and any .factory notes, then hand back a short current-state brief and the next move. Use for "recall X", "catch me up on X", "where did I leave off", "what was I doing on X", or before resuming work that spans sessions.
 argument-hint: "[topic] [days]"
 ---
 
@@ -10,7 +10,6 @@ You're picking up work that lives in sessions you can't see. Rebuild just enough
 
 ## 1. Route first
 
-- A delta for the topic exists under `.deltas/`: load ddd2 and resume from the delta's `state`. The delta is the ledger. Recall only fills what it doesn't hold.
 - The human already gave you a state capsule (branch, PR, what's done): use it and skip the mining.
 - Otherwise continue.
 

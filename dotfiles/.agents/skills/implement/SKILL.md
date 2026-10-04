@@ -101,8 +101,7 @@ asking:
   `/check-pr`. Never merge.
 - `merge`: merge once `pr-state` reads `READY` and a `verifier` passed on that
   same head commit. Only for two-way doors: a change a revert fully undoes, in
-  a project whose verify skill covers it. Inside a ddd2 delta, ship stays the
-  human's word whatever the ticket says.
+  a project whose verify skill covers it.
 
 Read it before the first commit and work within it. Absent, unreadable, or
 working without a ticket, take `commit`. No level covers deploys, data

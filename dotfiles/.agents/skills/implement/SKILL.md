@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Implement the work named in the invocation: a ticket, a spec file, or what the
 conversation just settled. If nothing was named, ask. One unit per run:
-dispatching several is the caller's job, not yours.
+dispatching several is `/run-backlog`'s job, not yours.
 
 Read it first, and the parent for context when there is one. A published
 ticket's body is agreed state: never edit it, and its comments are the event log

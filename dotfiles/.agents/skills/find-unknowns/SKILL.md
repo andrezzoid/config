@@ -36,6 +36,6 @@ When the human can't articulate what they want, don't push harder on words — a
 
 ## Output
 
-An unknowns board — each entry: the unknown, its kind, and a disposition: **resolving** (who, how), **assumed** (→ the audit, with its evidence tag), or **deferred** (explicitly, with the human's nod). Inside a delta, merge into `## Unknowns` and `## Assumptions`. Outside one, the board goes wherever the work's record lives — the plan, the issue, the PR description: a tagged assumption only pays off if it lands where a later check (poke-holes) can read it, and a board that lives only in your reply dies with the scroll.
+An unknowns board — each entry: the unknown, its kind, and a disposition: **resolving** (who, how), **assumed** (→ the audit, with its evidence tag), or **deferred** (explicitly, with the human's nod). The board goes wherever the work's record lives (the spec, the ticket, the PR description): a tagged assumption only pays off if it lands where a later check (poke-holes) can read it, and a board that lives only in your reply dies with the scroll.
 
 **Done when:** every surfaced unknown has a disposition and no assumption is untagged. Not when the list is empty — it never is. Unknowns found mid-build are normal; this move just shifts the bulk of them to where they're cheap.

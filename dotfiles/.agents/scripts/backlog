@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+"""Dispatch a ticket backlog to agent sessions: work the frontier, one session per ticket.
+
+  backlog check  [--dir DIR]
+  backlog status [--dir DIR]
+  backlog run    [--dir DIR] [--max N] [--interval S] [--once] [--dry-run]
+  backlog mark   ID done|stopped|reset [--dir DIR]
+
+/run-backlog writes DIR/plan.json (default DIR: .factory/backlog): which tickets, their
+blockers, branches and serial groups. This script does the mechanics. It keeps
+DIR/ledger.json, works out which tickets can start, launches each one in its own worktree
+and Claude tab through your `lfg` shell function, and watches GitHub for each ticket's PR
+so a merge unlocks the tickets it blocks.
+
+A ticket is:
+  done      the plan says so, its PR merged, or you marked it
+  stopped   its PR closed unmerged, or you marked it; whatever it blocks stays blocked
+  running   launched, and its PR hasn't merged
+  blocked   a blocker isn't done, or the plan lists an external blocker
+  held      ready, but its serial group is busy or --max sessions are running
+  ready     launches on the next tick
+
+Launching runs `lfg <branch> "/implement <ref>"` in an interactive zsh, so `run` must run
+inside zellij. Set BACKLOG_LAUNCH to an executable taking <branch> <prompt> to launch some
+other way. Rerunning is safe: a running ticket is never launched twice, and a ticket whose
+branch already exists is adopted as running instead of launched again.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+AUTONOMY = {"commit", "pr", "merge"}
+BRANCH_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# lfg pastes the prompt into a zellij layout as `claude ... "$WT_PROMPT"`, so a quote,
+# `$`, backtick or space in the ref would break or rewrite that command.
+REF_OK = re.compile(r"^[A-Za-z0-9#._:/@+~-]+$")
+PR_STATE = Path(__file__).resolve().parent / "pr-state"
+
+
+class Fail(Exception):
+    pass
+
+
+class Transient(Fail):
+    """A gh hiccup: worth retrying next tick, not worth ending an overnight run."""
+
+
+def load(path, default):
+    try:
+        return json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        return default
+    except ValueError as e:
+        raise Fail(f"{path} is not valid JSON: {e}")
+
+
+def save(path, data):
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(path)
+
+
+def problems(plan):
+    """Everything wrong with the plan, as readable lines. Empty means it's runnable."""
+    tickets = plan.get("tickets")
+    if not isinstance(tickets, list) or not tickets:
+        return ["plan.json needs a non-empty `tickets` list"]
+    errs, ids, branches = [], set(), set()
+    for i, t in enumerate(tickets):
+        where = f"ticket {i + 1} ({t.get('id', '?')})"
+        for key in ("id", "ref", "branch", "title"):
+            if not isinstance(t.get(key), str) or not t.get(key):
+                errs.append(f"{where}: `{key}` must be a non-empty string")
+        if t.get("id") in ids:
+            errs.append(f"{where}: duplicate id")
+        ids.add(t.get("id"))
+        branch = t.get("branch") or ""
+        if branch and (not BRANCH_OK.match(branch) or ".." in branch or branch.endswith((".lock", "/"))):
+            errs.append(f"{where}: `{branch}` is not a valid branch name")
+        if branch in branches:
+            errs.append(f"{where}: branch `{branch}` is used twice")
+        branches.add(branch)
+        ref = t.get("ref") or ""
+        if ref and not REF_OK.match(ref):
+            errs.append(f"{where}: ref `{ref}` holds characters lfg can't carry (quotes, $, backticks, spaces)")
+        if t.get("autonomy") not in AUTONOMY:
+            errs.append(f"{where}: `autonomy` must be one of {sorted(AUTONOMY)}")
+        for key in ("blocked_by", "external_blockers"):
+            if not isinstance(t.get(key, []), list):
+                errs.append(f"{where}: `{key}` must be a list")
+    for t in tickets:
+        for b in t.get("blocked_by", []) if isinstance(t.get("blocked_by", []), list) else []:
+            if b not in ids:
+                errs.append(f"{t.get('id')}: blocker `{b}` is not in the plan. Move it to external_blockers or add it.")
+    errs += [f"blocking cycle: {' -> '.join(c)}" for c in cycles(tickets)]
+    return errs
+
+
+def cycles(tickets):
+    edges = {t.get("id"): [b for b in t.get("blocked_by", []) or []] for t in tickets}
+    found, state = [], {}
+
+    def visit(node, path):
+        state[node] = "open"
+        for nxt in edges.get(node, []):
+            if state.get(nxt) == "open":
+                found.append(path[path.index(nxt):] + [nxt])
+            elif nxt in edges and nxt not in state:
+                visit(nxt, path + [nxt])
+        state[node] = "closed"
+
+    for node in edges:
+        if node not in state:
+            visit(node, [node])
+    return found
+
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def branch_exists(branch):
+    return any(
+        git("show-ref", "--verify", "--quiet", ref).returncode == 0
+        for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}")
+    )
+
+
+def find_pr(branch):
+    out = subprocess.run(
+        ["gh", "pr", "list", "--head", branch, "--state", "all", "--json", "number,state,url", "--limit", "5"],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        raise Transient(f"gh pr list failed: {(out.stderr or out.stdout).strip()}")
+    try:
+        prs = json.loads(out.stdout or "[]")
+    except ValueError:
+        raise Transient(f"gh pr list printed non-JSON: {out.stdout[:200]!r}")
+    if not prs:
+        return None
+    merged = [p for p in prs if p.get("state") == "MERGED"]
+    open_ = [p for p in prs if p.get("state") == "OPEN"]
+    return (merged or open_ or prs)[0]
+
+
+def verdict(number):
+    out = subprocess.run([str(PR_STATE), str(number)], capture_output=True, text=True)
+    try:
+        return json.loads(out.stdout).get("verdict", "?")
+    except ValueError:
+        return "?"
+
+
+def launch(branch, prompt):
+    custom = os.environ.get("BACKLOG_LAUNCH")
+    if custom:
+        cmd = [custom, branch, prompt]
+    else:
+        if not os.environ.get("ZELLIJ"):
+            raise Fail("not inside zellij, and lfg opens a zellij tab. Run this from a zellij pane, or set BACKLOG_LAUNCH.")
+        cmd = ["zsh", "-ic", 'lfg "$1" "$2"', "lfg", branch, prompt]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if out.returncode != 0:
+        raise Fail(f"launching {branch} failed: {(out.stderr or out.stdout).strip()[-400:]}")
+
+
+def refresh(plan, ledger):
+    """Fold GitHub's view of each running ticket's PR into the ledger."""
+    for t in plan["tickets"]:
+        entry = ledger.get(t["id"])
+        if not entry or entry["state"] != "running":
+            continue
+        pr = find_pr(t["branch"])
+        if not pr:
+            continue
+        entry["pr"], entry["url"] = pr.get("number"), pr.get("url")
+        if pr.get("state") == "MERGED":
+            entry["state"] = "done"
+        elif pr.get("state") == "CLOSED":
+            entry["state"], entry["reason"] = "stopped", "PR closed without merging"
+        entry["updated"] = now()
+
+
+def states(plan, ledger, max_running):
+    """Each ticket's state for this tick, with the reason when it can't start."""
+    done = {t["id"] for t in plan["tickets"] if t.get("done") or ledger.get(t["id"], {}).get("state") == "done"}
+    running = [t for t in plan["tickets"] if ledger.get(t["id"], {}).get("state") == "running" and t["id"] not in done]
+    busy = {t.get("serial") for t in running if t.get("serial")}
+    slots = max_running - len(running)
+    result = {}
+    for t in plan["tickets"]:
+        tid, entry = t["id"], ledger.get(t["id"], {})
+        if tid in done:
+            result[tid] = ("done", "")
+        elif entry.get("state") == "stopped":
+            result[tid] = ("stopped", entry.get("reason", ""))
+        elif entry.get("state") == "running":
+            result[tid] = ("running", "")
+        elif t.get("external_blockers"):
+            result[tid] = ("blocked", "external: " + ", ".join(t["external_blockers"]))
+        elif any(b not in done for b in t.get("blocked_by", [])):
+            result[tid] = ("blocked", "waits on " + ", ".join(b for b in t["blocked_by"] if b not in done))
+        elif t.get("serial") in busy:
+            result[tid] = ("held", f"serial group {t['serial']} is busy")
+        elif slots <= 0:
+            result[tid] = ("held", f"{max_running} sessions already running")
+        else:
+            result[tid] = ("ready", "")
+            slots -= 1
+            if t.get("serial"):
+                busy.add(t["serial"])
+    return result
+
+
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def tick(paths, args, start_work):
+    plan = load(paths["plan"], None)
+    if plan is None:
+        raise Fail(f"no plan at {paths['plan']}. Run /run-backlog first.")
+    errs = problems(plan)
+    if errs:
+        raise Fail("plan.json has problems:\n  " + "\n  ".join(errs))
+    ledger = load(paths["ledger"], {})
+    refresh(plan, ledger)
+    current = states(plan, ledger, args.max)
+    launched = []
+    if start_work:
+        for t in plan["tickets"]:
+            if current[t["id"]][0] != "ready":
+                continue
+            entry = {"state": "running", "branch": t["branch"], "launched": now(), "updated": now()}
+            if branch_exists(t["branch"]):
+                entry["adopted"] = True
+            elif not args.dry_run:
+                launch(t["branch"], f"/implement {t['ref']}")
+            if not args.dry_run:
+                ledger[t["id"]] = entry
+            launched.append((t["id"], "adopt existing branch" if entry.get("adopted") else "launch"))
+        if not args.dry_run:
+            current = states(plan, ledger, args.max)
+    save(paths["ledger"], ledger)
+    report(plan, ledger, current, launched, args.dry_run)
+    return plan, ledger, current
+
+
+def report(plan, ledger, current, launched, dry_run):
+    print(f"\n{now()}  backlog")
+    for t in plan["tickets"]:
+        state, why = current[t["id"]]
+        entry = ledger.get(t["id"], {})
+        pr = entry.get("pr")
+        detail = why
+        if state == "running":
+            detail = f"PR #{pr} {verdict(pr)}" if pr else f"no PR yet, launched {entry.get('launched', '?')}"
+        elif state == "done" and pr:
+            detail = f"PR #{pr} merged"
+        print(f"  {state:8} {t['id']:12} {t['branch']:32} {detail}")
+    past = {"launch": "launched", "adopt existing branch": "adopted existing branch"}
+    for tid, what in launched:
+        print(f"  {'would ' + what if dry_run else past[what]}: {tid}")
+
+
+def cmd_check(paths, args):
+    plan = load(paths["plan"], None)
+    if plan is None:
+        raise Fail(f"no plan at {paths['plan']}")
+    errs = problems(plan)
+    if errs:
+        raise Fail("plan.json has problems:\n  " + "\n  ".join(errs))
+    current = states(plan, load(paths["ledger"], {}), args.max)
+    ready = [tid for tid, (s, _) in current.items() if s == "ready"]
+    print(f"plan ok: {len(plan['tickets'])} tickets, ready now: {', '.join(ready) or 'none'}")
+
+
+def cmd_run(paths, args):
+    while True:
+        try:
+            plan, ledger, current = tick(paths, args, start_work=True)
+        except Transient as e:
+            if args.once or args.dry_run:
+                raise
+            print(f"backlog: {e}. Retrying next tick.", file=sys.stderr)
+            time.sleep(args.interval)
+            continue
+        values = [s for s, _ in current.values()]
+        if args.once or args.dry_run:
+            return
+        if all(s == "done" for s in values):
+            print("\nAll tickets merged.")
+            return
+        if "running" not in values and "ready" not in values:
+            print("\nNothing running and nothing can start. Stopped tickets and tickets with external blockers need you.")
+            sys.exit(3)
+        time.sleep(args.interval)
+
+
+def cmd_mark(paths, args):
+    ledger = load(paths["ledger"], {})
+    if args.state == "reset":
+        ledger.pop(args.id, None)
+    else:
+        ledger.setdefault(args.id, {}).update(state=args.state, reason="marked by hand", updated=now())
+    save(paths["ledger"], ledger)
+    print(f"{args.id}: {args.state}")
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    for name in ("check", "status", "run", "mark"):
+        s = sub.add_parser(name)
+        s.add_argument("--dir", default=".factory/backlog")
+        s.add_argument("--max", type=int, default=3, help="sessions running at once")
+    sub.choices["run"].add_argument("--interval", type=float, default=300)
+    sub.choices["run"].add_argument("--once", action="store_true", help="one tick, then exit")
+    sub.choices["run"].add_argument("--dry-run", action="store_true", help="show what would launch")
+    sub.choices["mark"].add_argument("id")
+    sub.choices["mark"].add_argument("state", choices=["done", "stopped", "reset"])
+    args = p.parse_args()
+    args.dry_run = getattr(args, "dry_run", False)
+
+    d = Path(args.dir)
+    d.mkdir(parents=True, exist_ok=True)
+    paths = {"plan": d / "plan.json", "ledger": d / "ledger.json"}
+    try:
+        if args.cmd == "check":
+            cmd_check(paths, args)
+        elif args.cmd == "status":
+            tick(paths, args, start_work=False)
+        elif args.cmd == "run":
+            cmd_run(paths, args)
+        else:
+            cmd_mark(paths, args)
+    except Fail as e:
+        print(f"backlog: {e}", file=sys.stderr)
+        sys.exit(2)
+    except KeyboardInterrupt:
+        print("\nbacklog: stopped. Rerun to resume; the ledger is saved every tick.")
+
+
+if __name__ == "__main__":
+    main()

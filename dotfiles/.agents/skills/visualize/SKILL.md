@@ -19,7 +19,7 @@ Pick by what the human must *do*:
 
 ## Rules
 
-1. **One self-contained file.** Inline CSS/JS, no build step, no server. Write it to the scratchpad (or next to the delta when it's ship evidence) and `open` it for the human — or, with no display, hand them the path.
+1. **One self-contained file.** Inline CSS/JS, no build step, no server. Write it to the scratchpad (or next to the spec when it's evidence the human reviews) and `open` it for the human — or, with no display, hand them the path.
 2. **Lead with the changeable.** Order everything by likelihood-the-human-tweaks-it, not by logical completeness.
 3. **A reaction is the goal.** The artifact succeeds when the human points, disagrees, picks, or asks. "Looks good" with no decision made means the artifact asked no question — put the question *in* the artifact.
-4. **Feed the reaction back.** The render matters only for what it changes: record the pick or tweak where it belongs (delta Theory, the plan, the code). Artifacts are disposable; decisions aren't.
+4. **Feed the reaction back.** The render matters only for what it changes: record the pick or tweak where it belongs (the spec, the ticket, the code). Artifacts are disposable; decisions aren't.

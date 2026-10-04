@@ -4,7 +4,7 @@
   backlog check  [--dir DIR]
   backlog status [--dir DIR]
   backlog run    [--dir DIR] [--max N] [--interval S] [--once] [--dry-run]
-  backlog mark   ID done|stopped|reset [--dir DIR]
+  backlog mark   ID done|stopped|running|reset [--dir DIR]
 
 /run-backlog writes DIR/plan.json (default DIR: .factory/backlog): which tickets, their
 blockers, branches and serial groups. This script does the mechanics. It keeps
@@ -14,16 +14,22 @@ so a merge unlocks the tickets it blocks.
 
 A ticket is:
   done      the plan says so, its PR merged, or you marked it
-  stopped   its PR closed unmerged, or you marked it; whatever it blocks stays blocked
-  running   launched, and its PR hasn't merged
+  stopped   its PR closed unmerged, its launch failed, or you marked it; whatever it
+            blocks stays blocked
+  running   launched (or marked running), and its PR hasn't merged
   blocked   a blocker isn't done, or the plan lists an external blocker
-  held      ready, but its serial group is busy or --max sessions are running
+  held      its serial group is busy, --max sessions are running, or its branch exists
+            without a session this script launched
   ready     launches on the next tick
 
+The ledger is the only record of which sessions exist, so the script never guesses. A
+branch it didn't launch stays held until you say `mark ID running` (a session you started
+owns it) or `mark ID reset` (launch a fresh session on it). `reset` also relaunches a
+stopped ticket.
+
 Launching runs `lfg <branch> "/implement <ref>"` in an interactive zsh, so `run` must run
-inside zellij. Set BACKLOG_LAUNCH to an executable taking <branch> <prompt> to launch some
-other way. Rerunning is safe: a running ticket is never launched twice, and a ticket whose
-branch already exists is adopted as running instead of launched again.
+inside zellij. Its output goes to this terminal, so a worktrunk prompt can be answered.
+Set BACKLOG_LAUNCH to an executable taking <branch> <prompt> to launch some other way.
 """
 
 import argparse
@@ -68,11 +74,14 @@ def save(path, data):
 
 def problems(plan):
     """Everything wrong with the plan, as readable lines. Empty means it's runnable."""
-    tickets = plan.get("tickets")
+    tickets = plan.get("tickets") if isinstance(plan, dict) else None
     if not isinstance(tickets, list) or not tickets:
         return ["plan.json needs a non-empty `tickets` list"]
     errs, ids, branches = [], set(), set()
     for i, t in enumerate(tickets):
+        if not isinstance(t, dict):
+            errs.append(f"ticket {i + 1}: must be an object")
+            continue
         where = f"ticket {i + 1} ({t.get('id', '?')})"
         for key in ("id", "ref", "branch", "title"):
             if not isinstance(t.get(key), str) or not t.get(key):
@@ -80,30 +89,35 @@ def problems(plan):
         if t.get("id") in ids:
             errs.append(f"{where}: duplicate id")
         ids.add(t.get("id"))
-        branch = t.get("branch") or ""
+        branch = t.get("branch") if isinstance(t.get("branch"), str) else ""
         if branch and (not BRANCH_OK.match(branch) or ".." in branch or branch.endswith((".lock", "/"))):
             errs.append(f"{where}: `{branch}` is not a valid branch name")
         if branch in branches:
             errs.append(f"{where}: branch `{branch}` is used twice")
         branches.add(branch)
-        ref = t.get("ref") or ""
+        ref = t.get("ref") if isinstance(t.get("ref"), str) else ""
         if ref and not REF_OK.match(ref):
             errs.append(f"{where}: ref `{ref}` holds characters lfg can't carry (quotes, $, backticks, spaces)")
         if t.get("autonomy") not in AUTONOMY:
             errs.append(f"{where}: `autonomy` must be one of {sorted(AUTONOMY)}")
+        if "serial" in t and not (isinstance(t["serial"], str) and t["serial"]):
+            errs.append(f"{where}: `serial` must be a non-empty string when present")
         for key in ("blocked_by", "external_blockers"):
-            if not isinstance(t.get(key, []), list):
-                errs.append(f"{where}: `{key}` must be a list")
+            value = t.get(key, [])
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                errs.append(f"{where}: `{key}` must be a list of strings")
+    if errs:
+        return errs
     for t in tickets:
-        for b in t.get("blocked_by", []) if isinstance(t.get("blocked_by", []), list) else []:
+        for b in t.get("blocked_by", []):
             if b not in ids:
-                errs.append(f"{t.get('id')}: blocker `{b}` is not in the plan. Move it to external_blockers or add it.")
+                errs.append(f"{t['id']}: blocker `{b}` is not in the plan. Move it to external_blockers or add it.")
     errs += [f"blocking cycle: {' -> '.join(c)}" for c in cycles(tickets)]
     return errs
 
 
 def cycles(tickets):
-    edges = {t.get("id"): [b for b in t.get("blocked_by", []) or []] for t in tickets}
+    edges = {t["id"]: t.get("blocked_by", []) for t in tickets}
     found, state = [], {}
 
     def visit(node, path):
@@ -121,13 +135,9 @@ def cycles(tickets):
     return found
 
 
-def git(*args):
-    return subprocess.run(["git", *args], capture_output=True, text=True)
-
-
 def branch_exists(branch):
     return any(
-        git("show-ref", "--verify", "--quiet", ref).returncode == 0
+        subprocess.run(["git", "show-ref", "--verify", "--quiet", ref]).returncode == 0
         for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}")
     )
 
@@ -166,18 +176,20 @@ def launch(branch, prompt):
         if not os.environ.get("ZELLIJ"):
             raise Fail("not inside zellij, and lfg opens a zellij tab. Run this from a zellij pane, or set BACKLOG_LAUNCH.")
         cmd = ["zsh", "-ic", 'lfg "$1" "$2"', "lfg", branch, prompt]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if out.returncode != 0:
-        raise Fail(f"launching {branch} failed: {(out.stderr or out.stdout).strip()[-400:]}")
+    # No capture and no timeout: a worktrunk prompt shows up here and waits for an answer.
+    code = subprocess.run(cmd).returncode
+    if code != 0:
+        raise Fail(f"exited {code}")
 
 
 def refresh(plan, ledger):
     """Fold GitHub's view of each running ticket's PR into the ledger."""
     for t in plan["tickets"]:
         entry = ledger.get(t["id"])
-        if not entry or entry["state"] != "running":
+        if not isinstance(entry, dict) or entry.get("state") != "running":
             continue
-        pr = find_pr(t["branch"])
+        # The ledger's branch, not the plan's: a re-plan may rename a running ticket's branch.
+        pr = find_pr(entry.get("branch") or t["branch"])
         if not pr:
             continue
         entry["pr"], entry["url"] = pr.get("number"), pr.get("url")
@@ -188,25 +200,31 @@ def refresh(plan, ledger):
         entry["updated"] = now()
 
 
-def states(plan, ledger, max_running):
+def states(plan, ledger, max_running, orphan_branches):
     """Each ticket's state for this tick, with the reason when it can't start."""
-    done = {t["id"] for t in plan["tickets"] if t.get("done") or ledger.get(t["id"], {}).get("state") == "done"}
-    running = [t for t in plan["tickets"] if ledger.get(t["id"], {}).get("state") == "running" and t["id"] not in done]
+    def entry(t):
+        e = ledger.get(t["id"])
+        return e if isinstance(e, dict) else {}
+
+    done = {t["id"] for t in plan["tickets"] if t.get("done") or entry(t).get("state") == "done"}
+    running = [t for t in plan["tickets"] if entry(t).get("state") == "running" and t["id"] not in done]
     busy = {t.get("serial") for t in running if t.get("serial")}
     slots = max_running - len(running)
     result = {}
     for t in plan["tickets"]:
-        tid, entry = t["id"], ledger.get(t["id"], {})
+        tid, e = t["id"], entry(t)
         if tid in done:
             result[tid] = ("done", "")
-        elif entry.get("state") == "stopped":
-            result[tid] = ("stopped", entry.get("reason", ""))
-        elif entry.get("state") == "running":
+        elif e.get("state") == "stopped":
+            result[tid] = ("stopped", e.get("reason", ""))
+        elif e.get("state") == "running":
             result[tid] = ("running", "")
         elif t.get("external_blockers"):
             result[tid] = ("blocked", "external: " + ", ".join(t["external_blockers"]))
         elif any(b not in done for b in t.get("blocked_by", [])):
             result[tid] = ("blocked", "waits on " + ", ".join(b for b in t["blocked_by"] if b not in done))
+        elif tid in orphan_branches and e.get("state") != "queued":
+            result[tid] = ("held", f"branch exists with no session I launched: `backlog mark {tid} running` or `reset`")
         elif t.get("serial") in busy:
             result[tid] = ("held", f"serial group {t['serial']} is busy")
         elif slots <= 0:
@@ -223,61 +241,70 @@ def now():
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def tick(paths, args, start_work):
+def load_plan(paths):
     plan = load(paths["plan"], None)
     if plan is None:
         raise Fail(f"no plan at {paths['plan']}. Run /run-backlog first.")
     errs = problems(plan)
     if errs:
         raise Fail("plan.json has problems:\n  " + "\n  ".join(errs))
+    return plan
+
+
+def orphans_of(plan, ledger):
+    """Tickets whose branch exists but that have no ledger entry: a session may own them."""
+    return {t["id"] for t in plan["tickets"] if t["id"] not in ledger and branch_exists(t["branch"])}
+
+
+def tick(paths, args, start_work):
+    plan = load_plan(paths)
     ledger = load(paths["ledger"], {})
     refresh(plan, ledger)
-    current = states(plan, ledger, args.max)
-    launched = []
+    save(paths["ledger"], ledger)
+    orphans = orphans_of(plan, ledger)
+    current = states(plan, ledger, args.max, orphans)
+    events = []
     if start_work:
         for t in plan["tickets"]:
             if current[t["id"]][0] != "ready":
                 continue
-            entry = {"state": "running", "branch": t["branch"], "launched": now(), "updated": now()}
-            if branch_exists(t["branch"]):
-                entry["adopted"] = True
-            elif not args.dry_run:
+            if args.dry_run:
+                events.append(f"would launch: {t['id']}")
+                continue
+            try:
                 launch(t["branch"], f"/implement {t['ref']}")
-            if not args.dry_run:
-                ledger[t["id"]] = entry
-            launched.append((t["id"], "adopt existing branch" if entry.get("adopted") else "launch"))
+                ledger[t["id"]] = {"state": "running", "branch": t["branch"], "launched": now(), "updated": now()}
+                events.append(f"launched: {t['id']}")
+            except Fail as e:
+                ledger[t["id"]] = {"state": "stopped", "branch": t["branch"], "reason": f"launch failed: {e}", "updated": now()}
+                events.append(f"launch failed: {t['id']} ({e}). Fix it, then `backlog mark {t['id']} reset`.")
+            save(paths["ledger"], ledger)
         if not args.dry_run:
-            current = states(plan, ledger, args.max)
-    save(paths["ledger"], ledger)
-    report(plan, ledger, current, launched, args.dry_run)
-    return plan, ledger, current
+            current = states(plan, ledger, args.max, orphans - set(ledger))
+    report(plan, ledger, current, events)
+    return current
 
 
-def report(plan, ledger, current, launched, dry_run):
+def report(plan, ledger, current, events):
     print(f"\n{now()}  backlog")
     for t in plan["tickets"]:
         state, why = current[t["id"]]
-        entry = ledger.get(t["id"], {})
+        entry = ledger.get(t["id"]) if isinstance(ledger.get(t["id"]), dict) else {}
         pr = entry.get("pr")
         detail = why
         if state == "running":
             detail = f"PR #{pr} {verdict(pr)}" if pr else f"no PR yet, launched {entry.get('launched', '?')}"
         elif state == "done" and pr:
             detail = f"PR #{pr} merged"
-        print(f"  {state:8} {t['id']:12} {t['branch']:32} {detail}")
-    past = {"launch": "launched", "adopt existing branch": "adopted existing branch"}
-    for tid, what in launched:
-        print(f"  {'would ' + what if dry_run else past[what]}: {tid}")
+        print(f"  {state:8} {t['id']:12} {entry.get('branch') or t['branch']:32} {detail}")
+    for line in events:
+        print(f"  {line}")
 
 
 def cmd_check(paths, args):
-    plan = load(paths["plan"], None)
-    if plan is None:
-        raise Fail(f"no plan at {paths['plan']}")
-    errs = problems(plan)
-    if errs:
-        raise Fail("plan.json has problems:\n  " + "\n  ".join(errs))
-    current = states(plan, load(paths["ledger"], {}), args.max)
+    plan = load_plan(paths)
+    ledger = load(paths["ledger"], {})
+    current = states(plan, ledger, args.max, orphans_of(plan, ledger))
     ready = [tid for tid, (s, _) in current.items() if s == "ready"]
     print(f"plan ok: {len(plan['tickets'])} tickets, ready now: {', '.join(ready) or 'none'}")
 
@@ -285,7 +312,7 @@ def cmd_check(paths, args):
 def cmd_run(paths, args):
     while True:
         try:
-            plan, ledger, current = tick(paths, args, start_work=True)
+            current = tick(paths, args, start_work=True)
         except Transient as e:
             if args.once or args.dry_run:
                 raise
@@ -299,19 +326,34 @@ def cmd_run(paths, args):
             print("\nAll tickets merged.")
             return
         if "running" not in values and "ready" not in values:
-            print("\nNothing running and nothing can start. Stopped tickets and tickets with external blockers need you.")
+            print("\nNothing running and nothing can start. The stopped, held and externally blocked tickets above need you.")
             sys.exit(3)
         time.sleep(args.interval)
 
 
 def cmd_mark(paths, args):
+    plan = load_plan(paths)
+    ticket = next((t for t in plan["tickets"] if t["id"] == args.id), None)
+    if ticket is None:
+        raise Fail(f"no ticket `{args.id}` in the plan. Ids: {', '.join(t['id'] for t in plan['tickets'])}")
     ledger = load(paths["ledger"], {})
+    entry = {"branch": ticket["branch"], "updated": now()}
     if args.state == "reset":
-        ledger.pop(args.id, None)
+        entry["state"] = "queued"
+    elif args.state == "running":
+        entry.update(state="running", launched=now(), reason="marked by hand")
     else:
-        ledger.setdefault(args.id, {}).update(state=args.state, reason="marked by hand", updated=now())
+        entry.update(state=args.state, reason="marked by hand")
+    ledger[args.id] = entry
     save(paths["ledger"], ledger)
-    print(f"{args.id}: {args.state}")
+    print(f"{args.id}: {'queued for a fresh launch' if args.state == 'reset' else args.state}")
+
+
+def positive(value):
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return n
 
 
 def main():
@@ -320,12 +362,12 @@ def main():
     for name in ("check", "status", "run", "mark"):
         s = sub.add_parser(name)
         s.add_argument("--dir", default=".factory/backlog")
-        s.add_argument("--max", type=int, default=3, help="sessions running at once")
+        s.add_argument("--max", type=positive, default=3, help="sessions running at once")
     sub.choices["run"].add_argument("--interval", type=float, default=300)
     sub.choices["run"].add_argument("--once", action="store_true", help="one tick, then exit")
     sub.choices["run"].add_argument("--dry-run", action="store_true", help="show what would launch")
     sub.choices["mark"].add_argument("id")
-    sub.choices["mark"].add_argument("state", choices=["done", "stopped", "reset"])
+    sub.choices["mark"].add_argument("state", choices=["done", "stopped", "running", "reset"])
     args = p.parse_args()
     args.dry_run = getattr(args, "dry_run", False)
 
@@ -345,7 +387,7 @@ def main():
         print(f"backlog: {e}", file=sys.stderr)
         sys.exit(2)
     except KeyboardInterrupt:
-        print("\nbacklog: stopped. Rerun to resume; the ledger is saved every tick.")
+        print("\nbacklog: stopped. Rerun to resume; the ledger is saved after every launch.")
 
 
 if __name__ == "__main__":

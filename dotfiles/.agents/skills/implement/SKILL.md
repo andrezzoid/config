@@ -23,8 +23,9 @@ Before any code:
 1. Quote each acceptance line you are working against. If one is not testable as
    written, meaning you cannot say what observation would falsify it, stop and
    say so. Vague acceptance is a shaping problem, not something to work around.
-2. Check the blockers, when the work is a ticket that declares any. If one is
-   not done, stop and say which. Nothing here is worth building on an unfinished
+2. Check the blockers, when the work is a ticket that declares any. A blocker
+   is done when the tracker shows it closed or its PR has merged. If one is not
+   done, stop and say which. Nothing here is worth building on an unfinished
    blocker.
 3. Create `.factory/<id-or-slug>.md`, untracked, as working notes. Keep it
    current: what you tried, deviations, decisions, open threads. It is yours, it
@@ -98,7 +99,9 @@ asking:
 - `commit`: commit locally as you go, with the end of the work as the
   checkpoint. Never push.
 - `pr`: push the branch, open the PR, and drive it to merge-ready with
-  `/check-pr`. Never merge.
+  `/check-pr`. Never merge. Link the PR so merging it closes the ticket:
+  `Closes #<n>` in the body on GitHub, the ticket id in the PR title on
+  Linear.
 - `merge`: merge once `pr-state` reads `READY` and a `verifier` passed on that
   same head commit. Only for two-way doors: a change a revert fully undoes, in
   a project whose verify skill covers it.

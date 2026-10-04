@@ -91,17 +91,25 @@ lfg() {
     local branch="$1"
     local prompt="$2"
 
-    # Create worktree (--no-cd keeps current tab in place)
-    wt switch -c "$branch" --no-cd
+    # Create the worktree, or reuse it when the branch already exists, so a relaunch
+    # resumes on the same branch (--no-cd keeps current tab in place)
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+        wt switch "$branch" --no-cd || return 1
+    else
+        wt switch -c "$branch" --no-cd || return 1
+    fi
     # Resolve worktree path in a subshell
     local wt_path
-    wt_path="$(wt switch "$branch" -y >&2 && pwd)"
+    wt_path="$(wt switch "$branch" -y >&2 && pwd)" || return 1
 
     local tmpfile=$(mktemp /tmp/lfg-XXXXXX.kdl)
     WT_PROMPT="$prompt" envsubst '$WT_PROMPT' \
         < "${XDG_CONFIG_HOME:-$HOME/.config}/zellij/layouts/worktrunk_ide.kdl" > "$tmpfile"
+    # Exit with zellij's status, not rm's, so callers like backlog see a failed launch
     zellij action new-tab --layout "$tmpfile" --cwd "$wt_path" --name "$branch"
+    local rc=$?
     rm -f "$tmpfile"
+    return $rc
 }
 
 # Recover magicnas shares when SMB wedges the automounts (ops fail with

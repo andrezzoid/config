@@ -326,7 +326,7 @@ def cmd_run(paths, args):
             print("\nAll tickets merged.")
             return
         if "running" not in values and "ready" not in values:
-            print("\nNothing running and nothing can start. The stopped, held and externally blocked tickets above need you.")
+            print("\nNothing running and nothing can start. The stopped, held and blocked tickets above need you.")
             sys.exit(3)
         time.sleep(args.interval)
 

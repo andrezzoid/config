@@ -57,6 +57,13 @@ cd ~/Projects/config
 - Import Karabiner config
 - Set default apps
 
+## Agent harness
+
+`agents/` holds everything an agent loads: global instructions, skills, subagents
+and the `factory` CLI. `./agents/install.sh` links it into `~/.claude` (setup.sh
+runs it), and the same installer runs in Claude Code cloud sessions. See
+[agents/README.md](agents/README.md).
+
 ## Linking dotfiles
 
 After making changes to dotfiles, re-run stow to update symlinks:

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Thin shim so `factory` works from PATH, in hooks and in cloud sessions alike.
+set -euo pipefail
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+if ! command -v bun >/dev/null 2>&1; then
+  [ -x "$HOME/.bun/bin/bun" ] && PATH="$HOME/.bun/bin:$PATH" || { echo "factory needs bun: https://bun.sh" >&2; exit 127; }
+fi
+exec bun "$here/../src/cli.ts" "$@"

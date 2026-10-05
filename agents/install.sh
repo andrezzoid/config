@@ -33,8 +33,8 @@ AGENTS_HOME="$HOME/.agents"
 STABLE="$HOME/.local/share/agent-harness"
 MANIFEST="$AGENTS_DIR/skills.txt"
 SKILLS_CLI="skills@1.7.0"
-# Skills that only make sense on the Mac.
-LOCAL_ONLY="rem-cli todoist-cli"
+# Skills that only make sense on the Mac; `factory doctor` reads the same file.
+LOCAL_ONLY="$(grep -v '^#' "$AGENTS_DIR/local-only.txt" | tr '\n' ' ')"
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warn: %s\n' "$*" >&2; }

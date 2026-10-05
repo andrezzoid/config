@@ -259,3 +259,16 @@ test("unknown commands print help and exit 64", async () => {
   expect(r.code).toBe(64);
   expect(r.out).toContain("factory doctor");
 });
+
+describe("expectedSkills", () => {
+  test("cloud leaves out the Mac-only skills, local keeps them", async () => {
+    const { expectedSkills } = await import("../src/cli");
+    const agents = join(import.meta.dir, "..", "..");
+    expect(expectedSkills(agents, "cloud")).not.toContain("rem-cli");
+    expect(expectedSkills(agents, "local")).toContain("rem-cli");
+    expect(expectedSkills(agents, "cloud")).toContain("implement");
+    expect(expectedSkills(agents, "cloud")).toContain("grilling");
+    expect(expectedSkills(agents, "cloud")).toContain("correct");
+    expect(expectedSkills(agents, "cloud")).toHaveLength(33);
+  });
+});

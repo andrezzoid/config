@@ -299,14 +299,16 @@ async function brief(a: Args) {
 
 type Check = { name: string; level: "ok" | "warn" | "fail"; detail: string };
 
-export function expectedSkills(agentsDir = AGENTS_DIR): string[] {
+export function expectedSkills(agentsDir = AGENTS_DIR, mode = runtime()): string[] {
+  const lines = (file: string) => readFileSync(join(agentsDir, file), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  const localOnly = mode === "cloud" ? lines("local-only.txt") : [];
   const own = readdirSync(join(agentsDir, "skills"), { withFileTypes: true })
-    .filter((d) => d.isDirectory())
+    .filter((d) => d.isDirectory() && !localOnly.includes(d.name))
     .map((d) => d.name);
-  const manifest = readFileSync(join(agentsDir, "skills.txt"), "utf8")
-    .split("\n")
-    .map((l) => l.replace(/#.*$/, "").trim())
-    .filter(Boolean)
+  // Source lines look like owner/repo#<sha> skill...; the '#' is the pin,
+  // not a comment, and comment lines start with '#'.
+  const manifest = lines("skills.txt")
+    .filter((l) => /^[^\s#]+#[0-9a-f]{40}\s/.test(l))
     .flatMap((l) => l.split(/\s+/).slice(1));
   return [...own, ...manifest];
 }

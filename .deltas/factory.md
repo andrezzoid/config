@@ -1,0 +1,422 @@
+# Factory — working notes
+
+Successor to ddd2. Shaped in conversation with André, Sep 2026. These are working
+notes, not a spec: agreed state up top, open questions at the bottom.
+
+## Why
+
+ddd2 assessed over 33 real sessions (Aug 4 – Sep 18, six repos, 431 human messages).
+What worked: the go/ship gate vocabulary (19 cold starts off a delta file), the delta
+file as a cross-session baton, the deviation report contract (17/33 sessions), the
+conductor/subagent context split (198 spawns).
+
+What failed:
+
+- Syncs written as a diff against a delta file André never read. 32 of 431 messages
+  are "expand, I haven't read it".
+- Delta ids (T5, F1-A, M-1, D-3) leaking into go-asks, PR descriptions, Linear
+  tickets and harvested docs.
+- No heartbeat during long-running work. 12 status polls.
+- Gates crossed under momentum. Five explicit violations, including one agent that
+  changed eval scenarios until they passed.
+- Half the toolkit table never fired: design-it-twice 0/33, quiz-me 0/33,
+  visualize 3/33, prototype 1/33.
+- Wrapping had no PR story and no stopping rule. 46 of 431 messages were bare
+  check-pr ticks; "diminishing returns" appears 13 times, always from André.
+- One delta, one repo is a fiction. Real work spanned four repos.
+
+## Shape
+
+Four stages with a re-entry rail. Work can enter at any stage and be thrown back to
+an earlier one.
+
+                                      ANDRÉ
+                            approves the body and the tickets
+                            sets the autonomy level per ticket
+                            decides every hand-back
+                            says merge / deploy when the level demands it
+                                        │
+        ┌───────────────────────────────┼──────────────────────────────┐
+        │                               ▼                              │
+        │                        ┌─────────────┐                       │
+        │   ┌───────────────────▶│    SHAPE    │  human-driven         │
+        │   │                    └──────┬──────┘                       │
+        │   │                           │                              │
+        │   │   research ─▶ charting ─▶ prototype ─▶ grill ─▶ to-spec       │
+        │   │        ▲                                            │         │
+        │   │        │                                     poke-holes       │
+        │   │        │                                     (theory)         │
+        │   │        │                                            │         │
+        │   │        │                                      to-tickets      │
+        │   │        └───────────── loop, no true start ────────────────────┘
+        │   │                                                           │
+        │   │   grill-with-docs · domain-modeling ────▶ CONTEXT.md      │
+        │   │                                                           │
+        │   │              tickets approved, autonomy level set         │
+        │   │                           ▼                               │
+        │   │                    ┌─────────────┐                        │
+        │   │                    │   ITERATE   │  per ticket,           │
+        │   │                    └──────┬──────┘  mostly autonomous     │
+        │   │                           │                               │
+        │   │        ┌──▶ implement ─▶ verify ─▶ triage the deviation   │
+        │   │        │         ▲          │             │               │
+        │   │        │   prototype asks   └ lint · types · tests        │
+        │   │        │   the territory      poke-holes (artifact)       │
+        │   │        │                                  │               │
+        │   │        │   acceptance still holds ────────┤               │
+        │   │        └──── comment, keep going ─────────┘               │
+        │   │                                           │               │
+        │   └──────── acceptance broken: stop ──────────┘               │
+        │             hand back, re-enter Shape                         │
+        │                           │                                   │
+        │                           ▼  all tickets pass                 │
+        │                    ┌─────────────┐                            │
+        │                    │   BABYSIT   │  human-on-the-loop         │
+        │                    └──────┬──────┘  stopping rule lives here  │
+        │                           │                                   │
+        │      PR ─▶ code-review ⟲ ─▶ merge ─▶ deploy ─▶ monitor        │
+        │                                                    │          │
+        │                    ┌─────────────┐                 │          │
+        └── new tickets ─────│   UPKEEP    │◀────────────────┘          │
+                             └─────────────┘                            │
+                  cron and triggers, ceiling declared per workflow      │
+                  improve architecture · performance · security         │
+                  diagnose bugs · triage                                │
+                                                                        │
+        re-entry rail: any stage can send work back to any earlier one ─┘
+
+A stage is a logical group, not a command. Each step may be a skill or a smaller
+loop. Some steps are reusable across stages.
+
+- Shape charts the fog of war. Human-driven throughout. to-spec and to-tickets live
+  here, so the definition always changes in Shape, on André's command, whether it is
+  the first pass or the fifth. poke-holes runs at the theory target between the two,
+  so the spec is attacked before it is cut into tickets.
+- Iterate iterates over a ticket: implementation, and the discovery that its
+  definition is wrong. Mostly autonomous. Verify runs per ticket. Whole-PR
+  code-review belongs to Babysit.
+- Babysit owns the PR through to production. check-pr is its seed and already has a
+  stopping rule.
+- Upkeep is trigger- and cron-driven workflows, not a phase. It can file tickets,
+  bring a ticket back, or revert a change, which is why it connects to all three.
+
+Vocabulary: grilling is a reusable interview step, not poke-holes. Verify is closer
+to ddd2's adversarial review (does a fresh agent have the context, does the work
+match the spec, do lint/types/tests pass). Charting is Wayfinder-shaped. Research
+precedes charting, though the Shape loop has no true start.
+
+## Artifacts
+
+One artifact, two audiences. The split is by mutability, not by reader.
+
+- **Ticket body** is agreed state. Changes only on André's command. Reads as one
+  consistent piece of prose, as if written in one go. No deviations, no "André
+  decided this on the 14th". Regenerated whole rather than patched, because that is
+  the only way to keep the one-pass quality across many updates.
+- **Comments** are the append-only event log: decisions, deviations, followups.
+  Bookkeeping for posterity, colleagues and future agents. André may never read
+  them. That is fine.
+- **Working notes** are worktree-local, untracked, disposable, one per ticket. They
+  hold the sequence, the deviations and the load-bearing decisions until the next
+  writeback. Linear carries work across worktrees, not git.
+- **The brief** has two modes. The hand-back brief covers one ticket and needs a
+  decision. The standing brief covers the portfolio and needs nothing, so André
+  never has to hold where ten tickets are.
+- Decisions that outlive the work go to ADRs. Language goes to CONTEXT.md.
+  Behaviour goes to tests.
+
+Alignment is capped on the conversation that produces the spec, not on André
+reading the ticket. The ticket is a product of alignment, not a carrier of it.
+
+The body never gets folded or reconciled. It does not go stale, because any
+deviation that changes what will be true is major by definition and regenerates the
+body through Shape. Minors are recorded only because they may matter to some other
+ticket, not because they describe this one. This guarantee is bought entirely with
+acceptance quality: vague acceptance lets outcome-changing detail pass as minor and
+the body does drift. That makes to-spec the load-bearing skill in the whole system.
+
+### Writing a deviation comment
+
+Human-first, agent-second. Naming the acceptance line makes the triage auditable:
+the agent has to quote what it checked against, so the check gets performed rather
+than asserted. Same shape serves both paths, and one word decides where it goes.
+
+Four fields: what was done instead, what in the code forced it, the acceptance
+line it was checked against, and where it bites outside this ticket. A subject
+line makes a comment list skimmable without opening anything, like commit
+subjects. If acceptance breaks, the same fields become a hand-back brief instead
+of a comment. If nothing is affected elsewhere, nothing is posted: it was just
+work.
+
+No ids André never typed, no restating the ticket, no recap of the conversation.
+The exact format lives in the `implement` skill.
+
+### Followups
+
+A followup is just a ticket. ddd2 needed a Followups section because the delta file
+was the only artifact; Factory has triage.
+
+Raised at the moment of discovery, filed after the brief and André's approval,
+never batched at close. Discovery is the only moment the agent holds the context,
+and batching is what produced "let's drop all until we have more data". Triage is
+right because it requires an explicit human action to accept or reject, which
+matches the authority model.
+
+Written to a bar at filing time: a senior engineer with no context has to
+understand it. Standalone title, what it is, where in the code, why it matters,
+which ticket found it. No ticket ids. Follow the project's issue template. If
+the agent cannot write that at the moment of discovery it does not file: it
+mentions the thing in the brief and lets it die. A cryptic followup is worse than
+none.
+
+The implementer raises it in the brief and files it once André agrees. The current
+ticket's comment log gets one line pointing at the new ticket.
+
+One consequence: closing a ticket no longer requires triaging a backlog.
+
+Out of scope goes to triage. In scope but bigger than the ticket is not a followup
+at all, that is acceptance breaking, which is a hand-back.
+
+## Authority
+
+- The agent writes the ticket body only on André's command.
+- Deviations and mid-flight decisions go to comments and to André, never silently
+  into the body.
+- Autonomy level is set per ticket at approval time, with a CONTEXT.md fallback list
+  of always-call-me paths. Upkeep declares ceilings per workflow instead, by blast
+  radius: may file tickets, may open PRs, may never merge or revert unattended.
+- Never the thinking. Shape and grill-to-ticket stay supervised. Merge and deploy
+  depend on the change. The rest is human-on-the-loop.
+
+### The backward edge
+
+Implementation and verify produce three things and only one is an edge:
+
+1. Ticket right, code wrong. Just work. Touches nothing upstream.
+2. A decision the spec did not cover. A deviation: comment log plus the next brief.
+   Touches nothing upstream.
+3. What we agreed to build will not work. The only true backward edge, and it exits
+   to André. He decides, and the edge re-enters at Shape.
+
+Prototype in Iterate exists to answer (3) before raising it, so what reaches André
+carries evidence rather than a question. Shape prototypes ask André to choose;
+Iterate prototypes ask the territory.
+
+Every deviation gets triaged into (1), (2) or (3). Mechanism still open. Proposed
+test: does the ticket's acceptance still describe what will be true when this lands?
+If yes it is minor, comment and continue. If no it is major, stop and hand back.
+That is checkable against written text rather than a judgement of size, which
+matters because the agent grading its own work is how ddd2 produced "did you just
+change the scenarios so they pass?".
+
+### Child reconciliation
+
+When the body regenerates and to-tickets runs again:
+
+to-tickets never edits children directly. It proposes a reconciliation plan that
+André approves, because children are agreed state exactly like the body is. Then:
+
+- **Not started**: diff in place, riding on the body approval that triggered it.
+- **In flight**: ask André what to do. It may be the very task that sent the work
+  back to Shape, in which case killing it or letting it run are both wrong by
+  default.
+- **Done but unmerged**: a superseding child that amends or reverts. The done one
+  stays done, with a link.
+- **Done and merged**: a new child, always.
+- **Dropped**: won't-do with a reason, and re-point whatever depended on it in the
+  same plan. Never delete.
+- **Split**: mark the original "split into X and Y", create both, never reuse the
+  original id for either half.
+
+Two invariants: ids are append-only and never renumbered, and every state change
+writes one line to the comment log with a reason.
+
+### What drives ticket structure
+
+Hierarchy is not the default. Two relationships are available and the test is
+whether each piece delivers value on its own. Peers with blocking edges is the
+common case. A parent with children is for pieces that together produce one
+outcome where no piece is worth having alone, which happens most often when the
+work crosses repositories that deploy separately and ship together, or when one
+vertical is too large for a single context window.
+
+When shaping or grilling uncovers work that was not in the ticket, the test is the
+responsibility boundary, not the acceptance list. Twenty criteria can easily span
+three responsibilities that each wanted their own ticket. If the new work belongs
+to a different responsibility it is a separate ticket, and if it also has to land
+first it is a blocker rather than a child.
+
+Beyond that, these shape the breakdown:
+
+- **Repo layout.** A monorepo can carry backend and frontend in one vertical.
+  Separate repos need a ticket each, under a parent when they ship together.
+- **Deploy boundaries, not repo boundaries.** What counts is how many independent
+  deploys stand between the work and a demoable outcome.
+- **Feature flags.** Work behind a flag can land as one larger vertical safely,
+  because nothing is visible until it flips. Work without one must slice down to
+  demoable increments. The flag is an input to the breakdown, not a discovery.
+- **Reviewer boundaries.** Work crossing codebases with different reviewers becomes
+  separate PRs regardless, so it should have been separate tickets.
+- **Parallelism implies file ownership.** Tickets meant to run at once need
+  boundaries that follow the files they touch, or the sessions collide.
+- **Verification cost.** A ticket whose acceptance takes forty minutes of evals
+  should not be bundled with three cheap ones.
+- **Irreversibility.** Schema and wide-refactor work keeps its expand, migrate,
+  contract sequence, which overrides vertical slicing.
+
+## /factory
+
+A thin dispatcher: recognize an ask, load a sequence, hand off. No state of its own,
+since ticket status already says what comes next. Example routes: new project idea
+loads grill, research, charting; scope an existing ticket loads grill, to-spec,
+to-tickets.
+
+Build it last. The routing table should be a transcript of sequences actually typed,
+not a guess. ddd2's toolkit table was written up front and four of seven rows never
+fired.
+
+Pocock's rule that a user-invoked skill never invokes another is a convention, not a
+platform limit. Factory as a meta skill breaks it by design. Stages must stay groups
+rather than becoming commands, or there are three levels of orchestrator and nobody
+is driving.
+
+## Verify, and what it borrows from poke-holes
+
+poke-holes is one skill with three targets, not two skills. Its theory target
+attacks a plan before agreement, through four lenses run as separate fresh agents:
+territory, simplicity, failure, and a cold lens briefed with the intent only. Its
+artifact target attacks a finished change: run the acceptance checks as evidence,
+attempt refutation rather than confirmation, and audit the diff against the theory
+in both directions. Its harvest target cold-reads the repo alone to see whether the
+change's why survived.
+
+So Factory's verify is a bundle, not a new invention: poke-holes at the artifact
+target, plus the deterministic gate that poke-holes does not own (lint, types,
+tests). The "does a fresh agent have the context" check is the harvest target, and
+it belongs at ticket close, when ADRs and CONTEXT.md are supposed to have absorbed
+what mattered.
+
+poke-holes' rules carry over whole: a finding cites file:line or it is a vibe,
+reviewers never fix, a reviewer you did not spawn produced no findings, and every
+finding gets a disposition of fix-now, followup, or rejected with a reason.
+
+## Briefing
+
+Two modes, different triggers, different content. Merging them buries the decision
+in the status report, which is how ddd2's go-asks put "two calls that are yours" at
+the bottom of four paragraphs André never reached.
+
+**Hand-back brief.** One ticket, needs a decision. Fires on a major deviation, on a
+gate, or on a verify failure the agent cannot resolve. It states what changed, what
+that means for the thing André asked for, the options, a recommendation, and the
+question. No ids he did not type, no diff against anything he has not read.
+
+**Standing brief.** The portfolio, needs nothing. What moved, what is blocked on
+André and for how long, what is running unattended, what landed. Ten tickets across
+four repos in a dozen lines. New triage tickets show up here.
+
+One skill with a general name and general behaviour, carrying reference examples
+for the known cases (hand-back, standing brief, deviation comment) in
+`references/`, the way visual-pr does. Anything new falls through to the general
+behaviour. It borrows `show-me`'s visual vocabulary by reading its reference file
+rather than invoking it, because show-me ships with `disable-model-invocation:
+true` and cannot be relied on to fire.
+
+## Session topology
+
+One session per ticket, as the default. Shaping already happened elsewhere and
+is durable in the ticket, so the ticket is a complete brief and nothing needs to
+hand a session its context. That is what ddd2's conductor existed for, and the
+tracker replaced it.
+
+It matches how André already works across worktrees, deviations flow to the tracker
+rather than back to a parent held in memory, a bad session costs one ticket, and
+it sidesteps the working-tree collisions that concurrent subagents hit in August.
+
+Parent-with-subagents still earns its keep when tickets are genuinely coupled
+and must land together, or when parallelism matters more than supervision. Both
+need worktree isolation per subagent.
+
+The implement skill is identical in both modes. Only one line differs: who runs
+verify. Per-ticket, the session spawns poke-holes itself; in parent mode the
+parent runs the acceptance check when a subagent returns.
+
+Two things break in per-ticket mode. Nothing holds the cross-ticket picture, and
+no skill owns it: with several tickets in flight the tracker is the only place
+that knows where everything is. And a session can discover it depends on an
+unfinished sibling, which has to be a stop-and-brief because that work belongs to
+someone else's session.
+
+## Carried from ddd2
+
+The deviation report contract, the gate vocabulary, the conductor/subagent context
+split.
+
+## Getting started
+
+Install from Pocock, first round, roughly his Main Flow: grilling, grill-me,
+grill-with-docs, domain-modeling, to-spec, to-tickets, prototype, wait-what.
+domain-modeling comes in because grill-with-docs leans on it. prototype comes in
+because André read it and judged it better than his own.
+
+Second round, once the flow has been felt: codebase-design,
+improve-codebase-architecture, wizard.
+
+Keep: test-driven-development. Skip for now: wayfinder, too opinionated about how
+Linear is run.
+
+Watch out: `prototype` collides by name with the existing skill, so decide which
+wins before installing rather than at match time. ddd2 must be retired or its
+description narrowed during the trial, or two meta skills with overlapping triggers
+fire at random. Before pulling ddd2, lift out the two parts that were working:
+poke-holes is already a separate installed skill, and the deviation contract has to
+land in whatever text briefs an implementing subagent.
+
+Run one real medium ticket through it before building any Factory glue.
+
+### Where it stands
+
+Round one is installed, with Pocock's prototype replacing the existing one, plus
+`show-me` from humanlayer.
+
+`to-spec` and `to-tickets` are forked from Pocock and live in the skills tree. The
+originals stay in git history, so the diff against them is the record of what
+diverged. They share `references/acceptance-criteria.md`, a real file under
+`to-spec` and a symlink under `to-tickets`.
+
+`implement` is written and has been run once on real work. It builds from a
+ticket, a spec file or a settled conversation.
+
+poke-holes had its four delta references removed and now points at the ticket and
+the working notes.
+
+Shape has been run by hand end to end: grill-with-docs, to-spec, poke-holes,
+to-tickets, then implement.
+
+Next: `babysit-pr`, a skill-shaped successor to the `check-pr` command, with
+humanlayer's `visual-pr` as the model for the PR description. Its template is a
+one-sentence why, one to three bullets and a compact structural outline instead of
+prose, which is what André asked for by hand at least four times, along with three
+separate instructions to delete invented Cost, Verification, Result and
+Not-in-this-PR sections.
+
+Dangling: both forks tell the user to run `/setup-factory-skills`, which does not
+exist yet.
+
+## Open
+
+1. How acceptance gets written well enough to carry the authority model, since
+   everything rests on it. to-spec is the load-bearing skill and grilling is a hard
+   dependency of it: to-spec without a grilling pass produces the agent's guesses
+   formatted as André's agreement.
+2. Tracker-agnostic and local-only operation. Deferred, not now, but config,
+   ctx-cli, strata and legion have no tracker at all.
+3. Whether filing a standalone followup wants its own small skill. `to-tickets`
+   now files unshaped work in triage as part of deciding the structure.
+4. What Upkeep's workflows actually are, beyond the ceiling rule. Most will be
+   André's own making.
+5. Whether poke-holes' remaining ddd2 vocabulary ("theory", in its description and
+   at the artifact target) becomes Factory vocabulary or stays generic.
+6. Where the POC runs, given four weeks left at Morgen. Running it there tests the
+   tracker layer properly and then walks out the door; running it on a personal
+   repo skips the tracker half entirely.

@@ -62,12 +62,19 @@ says an hour is too slow.
 
 Mechanize the bright lines, never the judgment (from the ddd-hooks note).
 
-- No merge outside `factory pr merge`.
-- A verdict counts only when the identity running the factory wrote it, and only
-  for the head SHA or the same patch.
+- No merge outside `factory pr merge`. The PreToolUse hook enforces that against
+  drift, not against intent: an agent set on it can still script the API. The
+  wall is the forge's branch protection, so a repo whose profile allows `merge`
+  should require its CI checks there.
+- A verdict counts only when the identity running the factory wrote it, as the
+  last line of its comment, for the SHA the reviewers checked or a byte-identical
+  patch. `git patch-id` is not used: it ignores whitespace, and whitespace is
+  code in Python and YAML.
+- Without a known identity, no verdict counts.
 - The repo profile is read from the base branch, so a branch cannot raise its
   own autonomy.
-- Review threads that cannot be read block a merge.
+- Review threads that cannot be read block a merge, and so does a file list
+  GitHub truncated.
 - A ticket that is a parent of open tickets is never dispatched: it is a spec.
 
 ## Known gaps

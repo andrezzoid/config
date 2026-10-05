@@ -15,6 +15,7 @@ import {
   blockers,
   claimBody,
   claimWinner,
+  CLAIM_PREFIX,
   HUMAN_LABEL,
   labelNames,
   nextTickets,
@@ -29,6 +30,10 @@ const STALL_MS = 3 * 3600_000;
 
 type Args = { _: string[]; flags: Record<string, string | true> };
 
+// Switches never take a value, so `pr merge --human-approved 42` keeps 42 as
+// the PR instead of swallowing it.
+const SWITCHES = new Set(["json", "here", "human-approved", "help"]);
+
 export function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: {} };
   for (let i = 0; i < argv.length; i++) {
@@ -36,7 +41,7 @@ export function parseArgs(argv: string[]): Args {
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=", 2);
       if (v !== undefined) out.flags[k] = v;
-      else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) out.flags[k] = argv[++i];
+      else if (!SWITCHES.has(k) && i + 1 < argv.length && !argv[i + 1].startsWith("--")) out.flags[k] = argv[++i];
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -123,16 +128,25 @@ async function prWatch(a: Args) {
   }
 }
 
+// A verdict belongs to the SHA the reviewers checked. If the head moved since,
+// or moves while the diff is read, the verdict is about other code: refuse.
 async function prVerdict(a: Args) {
   const result = str(a.flags.result);
+  const reviewed = str(a.flags.sha);
   if (result !== "pass" && result !== "fail") throw new Exit(64, "--result pass|fail is required");
+  if (!reviewed || !/^[0-9a-f]{7,40}$/.test(reviewed)) throw new Exit(64, "--sha <the commit the reviewers checked> is required");
   const ref = gh.resolvePr(a._[2], str(a.flags.repo));
-  const pull = gh.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`);
+  const headNow = () => gh.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`).head.sha as string;
+  const head = headNow();
+  if (!head.startsWith(reviewed)) throw new Exit(3, `head is ${head.slice(0, 7)}, not the reviewed ${reviewed.slice(0, 7)}: review the new head`);
+  const patch = gh.patchId(ref, ref.number);
+  if (headNow() !== head) throw new Exit(3, "head moved while the diff was read: review the new head");
   const summaryFile = str(a.flags["summary-file"]);
-  const summary = summaryFile ? readFileSync(summaryFile, "utf8").trim() : `Verification ${result}.`;
-  const body = `${summary}\n\n${renderMarker(pull.head.sha, gh.patchId(ref, ref.number), result)}`;
+  // Quoted markers in the summary must not read as verdicts.
+  const summary = (summaryFile ? readFileSync(summaryFile, "utf8").trim() : `Verification ${result}.`).replaceAll("<!--", "&lt;!--");
+  const body = `${summary}\n\n${renderMarker(head, patch, result)}`;
   gh.api(`repos/${ref.owner}/${ref.repo}/issues/${ref.number}/comments`, { method: "POST", body: { body } });
-  console.log(`recorded ${result} for #${ref.number} at ${pull.head.sha.slice(0, 7)}`);
+  console.log(`recorded ${result} for #${ref.number} at ${head.slice(0, 7)}`);
   return 0;
 }
 
@@ -225,7 +239,7 @@ async function ticketClaim(a: Args) {
   await L.updateIssue(issue.id, { assigneeId: me.id, ...(started ? { stateId: started } : {}) });
   const where = str(a.flags.session) ?? sessionUrl();
   const mine = await L.comment(issue.id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`));
-  const winner = claimWinner((await L.getIssue(id)).comments.nodes);
+  const winner = claimWinner((await L.getIssue(id)).comments.nodes, mine);
   if (winner && winner !== mine) {
     await L.deleteComment(mine);
     throw new Exit(3, `${issue.identifier} was claimed by another session first`);
@@ -241,6 +255,8 @@ async function ticketHandback(a: Args) {
   if (!id || !file) throw new Exit(64, "usage: factory ticket handback <ID> --brief-file <path>");
   const issue = await L.getIssue(id);
   await L.comment(issue.id, readFileSync(file, "utf8").trim());
+  // The claim belonged to this attempt; the next attempt claims afresh.
+  for (const c of issue.comments.nodes.filter((c) => c.body.includes(`<!-- ${CLAIM_PREFIX} -->`))) await L.deleteComment(c.id);
   const labelled = await L.swapLabels(issue, READY_LABEL, HUMAN_LABEL);
   const todo = await L.firstState(issue.team.id, "unstarted");
   if (todo) await L.updateIssue(issue.id, { stateId: todo });
@@ -366,8 +382,9 @@ const HELP = `factory — deterministic helpers for the ticket → PR → merge 
   factory pr status [PR] [--repo o/r] [--json]
                                               merge-readiness verdict; exit code encodes it
   factory pr watch [PR] [--interval 60]       one line per change until merged or closed
-  factory pr verdict [PR] --result pass|fail [--summary-file F]
-                                              record an independent verdict for the head SHA
+  factory pr verdict [PR] --sha SHA --result pass|fail [--summary-file F]
+                                              record an independent verdict for the SHA the reviewers
+                                              checked; exit 3 if the head has moved
   factory pr merge [PR] [--ticket ID] [--human-approved]
                                               merge only if the gate allows it; exit 3 with reasons if not
   factory brief [--json]                      portfolio: needs you, running, queued, landed

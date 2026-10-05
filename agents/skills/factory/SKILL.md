@@ -32,8 +32,9 @@ the first line must say whether anything needs the human.
 ## dispatch
 
 Start one session per ready ticket. The session claims the ticket as its own
-first write, so dispatch stays stateless and a crashed session's ticket simply
-comes back next tick.
+first write, so dispatch stays stateless: a session that dies before claiming
+leaves its ticket in the queue for the next tick, and one that dies after
+claiming shows up in the brief as stalled.
 
 1. `factory tickets next --json`, plus `--repo` when given, or `--here` when
    dispatching locally. Nothing ready: say so in one line and stop.

@@ -25,6 +25,18 @@ describe("guard-merge", () => {
     "gh api --method PUT repos/o/r/pulls/12/ccr/auto_merge",
     "git push --force origin feature",
     "git push -f",
+    // Bypasses found by the independent review:
+    "/usr/local/bin/gh pr merge 5 --squash",
+    '"gh" pr merge 5',
+    "gh -R o/r pr merge 5",
+    "gh --repo o/r pr merge 5",
+    "gh --repo=o/r pr merge 5",
+    'N=5; gh api -X PUT "repos/o/r/pulls/$N/merge"',
+    "gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'",
+    "gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{}){clientMutationId}}'",
+    "git push origin +HEAD:feature",
+    "git -C . push --force origin x",
+    "git push -fu origin x",
   ])("blocks %s", (command) => {
     const r = bash(command);
     expect(r.code).toBe(2);
@@ -39,6 +51,11 @@ describe("guard-merge", () => {
     "git push --force-with-lease origin feature",
     "git push -u origin andre/eng-1-merge-thing",
     "echo 'gh pr merges are gated'",
+    "git push --force-with-lease=feature origin feature",
+    "git push --force-if-includes --force-with-lease origin feature",
+    "git merge origin/main",
+    "gh pr view 5 --json mergeable",
+    "git commit -m 'Fix the merge gate' && git push -u origin fix",
   ])("allows %s", (command) => {
     expect(bash(command).code).toBe(0);
   });
@@ -52,7 +69,7 @@ describe("guard-merge", () => {
   test("works without jq through the python fallback", () => {
     // A PATH holding only what the hook needs, minus jq.
     const bin = mkdtempSync(join(tmpdir(), "nojq-"));
-    for (const tool of ["bash", "cat", "grep", "python3", "printf"]) {
+    for (const tool of ["bash", "cat", "grep", "sed", "tr", "python3", "printf"]) {
       const real = Bun.which(tool);
       if (real) symlinkSync(real, join(bin, tool));
     }
@@ -62,6 +79,18 @@ describe("guard-merge", () => {
     expect(run({ tool_name: "Bash", tool_input: { command: "gh pr merge 1" } }).exitCode).toBe(2);
     expect(run({ tool_name: "Bash", tool_input: { command: "gh pr view 1" } }).exitCode).toBe(0);
     expect(run({ tool_name: "mcp__github__merge_pull_request", tool_input: {} }).exitCode).toBe(2);
+  });
+
+  test("without jq or python it still blocks, matching the raw payload", () => {
+    const bin = mkdtempSync(join(tmpdir(), "noparser-"));
+    for (const tool of ["bash", "cat", "grep", "sed", "tr", "printf"]) {
+      const real = Bun.which(tool);
+      if (real) symlinkSync(real, join(bin, tool));
+    }
+    const run = (payload: unknown) =>
+      Bun.spawnSync([join(bin, "bash"), GUARD], { stdin: new TextEncoder().encode(JSON.stringify(payload)), env: { PATH: bin }, stderr: "pipe" });
+    expect(run({ tool_name: "Bash", tool_input: { command: "gh pr merge 1" } }).exitCode).toBe(2);
+    expect(run({ tool_name: "Bash", tool_input: { command: "gh pr view 1" } }).exitCode).toBe(0);
   });
 });
 

@@ -42,9 +42,10 @@ forge says READY, the review threads are readable, and either André said
 
 - the ticket carries `autonomy:merge`;
 - the repo profile's `Max autonomy` is `merge`, read from the base branch;
-- an independent passing verdict exists for the head SHA, or for the same
-  `git patch-id` after a rebase;
-- the diff touches no one-way door from the profile.
+- an independent passing verdict, recorded by the factory's own identity,
+  exists for the head SHA, or for a byte-identical patch after a rebase;
+- the diff touches no one-way door from the profile, counting both paths of a
+  rename.
 
 ## Install
 

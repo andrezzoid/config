@@ -5,6 +5,7 @@
 export type CheckRun = {
   id?: number;
   name: string;
+  check_suite?: { id: number } | null;
   status: string;
   conclusion: string | null;
   html_url?: string | null;
@@ -35,7 +36,10 @@ export type PrFacts = {
   comments: IssueComment[];
   viewer: string | null;
   patchId: string | null;
+  // Every path the PR touches, including the old path of a rename.
   files: string[];
+  // False when GitHub's file list was cut off, so doors cannot be checked.
+  filesComplete: boolean;
   oneWayGlobs: string[];
 };
 
@@ -98,13 +102,15 @@ const FAILING_CONCLUSIONS = new Set([
 
 export type Checks = { failing: string[]; pending: string[]; passing: number };
 
-// A rerun leaves the old run on the same SHA, so only the newest run per name
-// counts.
+// A rerun adds a newer run to the same check suite, so only the newest run per
+// suite and name counts. Two workflows with a job of the same name are two
+// suites, and both count.
 export function classifyChecks(runs: CheckRun[], statuses: CommitStatus[]): Checks {
   const latest = new Map<string, CheckRun>();
   for (const run of runs) {
-    const prev = latest.get(run.name);
-    if (!prev || (run.id ?? 0) >= (prev.id ?? 0)) latest.set(run.name, run);
+    const key = `${run.check_suite?.id ?? ""}:${run.name}`;
+    const prev = latest.get(key);
+    if (!prev || (run.id ?? 0) >= (prev.id ?? 0)) latest.set(key, run);
   }
   const out: Checks = { failing: [], pending: [], passing: 0 };
   for (const run of latest.values()) {
@@ -139,21 +145,24 @@ export function classifyReviews(reviews: Review[]): ReviewState {
 
 export type VerdictMarker = { sha: string; patch: string | null; result: "pass" | "fail"; author: string | null };
 
-const MARKER = /<!--\s*factory:verdict\s+sha=([0-9a-f]{7,40})(?:\s+patch=([0-9a-f]+))?\s+result=(pass|fail)\s*-->/;
+// The marker must end the comment: a summary that quotes a marker cannot
+// speak for the verdict that follows it.
+const MARKER = /<!--\s*factory:verdict\s+sha=([0-9a-f]{7,40})(?:\s+patch=([0-9a-f]+))?\s+result=(pass|fail)\s*-->\s*$/;
 
 export function renderMarker(sha: string, patch: string | null, result: "pass" | "fail"): string {
   return `<!-- factory:verdict sha=${sha}${patch ? ` patch=${patch}` : ""} result=${result} -->`;
 }
 
 // Anyone who can comment can type a marker, so only markers written by the
-// identity running the factory count.
+// identity running the factory count. Without a known identity, none do.
 export function latestMarker(comments: IssueComment[], viewer: string | null): VerdictMarker | null {
+  if (!viewer) return null;
   let found: VerdictMarker | null = null;
   for (const c of comments) {
     const m = MARKER.exec(c.body ?? "");
     if (!m) continue;
     const author = c.user?.login ?? null;
-    if (viewer && author !== viewer) continue;
+    if (author !== viewer) continue;
     found = { sha: m[1], patch: m[2] ?? null, result: m[3] as "pass" | "fail", author };
   }
   return found;
@@ -166,7 +175,8 @@ export type Verification = {
 };
 
 // A rebase changes the SHA but not the patch. pstack's patch-id rule keeps a
-// verdict alive across it; any other new head voids the verdict.
+// verdict alive across it; any other new head voids the verdict. The patch key
+// is exact text (see patchKey), so a whitespace change is a new patch.
 export function verification(marker: VerdictMarker | null, headSha: string, patchId: string | null): Verification {
   if (!marker) return { status: "missing", result: null, sha: null };
   const sameSha = headSha.startsWith(marker.sha) || marker.sha.startsWith(headSha);
@@ -197,6 +207,7 @@ export type Status = {
   unresolvedThreads: number | null;
   verification: Verification;
   oneWayTouched: string[];
+  filesComplete: boolean;
 };
 
 // Tiers follow pstack's watch-pr: conflicts outrank threads, threads outrank
@@ -259,6 +270,7 @@ export function decide(f: PrFacts): Status {
     unresolvedThreads: f.unresolvedThreads,
     verification: ver,
     oneWayTouched,
+    filesComplete: f.filesComplete,
   };
 }
 
@@ -283,6 +295,7 @@ export function mergeGate(input: MergeGateInput): { allowed: boolean; reasons: s
       reasons.push(`no passing verdict for head ${s.headSha.slice(0, 7)} (verification ${s.verification.status})`);
     }
     if (s.oneWayTouched.length > 0) reasons.push(`touches one-way doors: ${s.oneWayTouched.join(", ")}`);
+    if (!s.filesComplete) reasons.push("GitHub truncated the file list, so one-way doors cannot be checked");
   }
   return { allowed: reasons.length === 0, reasons };
 }
@@ -296,4 +309,12 @@ export function fingerprint(s: Status): string {
     `pending=${s.checks.pending.length}`,
     `verify=${s.verification.status}/${s.verification.result ?? "-"}`,
   ].join(" ");
+}
+
+// git patch-id ignores whitespace, so a re-indent in Python or YAML would keep
+// a verdict for code nobody reviewed. This key keeps every byte of the diff
+// except what a rebase changes on its own: blob ids and hunk line numbers.
+export function patchKey(diff: string): string {
+  const kept = diff.trimEnd().split("\n").filter((l) => !l.startsWith("index ") && !l.startsWith("@@"));
+  return new Bun.CryptoHasher("sha256").update(kept.join("\n")).digest("hex").slice(0, 40);
 }

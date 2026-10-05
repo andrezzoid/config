@@ -92,6 +92,17 @@ describe("local install", () => {
     expect(readFileSync(join(home, ".claude/CLAUDE.md"), "utf8")).toContain("Call me André");
   });
 
+  test("unfolds ~/.agents even when a leftover .DS_Store keeps the old target alive, and writes nothing into it", () => {
+    const leftover = join(home, "Projects/config/dotfiles/.agents");
+    mkdirSync(leftover, { recursive: true });
+    writeFileSync(join(leftover, ".DS_Store"), "");
+    symlinkSync("Projects/config/dotfiles/.agents", join(home, ".agents"));
+    const r = run();
+    expect(r.code).toBe(0);
+    expect(lstatSync(join(home, ".agents")).isSymbolicLink()).toBe(false);
+    expect(readdirSync(leftover)).toEqual([".DS_Store"]);
+  });
+
   test("a real CLAUDE.md is backed up, never overwritten", () => {
     mkdirSync(join(home, ".claude"), { recursive: true });
     writeFileSync(join(home, ".claude/CLAUDE.md"), "precious");
@@ -137,8 +148,9 @@ describe("--bump", () => {
   test("moves each pin to the source's HEAD and leaves comments alone", () => {
     const copy = mkdtempSync(join(tmpdir(), "harness-agents-"));
     Bun.spawnSync(["cp", "-R", `${AGENTS}/.`, copy]);
+    // One source is unreachable: its pin stays, the others still move.
     writeFileSync(join(bin, "git"), `#!/usr/bin/env bash
-if [ "$1" = ls-remote ]; then echo "${"d".repeat(40)}	HEAD"; else exec /usr/bin/git "$@"; fi
+if [ "$1" = ls-remote ]; then case "$2" in *humanlayer*) echo "fatal: unreachable" >&2; exit 128;; esac; echo "${"d".repeat(40)}	HEAD"; else exec /usr/bin/git "$@"; fi
 `);
     chmodSync(join(bin, "git"), 0o755);
     const p = Bun.spawnSync(["bash", join(copy, "install.sh"), "--bump"], {
@@ -147,7 +159,8 @@ if [ "$1" = ls-remote ]; then echo "${"d".repeat(40)}	HEAD"; else exec /usr/bin/
     });
     expect(p.exitCode).toBe(0);
     const bumped = readFileSync(join(copy, "skills.txt"), "utf8");
-    expect(bumped.match(/#d{40} /g)).toHaveLength(manifest.length);
+    expect(bumped.match(/#d{40} /g)).toHaveLength(manifest.length - 1);
+    expect(bumped).toContain("humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c show-me");
     expect(bumped).toContain("# Third-party skills");
   });
 });

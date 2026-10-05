@@ -37,8 +37,12 @@ export function parseProfile(text: string | null): Profile {
       section = heading[1].toLowerCase();
       continue;
     }
-    if (section.startsWith("one-way door")) {
-      if (/^[-*]\s/.test(line)) p.oneWayGlobs.push(...ticks(line).slice(0, 1));
+    if (/^one[- ]way door/.test(section)) {
+      // `glob`: why, or a bare glob followed by a colon, space or bracket.
+      if (/^[-*]\s/.test(line)) {
+        const glob = ticks(line)[0] ?? line.replace(/^[-*]\s+/, "").split(/[\s:,(]/)[0];
+        if (glob) p.oneWayGlobs.push(glob);
+      }
       continue;
     }
     const field = /^[-*]\s*([^:]+):\s*(.*)$/.exec(line);

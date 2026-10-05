@@ -78,7 +78,8 @@ A push that changes the patch voids the recorded verdict; a pure rebase does
 not. When the ticket carries `autonomy:merge` and `factory pr status` shows the
 verification as `stale` or `missing`, call the Skill tool with "poke-holes" at
 the artifact target on the new head and record the result with
-`factory pr verdict <PR> --result pass|fail --summary-file <file>`.
+`factory pr verdict <PR> --sha <the head the reviewers checked> --result pass|fail
+--summary-file <file>`.
 
 ## Sleep until the next event
 

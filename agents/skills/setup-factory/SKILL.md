@@ -36,7 +36,9 @@ Ask in one round, each with your recommendation:
 
 - **Max autonomy.** Recommend `pr` until a verification skill exists and has
   been seen working. `merge` lets tickets labelled `autonomy:merge` merge
-  themselves after an independent verdict.
+  themselves after an independent verdict. Before agreeing to `merge`, require
+  the CI checks in the default branch's protection: the merge guard hook stops
+  drift, the forge is what stops a determined bypass.
 - **Gates**, from what CI runs.
 - **One-way doors**, as globs.
 - **Merge method**, from what the repo allows.

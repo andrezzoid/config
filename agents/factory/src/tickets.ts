@@ -104,13 +104,18 @@ export function claimBody(sessionUrl: string | null, runtime: string): string {
   return `Claimed by ${where}.\n\n<!-- ${CLAIM_PREFIX} -->`;
 }
 
-// Two dispatchers can race. Both write, then both read back: the oldest
-// claim comment wins and the loser withdraws.
-export function claimWinner(comments: { id: string; body: string; createdAt: string }[]): string | null {
-  const claims = comments
-    .filter((c) => c.body.includes(`<!-- ${CLAIM_PREFIX} -->`))
+// Two dispatchers can race. Both write, then both read back: the oldest claim
+// inside the race window wins and the loser withdraws. A claim older than the
+// window belongs to an earlier attempt (a crash, a handback) and never wins.
+export const CLAIM_RACE_MS = 15 * 60_000;
+export function claimWinner(comments: { id: string; body: string; createdAt: string }[], mine: string): string | null {
+  const claims = comments.filter((c) => c.body.includes(`<!-- ${CLAIM_PREFIX} -->`));
+  const own = claims.find((c) => c.id === mine);
+  const since = own ? Date.parse(own.createdAt) - CLAIM_RACE_MS : -Infinity;
+  const live = claims
+    .filter((c) => Date.parse(c.createdAt) >= since)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  return claims[0]?.id ?? null;
+  return live[0]?.id ?? null;
 }
 
 export function ticketFromBranch(branch: string): string | null {

@@ -60,9 +60,11 @@ of verifier agents for every pull request and it will fuzz ... instead of like
 10 verifier agents you might do like one". [I 52:30–53:30]
 pstack's verdict comes from agents that did not write the code, and survives a
 rebase only under the `git patch-id` rule.
-**Here:** poke-holes keeps "scale to the work, out loud"; the verdict is
-recorded on the PR by `factory pr verdict` with the head SHA and patch-id, and
-only the factory's own identity can write one.
+**Here:** poke-holes scales to the work but never to zero reviewers; the verdict
+is recorded on the PR by `factory pr verdict` for the SHA the reviewers checked,
+and only the factory's own identity can write one. Unlike pstack, the patch
+identity is exact text: `git patch-id` ignores whitespace, which let a
+re-indented Python loop keep a verdict in review.
 
 ## The environment
 

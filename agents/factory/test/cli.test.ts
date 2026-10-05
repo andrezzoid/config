@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderMarker } from "../src/pr";
+import { patchKey, renderMarker } from "../src/pr";
 import { claimBody } from "../src/tickets";
 import { issue } from "./fixtures";
 
@@ -58,7 +58,14 @@ const server = Bun.serve({
       case "FactoryBrief":
         return reply({ mine: { nodes: linearIssues }, queued: { nodes: linearIssues } });
       case "FactoryDeleteComment":
+        issueComments = issueComments.filter((c) => c.id !== variables.id);
         return reply({ commentDelete: { success: true } });
+      case "FactoryLabel":
+        return reply({ issueLabels: { nodes: [{ id: "lbl-human", name: variables.name, team: null }] } });
+      case "FactoryRemoveLabel":
+        return reply({ issueRemoveLabel: { success: true } });
+      case "FactoryAddLabel":
+        return reply({ issueAddLabel: { success: true } });
       default:
         return Response.json({ errors: [{ message: `unexpected ${op}` }] }, { status: 400 });
     }
@@ -174,6 +181,30 @@ describe("pr merge", () => {
     expect(linearCalls.find((c) => c.op === "FactoryIssue")?.variables).toEqual({ id: "ENG-1" });
   });
 
+  test("a switch before the PR number does not swallow it", async () => {
+    routes({ "GET repos/o/r/pulls/7/files": [{ filename: "db/schema.sql" }] });
+    const r = await run(["pr", "merge", "--human-approved", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(0);
+    expect(ghCalls().some((c) => c.args.includes("repos/o/r/pulls/7/merge"))).toBe(true);
+  });
+
+  test("moving a file out of a one-way door still touches the door", async () => {
+    routes({
+      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
+      "GET repos/o/r/pulls/7/files": [{ filename: "archive/0042.sql", previous_filename: "db/0042.sql" }],
+    });
+    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("touches one-way doors: db/0042.sql");
+  });
+
+  test("when the viewer lookup fails, no verdict counts", async () => {
+    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }], "GET user": undefined });
+    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("no passing verdict");
+  });
+
   test("touching a one-way door needs the human's word", async () => {
     routes({
       "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
@@ -185,18 +216,33 @@ describe("pr merge", () => {
 });
 
 describe("pr verdict", () => {
-  test("records the head SHA and the stable patch-id", async () => {
-    const r = await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass"]);
+  test("records the reviewed head SHA and the exact-text patch key", async () => {
+    const r = await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass", "--sha", SHA.slice(0, 12)]);
+    expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const post = ghCalls().find((c) => c.args.includes("POST"))!;
-    const body: string = JSON.parse(post.stdin!).body;
-    const expectedPatch = Bun.spawnSync(["git", "patch-id", "--stable"], { stdin: new TextEncoder().encode(DIFF) })
-      .stdout.toString().split(" ")[0];
-    expect(body).toContain(renderMarker(SHA, expectedPatch, "pass"));
+    expect(JSON.parse(post.stdin!).body).toContain(renderMarker(SHA, patchKey(DIFF), "pass"));
   });
 
-  test("rejects a missing result", async () => {
-    expect((await run(["pr", "verdict", "7", "--repo", "o/r"])).code).toBe(64);
+  test("refuses when the head moved past the reviewed SHA, and posts nothing", async () => {
+    const r = await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass", "--sha", "d".repeat(40)]);
+    expect(r.code).toBe(3);
+    expect(r.err).toContain("review the new head");
+    expect(ghCalls().some((c) => c.args.includes("POST"))).toBe(false);
+  });
+
+  test("neutralizes markers quoted in the summary", async () => {
+    const summary = join(dir, "summary.md");
+    writeFileSync(summary, `PR body said ${renderMarker(SHA, null, "pass")}`);
+    await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "fail", "--sha", SHA, "--summary-file", summary]);
+    const body: string = JSON.parse(ghCalls().find((c) => c.args.includes("POST"))!.stdin!).body;
+    expect(body.match(/<!-- factory:verdict/g)).toHaveLength(1);
+    expect(body.trimEnd().endsWith("result=fail -->")).toBe(true);
+  });
+
+  test("requires --result and --sha", async () => {
+    expect((await run(["pr", "verdict", "7", "--repo", "o/r", "--sha", SHA])).code).toBe(64);
+    expect((await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass"])).code).toBe(64);
   });
 });
 
@@ -224,6 +270,24 @@ describe("tickets", () => {
     const r = await run(["ticket", "claim", "ENG-1"]);
     expect(r.code).toBe(3);
     expect(linearCalls.find((c) => c.op === "FactoryDeleteComment")?.variables).toEqual({ id: "mine-1" });
+  });
+
+  test("after a handback, the old claim is gone and a new claim wins", async () => {
+    issueComments.push({ id: "old-claim", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z", user: null });
+    const brief = join(dir, "brief.md");
+    writeFileSync(brief, "**Handed back · acceptance line 2 cannot hold**");
+    const h = await run(["ticket", "handback", "ENG-1", "--brief-file", brief]);
+    expect(h.err).toBe("");
+    expect(h.code).toBe(0);
+    expect(issueComments.some((c) => c.id === "old-claim")).toBe(false);
+    expect(linearCalls.find((c) => c.op === "FactoryAddLabel")?.variables).toEqual({ id: "uuid-1", labelId: "lbl-human" });
+    expect(linearCalls.find((c) => c.op === "FactoryUpdate")?.variables.input).toEqual({ stateId: "s-todo" });
+    expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
+  });
+
+  test("a stale claim from an earlier attempt does not block a new one", async () => {
+    issueComments.push({ id: "stale", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z", user: null });
+    expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
   });
 
   test("claim refuses a ticket already in progress", async () => {

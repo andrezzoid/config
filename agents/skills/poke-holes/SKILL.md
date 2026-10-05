@@ -30,7 +30,7 @@ Fresh subagent(s), briefed with the theory (the ticket, its parent, the spec) pl
 - **Attempt refutation.** Actively try to break it — don't confirm it passes.
 - **Audit the diff against the theory.** What landed that the theory never said; what the theory said that never landed. Both directions.
 
-When the findings are dispositioned and no fix-now finding is open, the caller records the verdict for the head SHA with `factory pr verdict <PR> --result pass`. A new head with a changed patch needs a fresh verdict.
+When the findings are dispositioned and no fix-now finding is open, the caller records the verdict for the SHA the reviewers checked with `factory pr verdict <PR> --sha <SHA> --result pass`. A new head with a changed patch needs a fresh verdict.
 
 ### The harvest — after knowledge moves to its long-term homes
 

@@ -76,14 +76,21 @@ describe("ordering and claims", () => {
     expect(nextTickets([a, issue({ identifier: "X", labels: [] })]).skipped).toEqual([{ identifier: "X", reason: "no ready-for-agent label" }]);
   });
 
-  test("the oldest claim comment wins a race", () => {
+  test("the oldest claim inside the race window wins", () => {
     const comments = [
-      { id: "c2", body: claimBody(null, "local"), createdAt: "2026-10-01T10:00:01Z" },
-      { id: "c1", body: claimBody("https://claude.ai/code/session_x", "cloud"), createdAt: "2026-10-01T10:00:00Z" },
+      { id: "mine", body: claimBody(null, "local"), createdAt: "2026-10-01T10:00:01Z" },
+      { id: "theirs", body: claimBody("https://claude.ai/code/session_x", "cloud"), createdAt: "2026-10-01T10:00:00Z" },
       { id: "c0", body: "unrelated", createdAt: "2026-10-01T09:00:00Z" },
     ];
-    expect(claimWinner(comments)).toBe("c1");
-    expect(claimWinner([])).toBeNull();
+    expect(claimWinner(comments, "mine")).toBe("theirs");
+  });
+
+  test("a claim left by an earlier attempt never beats a new one", () => {
+    const comments = [
+      { id: "stale", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z" },
+      { id: "mine", body: claimBody(null, "local"), createdAt: "2026-10-01T10:00:00Z" },
+    ];
+    expect(claimWinner(comments, "mine")).toBe("mine");
   });
 
   test.each([
@@ -119,6 +126,11 @@ describe("profile", () => {
 
   test("no profile means the conservative defaults", () => {
     expect(parseProfile(null)).toMatchObject({ found: false, maxAutonomy: "pr", mergeMethod: "squash", oneWayGlobs: [] });
+  });
+
+  test("bare globs and an unhyphenated heading still count as doors", () => {
+    const p = parseProfile("## One way doors\n\n- db/migrations/**: schema\n- infra/** (prod)\n- `auth/**`\n");
+    expect(p.oneWayGlobs).toEqual(["db/migrations/**", "infra/**", "auth/**"]);
   });
 
   test("anything but an explicit merge caps autonomy at pr", () => {

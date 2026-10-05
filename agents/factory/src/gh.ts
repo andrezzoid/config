@@ -2,7 +2,7 @@
 // one exception is review-thread resolution, which REST does not expose:
 // cloud sessions read it from the proxy's ccr route, local ones from GraphQL.
 
-import { latestMarker, type PrFacts } from "./pr";
+import { latestMarker, patchKey, type PrFacts } from "./pr";
 
 const GH = process.env.FACTORY_GH ?? "gh";
 
@@ -86,13 +86,15 @@ export function resolvePr(arg: string | undefined, repoFlag: string | undefined)
   return { ...repo, number: pulls[0].number };
 }
 
-let viewerCache: string | null | undefined;
+// A failed lookup is not cached: the next call retries, and until one succeeds
+// no verdict marker counts.
+let viewerCache: string | undefined;
 export function viewer(): string | null {
   if (viewerCache === undefined) {
     try {
       viewerCache = api<{ login: string }>("user").login;
     } catch {
-      viewerCache = null;
+      return null;
     }
   }
   return viewerCache;
@@ -138,12 +140,19 @@ export function unresolvedThreads(r: Repo, number: number): number | null {
 
 export function patchId(r: Repo, number: number): string | null {
   try {
-    const diff = api<string>(`repos/${r.owner}/${r.repo}/pulls/${number}`, { accept: "application/vnd.github.diff" });
-    const p = Bun.spawnSync(["git", "patch-id", "--stable"], { stdin: new TextEncoder().encode(diff), stdout: "pipe" });
-    return p.stdout.toString().trim().split(/\s+/)[0] || null;
+    return patchKey(api<string>(`repos/${r.owner}/${r.repo}/pulls/${number}`, { accept: "application/vnd.github.diff" }));
   } catch {
     return null;
   }
+}
+
+// GitHub lists at most 3000 files per PR. A rename counts at both paths, so
+// moving a file out of a one-way door still touches the door.
+const MAX_PR_FILES = 3000;
+export function prFiles(r: Repo, number: number): { files: string[]; complete: boolean } {
+  const raw = paginate<any>(`repos/${r.owner}/${r.repo}/pulls/${number}/files`, (p) => p, MAX_PR_FILES / 100);
+  const files = raw.flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]));
+  return { files, complete: raw.length < MAX_PR_FILES };
 }
 
 export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts {
@@ -155,6 +164,7 @@ export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts
   const comments = paginate<any>(`${base}/issues/${number}/comments`);
   const login = viewer();
   const marker = latestMarker(comments, login);
+  const files = prFiles(r, number);
   return {
     owner: r.owner,
     repo: r.repo,
@@ -176,7 +186,8 @@ export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts
     comments,
     viewer: login,
     patchId: marker && !sha.startsWith(marker.sha) ? patchId(r, number) : null,
-    files: paginate<any>(`${base}/pulls/${number}/files`).map((f) => f.filename),
+    files: files.files,
+    filesComplete: files.complete,
     oneWayGlobs,
   };
 }

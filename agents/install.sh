@@ -48,7 +48,8 @@ if [ "$BUMP" = 1 ]; then
     if printf '%s' "$line" | grep -qE '^[^[:space:]#]+#[0-9a-f]{40}[[:space:]]'; then
       src="${line%%#*}"
       old="$(printf '%s' "$line" | sed -E 's/^[^#]+#([0-9a-f]{40}).*/\1/')"
-      new="$(git ls-remote "https://github.com/$src" HEAD </dev/null | cut -c1-40)"
+      # `|| true` keeps set -e from exiting before the fallback below.
+      new="$(git ls-remote "https://github.com/$src" HEAD </dev/null | cut -c1-40 || true)"
       [ -n "$new" ] || { warn "cannot reach $src, keeping $old"; new="$old"; }
       [ "$old" = "$new" ] || say "bump $src ${old:0:7} -> ${new:0:7}"
       printf '%s\n' "${line/$old/$new}" >>"$tmp"
@@ -73,10 +74,20 @@ own_skills() {
 
 third_party_skills() { manifest_lines | while read -r _src names; do printf '%s\n' $names; done; }
 
-# A link we own points into this checkout or the stable path.
+# A link's target as an absolute path; stow writes relative ones.
+target_of() {
+  t="$(readlink "$1" 2>/dev/null || true)"
+  case "$t" in
+    /*) printf '%s' "$t" ;;
+    *) printf '%s/%s' "$(dirname "$1")" "$t" ;;
+  esac
+}
+
+# A link we own points into this checkout, the stable path, or the old stow
+# layout (dotfiles/.agents, dotfiles/.claude), whether or not its target exists.
 points_home() {
-  case "$(readlink "$1" 2>/dev/null || true)" in
-    "$REPO_DIR"/*|"$STABLE"/*|*/dotfiles/.agents/*|*/dotfiles/.claude/*|../*.agents/*) return 0 ;;
+  case "$(target_of "$1")" in
+    "$REPO_DIR"|"$REPO_DIR"/*|"$STABLE"|"$STABLE"/*|*/dotfiles/.agents|*/dotfiles/.agents/*|*/dotfiles/.claude/*|*/.agents/skills/*) return 0 ;;
   esac
   return 1
 }
@@ -105,6 +116,9 @@ for d in "$AGENTS_HOME" "$AGENTS_HOME/skills" "$AGENTS_HOME/agents" "$CLAUDE_HOM
     fi
   fi
 done
+# Git leaves untracked files (a Finder .DS_Store) behind when a folder leaves
+# the repo; stow then keeps folding ~/.agents into it.
+[ -d "$REPO_DIR/dotfiles/.agents" ] && warn "$REPO_DIR/dotfiles/.agents is an untracked leftover; delete it so stow stops folding ~/.agents"
 mkdir -p "$CLAUDE_HOME/skills" "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$HOME/.local/bin" "$(dirname "$STABLE")"
 [ "$MODE" = local ] && mkdir -p "$AGENTS_HOME/skills" "$AGENTS_HOME/agents"
 [ -d "$CLAUDE_HOME/commands" ] && [ -z "$(ls -A "$CLAUDE_HOME/commands")" ] && rmdir "$CLAUDE_HOME/commands"

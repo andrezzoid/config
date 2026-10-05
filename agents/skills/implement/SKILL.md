@@ -122,11 +122,12 @@ and the human's approval. Never carry them away in your head.
    and blast radius. Add `Closes <ID>` so Linear closes the ticket on merge.
    A change that touches a profile one-way door is a one-way door, whatever it
    looks like.
-3. Record the verdict for the head you pushed, once poke-holes came back with
-   no open fix-now finding:
-   `factory pr verdict <PR> --result pass --summary-file <file>`, where the file
-   says what the reviewers checked and what the live proof showed. A later push
-   that changes the patch voids it.
+3. Record the verdict once poke-holes came back with no open fix-now finding:
+   `factory pr verdict <PR> --sha <SHA> --result pass --summary-file <file>`.
+   `<SHA>` is the commit the reviewers checked (`git rev-parse HEAD` when you
+   briefed them); the file says what they checked and what the live proof
+   showed. The CLI refuses when the PR's head is no longer that commit, and a
+   later push that changes the patch voids the verdict.
 4. Call the Skill tool with "babysit-pr". It takes the PR to merge-ready, and
    merges only when the ticket's autonomy and the gate allow it.
 

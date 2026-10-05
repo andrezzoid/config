@@ -5,6 +5,7 @@ import {
   decide,
   latestMarker,
   mergeGate,
+  patchKey,
   renderMarker,
   touchedOneWay,
   verification,
@@ -36,6 +37,7 @@ function facts(over: Partial<PrFacts> = {}): PrFacts {
     viewer: "andrezzoid",
     patchId: null,
     files: ["src/app.ts"],
+    filesComplete: true,
     oneWayGlobs: [],
     ...over,
   };
@@ -98,6 +100,17 @@ describe("classifyChecks", () => {
     expect(c.passing).toBe(1);
   });
 
+  test("two workflows with a job of the same name both count", () => {
+    const c = classifyChecks(
+      [
+        { id: 100, name: "test", status: "completed", conclusion: "failure", check_suite: { id: 1 } },
+        { id: 101, name: "test", status: "completed", conclusion: "success", check_suite: { id: 2 } },
+      ],
+      [],
+    );
+    expect(c.failing).toEqual(["test"]);
+  });
+
   test("statuses and check runs both count; neutral and skipped pass", () => {
     const c = classifyChecks(
       [
@@ -142,6 +155,17 @@ describe("verdict markers", () => {
       { body: renderMarker(SHA, "abc2", "pass"), user: { login: "andrezzoid" } },
     ];
     expect(latestMarker(comments, "andrezzoid")).toEqual({ sha: SHA, patch: "abc2", result: "pass", author: "andrezzoid" });
+  });
+
+  test("a marker quoted inside a summary does not speak for the verdict that ends the comment", () => {
+    const body = `Reviewer quoted: ${renderMarker(SHA, null, "pass")}\n\nFailed live proof.\n\n${renderMarker(SHA, null, "fail")}`;
+    expect(latestMarker([{ body, user: { login: "andrezzoid" } }], "andrezzoid")?.result).toBe("fail");
+    const notAtEnd = `${renderMarker(SHA, null, "pass")}\n\nand then more text`;
+    expect(latestMarker([{ body: notAtEnd, user: { login: "andrezzoid" } }], "andrezzoid")).toBeNull();
+  });
+
+  test("with no known viewer, no marker counts", () => {
+    expect(latestMarker([{ body: renderMarker(SHA, null, "pass"), user: { login: "stranger" } }], null)).toBeNull();
   });
 
   test("a forged marker alone is ignored", () => {
@@ -189,6 +213,11 @@ describe("mergeGate", () => {
     expect(mergeGate({ status: red, ticketAutonomy: "merge", repoMaxAutonomy: "merge", humanApproved: true }).allowed).toBe(false);
   });
 
+  test("a truncated file list blocks self-merge", () => {
+    const g = mergeGate({ status: decide({ ...passing, filesComplete: false }), ticketAutonomy: "merge", repoMaxAutonomy: "merge", humanApproved: false });
+    expect(g.reasons).toEqual(["GitHub truncated the file list, so one-way doors cannot be checked"]);
+  });
+
   test("unreadable threads block even an approved merge", () => {
     const g = mergeGate({ status: decide(facts({ unresolvedThreads: null })), ticketAutonomy: null, repoMaxAutonomy: "pr", humanApproved: true });
     expect(g.allowed).toBe(false);
@@ -198,5 +227,18 @@ describe("mergeGate", () => {
     const moved = facts({ headSha: "b".repeat(40), comments: passing.comments });
     const g = mergeGate({ status: decide(moved), ticketAutonomy: "merge", repoMaxAutonomy: "merge", humanApproved: false });
     expect(g.reasons.join()).toContain("verification stale");
+  });
+});
+
+describe("patchKey", () => {
+  const diff = (line: string, at = "@@ -1,2 +1,2 @@", index = "index 1111111..2222222 100644") =>
+    `diff --git a/x.py b/x.py\n${index}\n--- a/x.py\n+++ b/x.py\n${at}\n for i in r:\n-    pass\n+${line}\n`;
+
+  test("a whitespace-only change is a new patch (git patch-id would call it the same)", () => {
+    expect(patchKey(diff("    delete_all()"))).not.toBe(patchKey(diff("delete_all()")));
+  });
+
+  test("a rebase that only moves line numbers and blob ids keeps the patch", () => {
+    expect(patchKey(diff("x", "@@ -10,2 +10,2 @@", "index aaaaaaa..bbbbbbb 100644"))).toBe(patchKey(diff("x")));
   });
 });

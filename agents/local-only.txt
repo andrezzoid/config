@@ -1,3 +1,0 @@
-# Skills installed on the Mac only: their CLIs do not exist in cloud sessions.
-rem-cli
-todoist-cli

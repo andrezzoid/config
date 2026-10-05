@@ -22,11 +22,6 @@ stow dotfiles/ -t ~
 echo "Installing mise tools..."
 mise install
 
-# Agent harness: skills, CLAUDE.md, subagents and the factory CLI. The same
-# installer runs in Claude Code cloud sessions (see agents/README.md).
-echo "Installing agent harness..."
-./agents/install.sh
-
 # Brew autoupdate
 echo "Configuring brew autoupdate..."
 if ! brew autoupdate status 2>/dev/null | grep -q "installed and running"; then

@@ -24,18 +24,6 @@
           }
         ]
       }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash|mcp__github__merge_pull_request|mcp__github__enable_pr_auto_merge",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.local/share/agent-harness/hooks/guard-merge.sh\"",
-            "timeout": 10
-          }
-        ]
-      }
     ]
   },
   "worktree": {
@@ -53,7 +41,7 @@
     "allowUnsandboxedCommands": false,
     "filesystem": {
       "allowWrite": ["/tmp", "/private/tmp"],
-      "denyWrite": ["**/.git/hooks", "**/.git/config", "~/Projects/config/dotfiles", "~/Projects/config/agents/hooks"],
+      "denyWrite": ["**/.git/hooks", "**/.git/config", "~/Projects/config/dotfiles"],
       "denyRead": ["~/.npmrc", "~/.config/gcloud", "~/.zsh_history"]
     },
     "network": {

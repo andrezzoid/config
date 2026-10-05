@@ -17,7 +17,7 @@ export function parseId(id: string): { repo: string; number: number } {
 
 const FACTORY_LABELS = [READY_LABEL, HUMAN_LABEL, STARTED_LABEL];
 const BLOCKED_BY_LINE = /^[ \t>*_-]*blocked[ -]by\b[*_]*\s*:?(.*)$/i;
-const ISSUE_REF = /(?<![\w/])(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/g;
+const ISSUE_REF = /(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/|(?<![\w/])(?:([\w.-]+\/[\w.-]+))?#)(\d+)\b/g;
 
 function repoOfUrl(url: string | undefined, fallback: string): string {
   const m = /repos\/([\w.-]+\/[\w.-]+)$/.exec(url ?? "");
@@ -53,7 +53,7 @@ export function toTicket(issue: any, repo: string, blockers: TicketRef[] = []): 
 
 // Native issue dependencies first; the body covers repositories that do not
 // use them, as a "Blocked by: #12, o/r#13" line or a "## Blocked by" section
-// (the to-tickets template). Returns full ids.
+// (the to-tickets template), with issue URLs too. Returns full ids.
 export function blockedByRefs(body: string, repo: string): string[] {
   const out = new Set<string>();
   let section = false;
@@ -64,7 +64,7 @@ export function blockedByRefs(body: string, repo: string): string[] {
       continue;
     }
     const text = section ? line : BLOCKED_BY_LINE.exec(line)?.[1];
-    for (const m of text?.matchAll(ISSUE_REF) ?? []) out.add(`${(m[1] ?? repo).toLowerCase()}#${m[2]}`);
+    for (const m of text?.matchAll(ISSUE_REF) ?? []) out.add(`${(m[1] ?? m[2] ?? repo).toLowerCase()}#${m[3]}`);
   }
   return [...out];
 }
@@ -183,8 +183,10 @@ export class GithubTracker implements Tracker {
       const prs = paginate<any>(`repos/${repo}/pulls?state=open`);
       const touched = [...this.issues(repo, "state=open"), ...this.issues(repo, `state=closed&since=${since}`)];
       for (const i of touched) {
-        const t = toTicket(i, repo);
+        let t = toTicket(i, repo);
         if (!t.labels.some((l) => FACTORY_LABELS.includes(l))) continue;
+        // The brief counts ready tickets the way `tickets next` does.
+        if (t.state === "queued" && t.labels.includes(READY_LABEL)) t = this.full(repo, i);
         t.prs = prs.filter((p) => closedIssue(p) === i.number).map((p) => p.html_url);
         out.push(t);
       }

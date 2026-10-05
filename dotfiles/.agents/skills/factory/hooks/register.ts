@@ -19,13 +19,37 @@ const MERGE =
 const FORCE = "a plain force-push can destroy commits you have not seen. Use --force-with-lease.";
 
 // Splits a shell command line into simple commands, each an argv with quotes
-// and escapes removed. A command substitution ($(...) or backticks) comes back
-// as commands of its own, as does the script `sh -c` or `eval` runs.
+// and escapes removed. A command substitution ($(...) or backticks), including
+// one inside an unquoted heredoc, comes back as commands of its own, as does
+// the script `sh -c` or `eval` runs. Heredoc bodies are skipped otherwise:
+// they are text, so an apostrophe or a quoted command in a commit message
+// changes nothing.
 export function commands(src: string): string[][] {
-  const out: string[][] = [];
+  const out = scan(src, 0, "").commands;
+  for (const argv of [...out]) {
+    const core = effective(argv);
+    const name = basename(core[0] ?? "");
+    if (/^(ba|z|da|k)?sh$/.test(name)) {
+      const flag = core.findIndex((w, i) => i > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
+      const script = flag > 0 ? core[flag + 1] : undefined;
+      if (script !== undefined) out.push(...commands(script));
+    } else if (name === "eval") out.push(...commands(core.slice(1).join(" ")));
+  }
+  return out;
+}
+
+type Heredoc = { delimiter: string; strip: boolean; expands: boolean };
+
+// Scans from `start` to the unquoted `close` (")" or "`" for a substitution,
+// "" for the end of the line) and returns the commands found and where it
+// stopped.
+function scan(src: string, start: number, close: "" | ")" | "`"): { commands: string[][]; end: number } {
+  const found: string[][] = [];
   let argv: string[] = [];
   let word = "";
   let inWord = false;
+  let depth = 0;
+  let heredocs: Heredoc[] = [];
   const endWord = () => {
     if (inWord) argv.push(word);
     word = "";
@@ -33,33 +57,56 @@ export function commands(src: string): string[][] {
   };
   const endCommand = () => {
     endWord();
-    if (argv.length) out.push(argv);
+    if (argv.length) found.push(argv);
     argv = [];
   };
-  // Runs the substitution starting at i (just past "$(" or "`") and returns
-  // the index of its closing character.
-  const substitute = (i: number, close: string): number => {
-    let depth = 1;
-    let j = i;
-    let quote = "";
-    for (; j < src.length; j++) {
-      const c = src.charAt(j);
-      if (quote) {
-        if (c === "\\" && quote === '"') j++;
-        else if (c === quote) quote = "";
-      } else if (c === "\\") j++;
-      else if (c === "'" || c === '"') quote = c;
-      else if (close === ")" && c === "(") depth++;
-      else if (c === close && --depth === 0) break;
-    }
-    out.push(...commands(src.slice(i, j)));
-    word += src.slice(i - (close === ")" ? 2 : 1), j + 1);
+  // Runs the substitution whose body starts at i and returns the index of its
+  // closing character.
+  const substitute = (i: number, closer: ")" | "`"): number => {
+    const inner = scan(src, i, closer);
+    found.push(...inner.commands);
+    word += `${closer === ")" ? "$(" : "`"}${src.slice(i, inner.end)}${closer}`;
     inWord = true;
-    return j;
+    return inner.end;
+  };
+  // Skips the bodies of the heredocs opened on the line that ends at i, and
+  // returns the index of the newline after the last delimiter line.
+  const skipHeredocs = (i: number): number => {
+    for (const doc of heredocs) {
+      for (;;) {
+        const lineEnd = src.indexOf("\n", i + 1) === -1 ? src.length : src.indexOf("\n", i + 1);
+        const line = src.slice(i + 1, lineEnd);
+        if ((doc.strip ? line.replace(/^\t+/, "") : line) === doc.delimiter || lineEnd === src.length) {
+          i = lineEnd;
+          break;
+        }
+        if (doc.expands) {
+          for (let k = i + 1; k < lineEnd; k++) {
+            if (src.charAt(k) === "$" && src.charAt(k + 1) === "(") {
+              const inner = scan(src, k + 2, ")");
+              found.push(...inner.commands);
+              k = inner.end;
+            } else if (src.charAt(k) === "`") {
+              const inner = scan(src, k + 1, "`");
+              found.push(...inner.commands);
+              k = inner.end;
+            }
+          }
+        }
+        i = lineEnd;
+      }
+    }
+    heredocs = [];
+    return i;
   };
 
-  for (let i = 0; i < src.length; i++) {
+  let i = start;
+  for (; i < src.length; i++) {
     const c = src.charAt(i);
+    if (close && c === close && (close === "`" || depth === 0)) {
+      endCommand();
+      return { commands: found, end: i };
+    }
     if (c === "\\") {
       if (src.charAt(i + 1) !== "\n" && i + 1 < src.length) {
         word += src.charAt(i + 1);
@@ -84,33 +131,65 @@ export function commands(src: string): string[][] {
       }
     } else if (c === "$" && src.charAt(i + 1) === "(") i = substitute(i + 2, ")");
     else if (c === "`") i = substitute(i + 1, "`");
-    else if (c === "#" && !inWord) {
+    else if (c === "<" && src.startsWith("<<<", i)) {
+      endWord();
+      i += 2;
+    } else if (c === "<" && src.charAt(i + 1) === "<") {
+      endWord();
+      let j = i + 2;
+      const strip = src.charAt(j) === "-";
+      if (strip) j++;
+      while (src.charAt(j) === " " || src.charAt(j) === "\t") j++;
+      const quote = src.charAt(j);
+      let delimiter = "";
+      if (quote === "'" || quote === '"') {
+        const end = src.indexOf(quote, j + 1);
+        delimiter = src.slice(j + 1, end === -1 ? src.length : end);
+        j = end === -1 ? src.length : end + 1;
+      } else {
+        while (j < src.length && !/[\s;&|()<>]/.test(src.charAt(j))) delimiter += src.charAt(j++);
+      }
+      const literal = quote === "'" || quote === '"' || delimiter.includes("\\");
+      heredocs.push({ delimiter: delimiter.replaceAll("\\", ""), strip, expands: !literal });
+      i = j - 1;
+    } else if (c === "#" && !inWord) {
       while (i + 1 < src.length && src.charAt(i + 1) !== "\n") i++;
     } else if (c === " " || c === "\t") endWord();
-    else if ("\n;&|()".includes(c)) endCommand();
+    else if (c === "\n") {
+      endCommand();
+      if (heredocs.length) i = skipHeredocs(i);
+    } else if (c === "(") {
+      endCommand();
+      depth++;
+    } else if (c === ")") {
+      endCommand();
+      if (depth > 0) depth--;
+    } else if (";&|".includes(c)) endCommand();
     else {
       word += c;
       inWord = true;
     }
   }
   endCommand();
-
-  // What sh -c and eval run is a command line of its own.
-  for (const argv of [...out]) {
-    const core = effective(argv);
-    const name = basename(core[0] ?? "");
-    if (/^(ba|z|da|k)?sh$/.test(name)) {
-      const flag = core.findIndex((w, i) => i > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
-      const script = flag > 0 ? core[flag + 1] : undefined;
-      if (script !== undefined) out.push(...commands(script));
-    } else if (name === "eval") out.push(...commands(core.slice(1).join(" ")));
-  }
-  return out;
+  return { commands: found, end: i };
 }
 
 const basename = (w: string) => w.slice(w.lastIndexOf("/") + 1);
 const RESERVED = new Set(["!", "{", "}", "if", "then", "else", "elif", "do", "while", "until", "time"]);
-const WRAPPERS = new Set(["command", "builtin", "exec", "nohup", "sudo", "env", "nice", "xargs", "timeout", "stdbuf"]);
+// Wrappers that run the command after them, each with the options that take
+// a value, so `timeout -s KILL 60 gh ...` still reads as gh.
+const WRAPPERS = new Map<string, Set<string>>([
+  ["command", new Set()],
+  ["builtin", new Set()],
+  ["exec", new Set(["-a"])],
+  ["nohup", new Set()],
+  ["sudo", new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T"])],
+  ["env", new Set(["-u", "--unset", "-C", "--chdir"])],
+  ["nice", new Set(["-n", "--adjustment"])],
+  ["xargs", new Set(["-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"])],
+  ["timeout", new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["stdbuf", new Set(["-i", "-o", "-e"])],
+]);
 
 // The command a simple command runs, past variable assignments, reserved
 // words and wrappers such as `env FOO=1 timeout 60 gh ...`.
@@ -118,10 +197,11 @@ function effective(argv: string[]): string[] {
   const option = (w: string) => w.startsWith("-") || /^[A-Za-z_]\w*=/.test(w);
   let i = 0;
   for (let w = argv[i]; w !== undefined; w = argv[i]) {
+    const takesValue = WRAPPERS.get(basename(w));
     if (/^[A-Za-z_]\w*=/.test(w) || RESERVED.has(w)) i++;
-    else if (WRAPPERS.has(basename(w))) {
+    else if (takesValue) {
       i++;
-      while (option(argv[i] ?? "")) i++;
+      while (option(argv[i] ?? "")) i += takesValue.has(argv[i] ?? "") ? 2 : 1;
       if (basename(w) === "timeout" && i < argv.length) i++;
     } else break;
   }
@@ -167,10 +247,11 @@ function denyCommand(argv: string[]): string | null {
   return null;
 }
 
-// Why a tool call must not run, or null when it may.
+// Why a tool call must not run, or null when it may. `command` is the shell
+// command of any tool that runs one (Bash, Monitor).
 export function guard(tool: string, command?: string): string | null {
   if (/^mcp__.+__(merge_pull_request|enable_pr_auto_merge)$/.test(tool)) return MERGE;
-  if (tool !== "Bash" || !command) return null;
+  if (!command) return null;
   for (const argv of commands(command)) {
     const reason = denyCommand(argv);
     if (reason) return reason;
@@ -180,7 +261,8 @@ export function guard(tool: string, command?: string): string | null {
 
 export const register: Register = (on) => {
   on("tool.call", ($, e, next) => {
-    const reason = guard(e.tool, e.tool === "Bash" ? e.command : undefined);
+    const command: unknown = (e as { command?: unknown }).command;
+    const reason = guard(e.tool, typeof command === "string" ? command : undefined);
     return reason ? { deny: `BLOCKED: ${reason}` } : next(e);
   });
 

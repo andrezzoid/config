@@ -23,7 +23,9 @@ const DEFAULTS: Profile = {
   team: null,
   maxAutonomy: "pr",
   mergeMethod: "squash",
-  oneWayGlobs: [],
+  // The profile is always a door: a PR that loosens it would loosen every PR
+  // after it.
+  oneWayGlobs: [PROFILE_PATH],
   gates: [],
   verifySkill: null,
 };
@@ -33,8 +35,8 @@ function ticks(line: string): string[] {
 }
 
 export function parseProfile(text: string | null): Profile {
-  if (text === null) return { ...DEFAULTS };
-  const p: Profile = { ...DEFAULTS, found: true, oneWayGlobs: [], gates: [] };
+  if (text === null) return { ...DEFAULTS, oneWayGlobs: [...DEFAULTS.oneWayGlobs], gates: [] };
+  const p: Profile = { ...DEFAULTS, found: true, oneWayGlobs: [...DEFAULTS.oneWayGlobs], gates: [] };
   let section = "";
   for (const raw of text.split("\n")) {
     const line = raw.trim();

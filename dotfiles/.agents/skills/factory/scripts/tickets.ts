@@ -81,6 +81,25 @@ export function ticketFromBranch(branch: string, repo: string | null): string | 
   return m ? m[1].toUpperCase() : null;
 }
 
+// The tickets a pull request names itself: in its branch, or on a closing
+// line of its body (Closes ENG-123, Fixes #12, Resolves o/r#12 or an issue
+// URL). Only these may lend the PR their autonomy.
+const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+|[\w.-]+\/[\w.-]+#\d+|#\d+|[a-z][a-z0-9]{1,9}-\d+)\b/gi;
+export function ticketsOfPr(pr: { body: string | null; headRef: string }, repo: string): string[] {
+  const out = new Set<string>();
+  const branch = ticketFromBranch(pr.headRef, repo);
+  if (branch) out.add(branch);
+  for (const m of (pr.body ?? "").matchAll(CLOSING)) {
+    const ref = m[1] ?? "";
+    const url = /github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)/.exec(ref);
+    if (url) out.add(`${url[1]}#${url[2]}`.toLowerCase());
+    else if (ref.startsWith("#")) out.add(`${repo.toLowerCase()}${ref}`);
+    else if (ref.includes("#")) out.add(ref.toLowerCase());
+    else out.add(ref.toUpperCase());
+  }
+  return [...out];
+}
+
 export function slug(title: string, max = 40): string {
   return title
     .toLowerCase()

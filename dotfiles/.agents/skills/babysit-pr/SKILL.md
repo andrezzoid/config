@@ -112,8 +112,8 @@ saying merge. Never merge any other way: the factory mod blocks raw merges.
 ## After the merge
 
 The tracker closes the ticket through the PR's `Closes` line. Check that
-`factory ticket show <ID>` reads done; if not, close it the way the profile's
-Issue tracker section says. Comment on the ticket only when a review finding
+`factory ticket show <ID> --json` has `status` `done`; if not, close it the way
+the profile's Issue tracker section says. Comment on the ticket only when a review finding
 changed the design. Routine fixes leave their trace in the diff.
 
 A followup disposition becomes a ticket in triage once the human has seen it.

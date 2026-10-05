@@ -3,7 +3,6 @@
 // network.
 
 import { createHash } from "node:crypto";
-import { matchesGlob } from "node:path";
 
 export type CheckRun = {
   id?: number;
@@ -190,9 +189,29 @@ export function verification(marker: VerdictMarker | null, headSha: string, patc
   return { status: "stale", result: marker.result, sha: marker.sha };
 }
 
+// `*` matches inside one path segment, `**` across segments, `?` one
+// character, and all three match dotfiles: unlike path.matchesGlob, `infra/**`
+// covers infra/.env and `**/*.yml` covers .github/workflows/deploy.yml.
+export function globRegExp(glob: string): RegExp {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob.charAt(i);
+    if (c === "*" && glob.charAt(i + 1) === "*") {
+      i++;
+      if (glob.charAt(i + 1) === "/") {
+        i++;
+        re += "(?:.*/)?";
+      } else re += ".*";
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
+
 export function touchedOneWay(files: string[], globs: string[]): string[] {
-  if (globs.length === 0) return [];
-  return files.filter((f) => globs.some((g) => matchesGlob(f, g)));
+  const res = globs.map(globRegExp);
+  return files.filter((f) => res.some((re) => re.test(f)));
 }
 
 export type Status = {
@@ -280,6 +299,8 @@ export type MergeGateInput = {
   status: Status;
   ticketAutonomy: "merge" | "pr" | null;
   repoMaxAutonomy: "merge" | "pr";
+  // The profile's verification skill exists on the base branch.
+  verifySkill: boolean;
   humanApproved: boolean;
 };
 
@@ -293,10 +314,14 @@ export function mergeGate(input: MergeGateInput): { allowed: boolean; reasons: s
   if (!input.humanApproved) {
     if (input.ticketAutonomy !== "merge") reasons.push("ticket does not carry autonomy:merge");
     if (input.repoMaxAutonomy !== "merge") reasons.push("repo profile caps autonomy at pr");
+    else if (!input.verifySkill) reasons.push("the profile's verification skill is not on the base branch, so nothing showed the change working");
     if (s.verification.result !== "pass" || !["current", "carried"].includes(s.verification.status)) {
       reasons.push(`no passing verdict for head ${s.headSha.slice(0, 7)} (verification ${s.verification.status})`);
     }
     if (s.oneWayTouched.length > 0) reasons.push(`touches one-way doors: ${s.oneWayTouched.join(", ")}`);
+    // Right after a push, GitHub lists no checks until CI registers them, and
+    // nothing pending reads as nothing failing.
+    if (s.checks.passing === 0) reasons.push(`no CI has reported on head ${s.headSha.slice(0, 7)}`);
     if (!s.filesComplete) reasons.push("GitHub truncated the file list, so one-way doors cannot be checked");
   }
   return { allowed: reasons.length === 0, reasons };

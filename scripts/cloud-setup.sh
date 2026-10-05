@@ -35,15 +35,27 @@ else
   echo "cloud-setup: ~/.agents is a real folder, left alone" >&2
 fi
 
+# Links $2 to the final target of $1. A real file or folder already at $2 is
+# someone's own: it stays, with a warning, as stow would refuse it too.
+linked=0
+link() {
+  if [ -e "$2" ] && [ ! -L "$2" ]; then
+    echo "cloud-setup: $2 is a real file or folder, left alone" >&2
+    return
+  fi
+  ln -sfn "$(readlink -f "$1")" "$2"
+  linked=$((linked + 1))
+}
+
 mkdir -p "$CLAUDE/skills" "$CLAUDE/agents"
-ln -sfn "$(readlink -f "$src/.claude/CLAUDE.md")" "$CLAUDE/CLAUDE.md"
+link "$src/.claude/CLAUDE.md" "$CLAUDE/CLAUDE.md"
 for kind in skills agents; do
   for entry in "$src/.claude/$kind"/*; do
-    ln -sfn "$(readlink -f "$entry")" "$CLAUDE/$kind/$(basename "$entry")"
+    link "$entry" "$CLAUDE/$kind/$(basename "$entry")"
   done
-  for link in "$CLAUDE/$kind"/*; do
-    if [ -L "$link" ] && [[ "$(readlink "$link")" == "$DIR"/* ]] && [ ! -e "$src/.claude/$kind/$(basename "$link")" ]; then
-      rm "$link"
+  for existing in "$CLAUDE/$kind"/*; do
+    if [ -L "$existing" ] && [[ "$(readlink "$existing")" == "$DIR"/* ]] && [ ! -e "$src/.claude/$kind/$(basename "$existing")" ]; then
+      rm "$existing"
     fi
   done
 done
@@ -51,4 +63,4 @@ done
 if ! node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 18) ? 0 : 1)' 2>/dev/null; then
   echo "cloud-setup: the factory CLI needs Node 22.18 or later on PATH" >&2
 fi
-echo "cloud-setup: $(ls "$src/.claude/skills" | wc -l | tr -d ' ') skills linked from $(git -C "$DIR" rev-parse --short HEAD)"
+echo "cloud-setup: $linked links into ~/.claude from $(git -C "$DIR" rev-parse --short HEAD)"

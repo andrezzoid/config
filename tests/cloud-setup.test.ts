@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readlinkSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -24,7 +24,7 @@ function setup(home: string) {
 test("links every skill, every agent and CLAUDE.md into ~/.claude, and ~/.agents, then prunes", () => {
   const home = mkdtempSync(join(tmpdir(), "cloud-home-"));
   const clone = join(home, ".agent-config", "dotfiles");
-  assert.match(setup(home).stdout, /skills linked from [0-9a-f]{7}/);
+  assert.match(setup(home).stdout, /\d+ links into ~\/\.claude from [0-9a-f]{7}/);
 
   const skills = readdirSync(join(clone, ".claude", "skills"));
   assert.ok(skills.includes("factory") && skills.includes("implement"));
@@ -49,5 +49,18 @@ test("links every skill, every agent and CLAUDE.md into ~/.claude, and ~/.agents
   setup(home);
   assert.ok(!existsSync(join(home, ".claude", "skills", "grill-me")));
   assert.ok(existsSync(join(home, ".claude", "skills", "implement", "SKILL.md")));
+  rmSync(home, { recursive: true, force: true });
+});
+
+test("leaves a real CLAUDE.md or skill folder alone, and says so", () => {
+  const home = mkdtempSync(join(tmpdir(), "cloud-home-"));
+  mkdirSync(join(home, ".claude", "skills", "implement"), { recursive: true });
+  writeFileSync(join(home, ".claude", "CLAUDE.md"), "my notes");
+  const r = setup(home);
+  assert.equal(readFileSync(join(home, ".claude", "CLAUDE.md"), "utf8"), "my notes");
+  assert.ok(!lstatSync(join(home, ".claude", "skills", "implement")).isSymbolicLink());
+  assert.ok(!existsSync(join(home, ".claude", "skills", "implement", "implement")));
+  assert.match(r.stderr, /CLAUDE\.md is a real file or folder, left alone/);
+  assert.match(r.stderr, /skills\/implement is a real file or folder, left alone/);
   rmSync(home, { recursive: true, force: true });
 });

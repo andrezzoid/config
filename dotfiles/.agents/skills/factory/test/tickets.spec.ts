@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseProfile } from "../scripts/profile.ts";
-import { autonomy, byPriority, claimBody, claimWinner, nextTickets, readiness, slug, ticketFromBranch } from "../scripts/tickets.ts";
+import { autonomy, byPriority, claimBody, claimWinner, nextTickets, readiness, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
 import { blockedByRefs, closedIssue, toTicket as githubTicket } from "../scripts/trackers/github.ts";
 import { normalizeId, trackerOf } from "../scripts/trackers/index.ts";
 import { repoOf, toTicket as linearTicket } from "../scripts/trackers/linear.ts";
@@ -85,6 +85,11 @@ describe("ordering and claims", () => {
       expect(ticketFromBranch(branch, repo)).toBe(expected);
     });
   }
+
+  test("a PR names its tickets in its branch and its closing lines", () => {
+    expect(ticketsOfPr({ headRef: "andre/eng-1-thing", body: "Closes ENG-2\nfixes #12, resolves o/api#3\nCloses https://github.com/O/Web/issues/9\nSee #99" }, "O/R")).toEqual(["ENG-1", "ENG-2", "o/r#12", "o/api#3", "o/web#9"]);
+    expect(ticketsOfPr({ headRef: "main", body: null }, "o/r")).toEqual([]);
+  });
 
   test("slugs are short, ascii and hyphenated", () => {
     expect(slug("Café: fix the  Login flow!")).toBe("cafe-fix-the-login-flow");
@@ -173,6 +178,7 @@ describe("GitHub adapter", () => {
   test("Blocked by lines name blockers when native dependencies are not used", () => {
     expect(blockedByRefs("Do it.\n\nBlocked by: #3, O/Other#4\n**Blocked by** #4 and #9", "o/r")).toEqual(["o/r#3", "o/other#4", "o/r#4", "o/r#9"]);
     expect(blockedByRefs("Fixes #3\n\n## Testing\n\nSee #5", "o/r")).toEqual([]);
+    expect(blockedByRefs("## Blocked by\n\n- https://github.com/O/R/issues/12\n- https://github.com/o/api/issues/3", "o/r")).toEqual(["o/r#12", "o/api#3"]);
   });
 
   test("the Blocked by section of the to-tickets issue template names blockers", () => {
@@ -204,7 +210,7 @@ describe("profile", () => {
       mergeMethod: "squash",
       gates: ["pnpm lint", "pnpm typecheck", "pnpm test"],
       verifySkill: ".claude/skills/verify-app",
-      oneWayGlobs: ["db/migrations/**", "infra/**"],
+      oneWayGlobs: [".agents/factory.md", "db/migrations/**", "infra/**"],
     });
   });
 
@@ -218,17 +224,17 @@ describe("profile", () => {
   });
 
   test("no profile means the conservative defaults", () => {
-    expect(parseProfile(null)).toMatchObject({ found: false, tracker: null, maxAutonomy: "pr", mergeMethod: "squash", oneWayGlobs: [] });
+    expect(parseProfile(null)).toMatchObject({ found: false, tracker: null, maxAutonomy: "pr", mergeMethod: "squash", oneWayGlobs: [".agents/factory.md"] });
   });
 
   test("bare globs and an unhyphenated heading still count as doors", () => {
     const p = parseProfile("## One way doors\n\n- db/migrations/**: schema\n- infra/** (prod)\n- `auth/**`\n");
-    expect(p.oneWayGlobs).toEqual(["db/migrations/**", "infra/**", "auth/**"]);
+    expect(p.oneWayGlobs).toEqual([".agents/factory.md", "db/migrations/**", "infra/**", "auth/**"]);
   });
 
   test("a backticked word in a bare glob's explanation does not replace the glob", () => {
     const p = parseProfile("## One-way doors\n\n- db/migrations/**: apply with `make migrate`, never by hand\n");
-    expect(p.oneWayGlobs).toEqual(["db/migrations/**"]);
+    expect(p.oneWayGlobs).toEqual([".agents/factory.md", "db/migrations/**"]);
   });
 
   test("anything but an explicit merge caps autonomy at pr", () => {

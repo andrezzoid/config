@@ -10,8 +10,9 @@ import { pathToFileURL } from "node:url";
 import * as forge from "./forge.ts";
 import { decide, EXIT, fingerprint, mergeGate, renderMarker, type Status } from "./pr.ts";
 import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
-import { autonomy, claimBody, claimWinner, HUMAN_LABEL, isClaim, nextTickets, READY_LABEL, ticketFromBranch } from "./tickets.ts";
-import { enabledTrackers, githubRepos, normalizeId, trackerFor } from "./trackers/index.ts";
+import { autonomy, claimBody, claimWinner, HUMAN_LABEL, isClaim, nextTickets, READY_LABEL, ticketsOfPr } from "./tickets.ts";
+import type { GithubTracker } from "./trackers/github.ts";
+import { enabledTrackers, normalizeId, trackerFor } from "./trackers/index.ts";
 import type { Ticket } from "./trackers/types.ts";
 
 // The folder holding every skill: this file is skills/factory/scripts/cli.ts.
@@ -79,7 +80,7 @@ function githubFor(repo: string | null): string[] {
   return repo && profileOf(repo).tracker === "github" ? [repo] : [];
 }
 
-async function statusOf(ref: forge.Repo & { number: number }): Promise<{ status: Status; profile: Profile }> {
+async function statusOf(ref: forge.Repo & { number: number }): Promise<{ status: Status; profile: Profile; pull: any }> {
   const pull = forge.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`);
   const profile = profileOf(`${ref.owner}/${ref.repo}`, pull.base.ref);
   let status = decide(forge.prFacts(ref, ref.number, profile.oneWayGlobs));
@@ -87,7 +88,7 @@ async function statusOf(ref: forge.Repo & { number: number }): Promise<{ status:
     await sleep(3000);
     status = decide(forge.prFacts(ref, ref.number, profile.oneWayGlobs));
   }
-  return { status, profile };
+  return { status, profile, pull };
 }
 
 function statusLine(s: Status): string {
@@ -155,10 +156,18 @@ async function prVerdict(a: Args) {
 
 async function prMerge(a: Args) {
   const ref = forge.resolvePr(a._[2], str(a.flags.repo));
-  const { status, profile } = await statusOf(ref);
+  const { status, profile, pull } = await statusOf(ref);
   const repo = `${ref.owner}/${ref.repo}`.toLowerCase();
+  // Autonomy comes only from a ticket the PR itself names, never from any id
+  // passed in.
+  const named = ticketsOfPr({ body: pull.body, headRef: status.headRef }, repo);
   const flagged = str(a.flags.ticket);
-  const ticketId = flagged ? normalizeId(flagged, repo) : ticketFromBranch(status.headRef, repo);
+  const ticketId = flagged ? normalizeId(flagged, repo) : (named[0] ?? null);
+  if (ticketId && !named.includes(ticketId)) {
+    throw new Exit(3, `refusing to merge #${status.pr}: it does not name ${ticketId} in its branch or a Closes line (it names ${named.join(", ") || "nothing"})`);
+  }
+  const verifySkill = profile.verifySkill !== null &&
+    forge.readRepoFile(ref, `${profile.verifySkill}/SKILL.md?ref=${encodeURIComponent(pull.base.ref)}`) !== null;
   let ticketAutonomy: "merge" | "pr" | null = null;
   if (ticketId) {
     try {
@@ -167,7 +176,7 @@ async function prMerge(a: Args) {
       ticketAutonomy = null;
     }
   }
-  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, humanApproved: a.flags["human-approved"] === true });
+  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, verifySkill, humanApproved: a.flags["human-approved"] === true });
   if (!gate.allowed) {
     console.log(`refusing to merge #${status.pr}:\n${gate.reasons.map((r) => `  - ${r}`).join("\n")}`);
     return 3;
@@ -183,6 +192,8 @@ function summary(t: Ticket) {
     tracker: t.tracker,
     title: t.title,
     url: t.url,
+    // queued, started, done or canceled, whatever the tracker calls it
+    status: t.state,
     state: t.stateName,
     repo: t.repo,
     autonomy: autonomy(t),
@@ -263,7 +274,7 @@ async function ticketHandback(a: Args) {
 }
 
 async function brief(a: Args) {
-  const trackers = enabledTrackers();
+  const trackers = enabledTrackers(githubFor(repoArg(a)));
   if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
   const tickets = (await Promise.all(trackers.map((t) => t.portfolio()))).flat();
   const weekAgo = Date.now() - 7 * 864e5;
@@ -286,16 +297,16 @@ async function brief(a: Args) {
   const data = { handedBack: handedBack.map(summary), stalled: stalled.map(summary), running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
   print(Boolean(a.flags.json), data, () => {
     const out: string[] = ["## Needs you"];
-    out.push(...handedBack.map((t) => `- ${t.id} ${t.title} — handed back`));
-    out.push(...stalled.map((t) => `- ${t.id} ${t.title} — stalled: started, no PR, quiet for over 3h`));
+    out.push(...handedBack.map((t) => `- ${t.id} ${t.title}: handed back`));
+    out.push(...stalled.map((t) => `- ${t.id} ${t.title}: stalled, started with no PR and quiet for over 3h`));
     for (const r of runningWithPrs) {
       for (const p of r.prs) {
         if (p.status && (p.status.next === "human" || (p.status.verdict === "READY" && r.autonomy === "pr"))) {
-          out.push(`- ${r.id} ${p.url} — ${p.status.verdict === "READY" ? "ready, waiting on your merge" : "waiting on a review"}`);
+          out.push(`- ${r.id} ${p.url}: ${p.status.verdict === "READY" ? "ready, waiting on your merge" : "waiting on a review"}`);
         }
       }
     }
-    out.push(`## Running (${running.length})`, ...runningWithPrs.map((r) => `- ${r.id} ${r.title}${r.prs[0]?.status ? ` — PR ${r.prs[0].status.verdict}` : " — no PR yet"}`));
+    out.push(`## Running (${running.length})`, ...runningWithPrs.map((r) => `- ${r.id} ${r.title}${r.prs[0]?.status ? `: PR ${r.prs[0].status.verdict}` : ": no PR yet"}`));
     out.push(`## Queued (${ready.length} ready, ${skipped.length} waiting)`, ...ready.map((t) => `- ${t.id} ${t.title}`));
     out.push(`## Landed this week (${landed.length})`, ...landed.map((t) => `- ${t.id} ${t.title}`));
     return out.join("\n");
@@ -319,12 +330,13 @@ async function doctor(a: Args) {
   const login = forge.viewer();
   add("gh", login ? "ok" : "fail", login ? `gh authenticated as ${login}` : "gh cannot reach GitHub: run `gh auth login` locally; in the cloud, connect GitHub to the session");
 
-  const trackers = enabledTrackers();
+  const here = forge.currentRepo();
+  const trackers = enabledTrackers(githubFor(here ? `${here.owner}/${here.repo}` : null));
   if (!trackers.length) add("trackers", "fail", "none: set LINEAR_API_KEY for Linear, FACTORY_GITHUB_REPOS=owner/a,owner/b for GitHub Issues");
   for (const t of trackers) {
     try {
       const who = await t.viewer();
-      add(t.name, "ok", t.name === "github" ? `issues in ${githubRepos().join(", ")} as ${who}` : `authenticated as ${who}`);
+      add(t.name, "ok", t.name === "github" ? `issues in ${(t as GithubTracker).repos.join(", ")} as ${who}` : `authenticated as ${who}`);
     } catch (e) {
       add(t.name, "fail", (e as Error).message);
     }
@@ -355,7 +367,7 @@ async function doctor(a: Args) {
   return checks.some((c) => c.level === "fail") ? 1 : 0;
 }
 
-const HELP = `factory — deterministic helpers for the ticket → PR → merge factory
+const HELP = `factory: deterministic helpers for the ticket → PR → merge factory
 
 Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a clone.
 
@@ -372,7 +384,8 @@ Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a c
                                               record an independent verdict for the SHA the reviewers
                                               checked; exit 3 if the head has moved
   factory pr merge [PR] [--ticket ID] [--human-approved]
-                                              merge only if the gate allows it; exit 3 with reasons if not
+                                              merge only if the gate allows it; exit 3 with reasons if not.
+                                              The ticket must be one the PR names (branch or Closes line)
   factory brief [--json]                      portfolio: needs you, running, queued, landed
 
 Trackers: Linear when LINEAR_API_KEY is set (or \`linear auth login\` locally); GitHub Issues

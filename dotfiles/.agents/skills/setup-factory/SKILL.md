@@ -39,7 +39,8 @@ Ask in one round, each with your recommendation:
   where the work is already tracked.
 - **Max autonomy.** Recommend `pr` until a verification skill exists and has
   been seen working. `merge` lets tickets labelled `autonomy:merge` merge
-  themselves after an independent verdict. Before agreeing to `merge`, require
+  themselves after an independent verdict, and `factory pr merge` honours it
+  only while the profile's Verify skill exists on the default branch. Before agreeing to `merge`, require
   the CI checks in the default branch's protection: the factory mod stops
   drift, the forge is what stops a determined bypass.
 - **Gates**, from what CI runs.

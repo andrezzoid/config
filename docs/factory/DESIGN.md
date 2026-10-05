@@ -174,12 +174,18 @@ the head SHA it checked:
 - GitHub reports the PR mergeable, CI green, no unresolved review thread and no
   changes requested. Threads it cannot read block the merge.
 - Either André said "merge" in words (`--human-approved`), or every one of:
-  - the ticket carries `autonomy:merge` and the profile allows `merge`;
+  - the ticket the PR names, in its branch or its `Closes` line, carries
+    `autonomy:merge`, and the profile allows `merge`;
+  - the profile's verification skill exists on the base branch;
+  - CI has reported at least one passing check on the head, since GitHub lists
+    no checks for a few seconds after a push;
   - a passing verdict marker, written by the identity running the factory as
     the last line of its comment, names this head SHA or a byte-identical patch
     (`git patch-id` is not used: it ignores whitespace, which is code in Python
     and YAML);
   - the diff touches no one-way door, and GitHub did not truncate the file list.
+    The profile itself is always a door, so no PR can loosen the rules for the
+    PRs after it. Door globs match dotfiles: `infra/**` covers `infra/.env`.
 
 The mod stops an agent drifting onto the short path; it does not stop one set
 on getting through, since a script can still call the API. The wall is the
@@ -191,8 +197,10 @@ protection.
 - The cloud review-thread route (`ccr/review_threads`) returned an empty list
   in every probe, so its non-empty shape is a guess. The parser returns
   "unreadable" for a shape it does not know, which blocks the merge.
-- The mod reads shell text, not intent: a merge from a script file or another
-  language gets past it.
+- The mod reads shell text, not intent: a merge from a script file, a GraphQL
+  query read from a file (`-F query=@m.graphql`) or another language gets past
+  it, and so does merging a branch locally and pushing the base branch. It also
+  blocks a harmless GET on a PR's merge route.
 - Whether a GitHub-event routine's session receives the PR is not documented;
   the babysit prompt falls back to the repo's open PRs labelled `factory`.
 - Whether routine sessions can call `create_session` is not documented. When

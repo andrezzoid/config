@@ -46,6 +46,16 @@ describe("guard", () => {
     "( gh pr merge 1 )",
     "if true; then gh pr merge 1; fi",
     "git push origin feat --force",
+    // An apostrophe in a heredoc once switched the guard off for the rest of the line.
+    "git commit -am \"$(cat <<'EOF'\nFix\n\nIt's idempotent now.\nEOF\n)\" && git push -f origin feat",
+    "gh pr create --title t --body \"$(cat <<'EOF'\nDoesn't touch the schema.\nEOF\n)\" && gh pr merge --auto --squash",
+    // An unquoted heredoc expands its substitutions.
+    "cat <<EOF\n$(gh pr merge 1)\nEOF",
+    "cat <<EOF > x\nnothing\nEOF\ngh pr merge 1",
+    "timeout -s KILL 60 gh pr merge 1",
+    "nice -n 5 gh pr merge 1",
+    "env -u X gh pr merge 1",
+    "sudo -u bob gh pr merge 1",
   ]) {
     test(`blocks ${JSON.stringify(command)}`, () => {
       expect(bash(command)).not.toBe(null);
@@ -75,11 +85,22 @@ describe("guard", () => {
     "gh pr comment 3 --body 'run gh pr merge 3 when ready'",
     "grep -n 'gh pr merge' README.md # gh pr merge",
     "curl https://api.github.com/repos/o/r/pulls/1",
+    // Heredoc bodies are text.
+    "git commit -m \"$(cat <<'EOF'\nAgents run `factory pr merge`; `gh pr merge` is denied.\nEOF\n)\"",
+    "gh pr create --body \"$(cat <<'EOF'\nNever `git push -f` here.\nEOF\n)\"",
+    "cat <<'EOF' > notes.md\ngh pr merge is gated\nEOF",
+    "cat <<-EOF\n\tgh pr merge 1\n\tEOF",
+    "git commit -F - <<\\EOF\nrun $(gh pr merge 1) later\nEOF",
   ]) {
     test(`allows ${JSON.stringify(command)}`, () => {
       expect(bash(command)).toBe(null);
     });
   }
+
+  test("guards every tool that runs a shell command", () => {
+    expect(guard("Monitor", "gh pr checks 7 --watch && gh pr merge 7 --squash")).not.toBe(null);
+    expect(guard("Monitor", "factory pr watch 7")).toBe(null);
+  });
 
   test("blocks the GitHub MCP merge tools under any server name", () => {
     expect(guard("mcp__github__merge_pull_request")).not.toBe(null);

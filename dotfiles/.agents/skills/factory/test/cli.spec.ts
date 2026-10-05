@@ -1,6 +1,6 @@
 // End to end: the real CLI as a subprocess, a fake `gh`, and a mock Linear.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -90,7 +90,7 @@ after(() => server.close());
 
 let dir: string;
 function routes(over: Record<string, unknown> = {}) {
-  const profile = Buffer.from("- **Max autonomy:** `merge`\n\n## One-way doors\n\n- `db/**`\n").toString("base64");
+  const profile = Buffer.from("- **Max autonomy:** `merge`\n- **Verify skill:** `.claude/skills/verify-app`\n\n## One-way doors\n\n- `db/**`\n").toString("base64");
   const all = {
     "GET repos/o/r/pulls/7": {
       number: 7, html_url: "https://github.com/o/r/pull/7", title: "App: thing", state: "open", merged: false,
@@ -103,6 +103,7 @@ function routes(over: Record<string, unknown> = {}) {
     "GET repos/o/r/issues/7/comments": [],
     "GET repos/o/r/pulls/7/files": [{ filename: "src/a.ts" }],
     "GET repos/o/r/contents/.agents/factory.md": { encoding: "base64", content: profile },
+    "GET repos/o/r/contents/.claude/skills/verify-app/SKILL.md": { encoding: "base64", content: Buffer.from("# verify").toString("base64") },
     "GET user": { login: "andrezzoid" },
     "GRAPHQL": { data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: true }] } } } } },
     "DIFF repos/o/r/pulls/7": DIFF,
@@ -124,9 +125,11 @@ function ghCalls(): { args: string[]; stdin: string | null }[] {
 const sent = (method: string, path: string) =>
   ghCalls().filter((c) => c.args[1] === path && c.args.includes(method)).map((c) => JSON.parse(c.stdin ?? "null"));
 
-// Async on purpose: the mock Linear answers from this same process.
-function run(args: string[], env: Record<string, string> = {}): Promise<{ out: string; err: string; code: number }> {
+// Async on purpose: the mock Linear answers from this same process. Runs in
+// a scratch folder unless told otherwise, so no real clone leaks in.
+function run(args: string[], env: Record<string, string> = {}, cwd = dir): Promise<{ out: string; err: string; code: number }> {
   const p = spawn(process.execPath, [CLI, ...args], {
+    cwd,
     env: {
       ...process.env,
       FACTORY_GH: FAKE_GH,
@@ -216,6 +219,37 @@ describe("pr merge", () => {
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(linearCalls).toEqual([]);
+  });
+
+  test("a ticket the PR does not name lends it no autonomy", async () => {
+    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
+    linearIssues.push(linearIssue({ id: "u9", identifier: "ENG-9", labels: ["autonomy:merge"] }));
+    const r = await run(["pr", "merge", "7", "--repo", "o/r", "--ticket", "ENG-9"]);
+    expect(r.code).toBe(3);
+    expect(r.err).toContain("does not name ENG-9");
+    expect(ghCalls().some((c) => c.args.includes("PUT"))).toBe(false);
+  });
+
+  test("a Closes line in the PR body names its ticket", async () => {
+    routes({
+      "GET repos/o/r/pulls/7": {
+        number: 7, html_url: "https://github.com/o/r/pull/7", title: "Thing", state: "open", merged: false, body: "Does it.\n\nCloses ENG-1",
+        draft: false, mergeable: true, mergeable_state: "clean", head: { sha: SHA, ref: "feature-x" }, base: { ref: "main" },
+      },
+      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
+    });
+    expect((await run(["pr", "merge", "7", "--repo", "o/r"])).code).toBe(0);
+  });
+
+  test("without the profile's verification skill on the base branch, no self-merge", async () => {
+    routes({
+      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
+      "GET repos/o/r/contents/.claude/skills/verify-app/SKILL.md": undefined,
+    });
+    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("verification skill");
+    expect(ghCalls().some((c) => c.args[1] === "repos/o/r/contents/.claude/skills/verify-app/SKILL.md?ref=main")).toBe(true);
   });
 
   test("a switch before the PR number does not swallow it", async () => {
@@ -376,7 +410,7 @@ describe("GitHub Issues tickets", () => {
     expect(r.code).toBe(0);
     const d = JSON.parse(r.out);
     expect(d.ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
-    expect(d.ready[0]).toMatchObject({ tracker: "github", repo: "o/r", autonomy: "merge", branchName: "issue-12-app-do-the-thing", closes: "Closes #12" });
+    expect(d.ready[0]).toMatchObject({ tracker: "github", repo: "o/r", status: "queued", autonomy: "merge", branchName: "issue-12-app-do-the-thing", closes: "Closes #12" });
     expect(d.skipped).toEqual([
       { id: "o/r#13", reason: "blocked by o/r#12" },
       { id: "o/r#15", reason: "parent of 1 open ticket(s)" },
@@ -393,6 +427,38 @@ describe("GitHub Issues tickets", () => {
     const r = await run(["tickets", "next", "--repo", "o/r", "--json"], { LINEAR_API_KEY: "" });
     expect(r.err).toBe("");
     expect(JSON.parse(r.out).ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
+  });
+
+  test("inside a clone whose profile names GitHub, doctor and brief use its issues", async () => {
+    const clone = join(dir, "clone");
+    spawnSync("git", ["init", "-q", clone]);
+    spawnSync("git", ["-C", clone, "remote", "add", "origin", "https://github.com/o/r.git"]);
+    routes({
+      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
+      "GET repos/o/r/contents/.agents/factory.md": { encoding: "base64", content: Buffer.from("- **Tracker:** GitHub Issues\n").toString("base64") },
+      "GET repos/o/r/issues?state=open": [githubIssue({ number: 12 })],
+      "GET repos/o/r/issues": [],
+      "GET repos/o/r/pulls": [],
+    });
+    const env = { LINEAR_API_KEY: "", FACTORY_GITHUB_REPOS: "" };
+    const doctor = await run(["doctor"], env, clone);
+    expect(doctor.out).toContain("issues in o/r as andrezzoid");
+    expect(doctor.out).not.toContain("trackers");
+    const brief = await run(["brief", "--json"], env, clone);
+    expect(brief.err).toBe("");
+    expect(JSON.parse(brief.out).queued.ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
+  });
+
+  test("the brief counts a blocked GitHub ticket as waiting, as tickets next does", async () => {
+    routes({
+      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
+      "GET repos/o/r/issues?state=open": [githubIssue({ number: 12 }), githubIssue({ number: 13, body: "Blocked by: #12" })],
+      "GET repos/o/r/issues": [],
+      "GET repos/o/r/pulls": [],
+    });
+    const d = JSON.parse((await run(["brief", "--json"], gh)).out);
+    expect(d.queued.ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
+    expect(d.queued.waiting).toEqual([{ id: "o/r#13", reason: "blocked by o/r#12" }]);
   });
 
   test("claim assigns the viewer, labels in-progress and comments", async () => {
@@ -469,8 +535,8 @@ describe("brief", () => {
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const needsYou = r.out.split("## Running")[0];
-    expect(needsYou).toContain("ENG-3 Bounced — handed back");
-    expect(needsYou).toContain("ENG-2 Stuck — stalled");
+    expect(needsYou).toContain("ENG-3 Bounced: handed back");
+    expect(needsYou).toContain("ENG-2 Stuck: stalled");
     expect(r.out).toContain("## Queued (1 ready");
     expect(r.out).toContain("## Landed this week (1)");
   });

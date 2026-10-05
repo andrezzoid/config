@@ -1,0 +1,8 @@
+{
+  "name": "factory",
+  "version": "0.2.0",
+  "description": "Puts the factory CLI on PATH, keeps cloud sessions on the latest harness, and routes every merge through `factory pr merge`.",
+  "author": {
+    "name": "andrezzoid"
+  }
+}

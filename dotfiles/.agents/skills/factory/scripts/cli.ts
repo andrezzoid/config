@@ -1,31 +1,21 @@
-#!/usr/bin/env bun
 // factory: the deterministic half of the factory. Skills hold the judgment;
-// this CLI computes ticket readiness, PR merge-readiness and the merge gate,
-// so every session, local or cloud, reaches the same answer the same way.
+// this CLI computes ticket readiness, claims, PR merge-readiness and the merge
+// gate, so every session, local or cloud, reaches the same answer the same way.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
-import * as gh from "./gh";
-import * as L from "./linear";
-import { decide, EXIT, fingerprint, mergeGate, renderMarker, type Status } from "./pr";
-import { parseProfile, PROFILE_PATH, type Profile } from "./profile";
-import {
-  autonomy,
-  blockers,
-  claimBody,
-  claimWinner,
-  CLAIM_PREFIX,
-  HUMAN_LABEL,
-  labelNames,
-  nextTickets,
-  READY_LABEL,
-  repoOf,
-  ticketFromBranch,
-  type Issue,
-} from "./tickets";
+import { join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
+import * as forge from "./forge.ts";
+import { decide, EXIT, fingerprint, mergeGate, renderMarker, type Status } from "./pr.ts";
+import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
+import { autonomy, claimBody, claimWinner, HUMAN_LABEL, isClaim, nextTickets, READY_LABEL, ticketFromBranch } from "./tickets.ts";
+import { enabledTrackers, githubRepos, normalizeId, trackerFor } from "./trackers/index.ts";
+import type { Ticket } from "./trackers/types.ts";
 
-const AGENTS_DIR = join(import.meta.dir, "..", "..");
+// The folder holding every skill: this file is skills/factory/scripts/cli.ts.
+const SKILLS_DIR = resolve(import.meta.dirname, "..", "..");
 const STALL_MS = 3 * 3600_000;
 
 type Args = { _: string[]; flags: Record<string, string | true> };
@@ -53,13 +43,14 @@ const runtime = () => (process.env.CLAUDE_CODE_REMOTE === "true" ? "cloud" : "lo
 
 function sessionUrl(): string | null {
   const id = process.env.CLAUDE_CODE_REMOTE_SESSION_ID;
-  if (id?.startsWith("cse_")) return `https://claude.ai/code/session_${id.slice(4)}`;
-  return null;
+  return id?.startsWith("cse_") ? `https://claude.ai/code/session_${id.slice(4)}` : null;
 }
 
 class Exit extends Error {
-  constructor(public code: number, message: string) {
+  code: number;
+  constructor(code: number, message: string) {
     super(message);
+    this.code = code;
   }
 }
 
@@ -67,20 +58,34 @@ function print(json: boolean, data: unknown, human: () => string) {
   console.log(json ? JSON.stringify(data, null, 2) : human());
 }
 
-// The profile is read from the base branch, never the PR's working tree: a
-// branch must not be able to grant itself merge autonomy.
-function profileFor(ref: gh.Repo, baseRef?: string): Profile {
-  const path = baseRef ? `${PROFILE_PATH}?ref=${encodeURIComponent(baseRef)}` : PROFILE_PATH;
-  return parseProfile(gh.readRepoFile(ref, path));
+// The repository a command is about: --repo, or the clone it runs in.
+function repoArg(a: Args): string | null {
+  const flag = str(a.flags.repo);
+  if (flag) return flag.toLowerCase();
+  const here = forge.currentRepo();
+  return here ? `${here.owner}/${here.repo}`.toLowerCase() : null;
 }
 
-function statusOf(ref: gh.Repo & { number: number }): { status: Status; profile: Profile } {
-  const pull = gh.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`);
-  const profile = profileFor(ref, pull.base.ref);
-  let status = decide(gh.prFacts(ref, ref.number, profile.oneWayGlobs));
+// The profile is read from the base branch, never the PR's working tree: a
+// branch must not be able to raise its own autonomy.
+function profileOf(repo: string, ref?: string): Profile {
+  const r = forge.parseRepo(repo);
+  if (!r) return parseProfile(null);
+  return parseProfile(forge.readRepoFile(r, ref ? `${PROFILE_PATH}?ref=${encodeURIComponent(ref)}` : PROFILE_PATH));
+}
+
+// A named repository whose profile says GitHub joins the GitHub tracker.
+function githubFor(repo: string | null): string[] {
+  return repo && profileOf(repo).tracker === "github" ? [repo] : [];
+}
+
+async function statusOf(ref: forge.Repo & { number: number }): Promise<{ status: Status; profile: Profile }> {
+  const pull = forge.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`);
+  const profile = profileOf(`${ref.owner}/${ref.repo}`, pull.base.ref);
+  let status = decide(forge.prFacts(ref, ref.number, profile.oneWayGlobs));
   if (status.verdict === "COMPUTING") {
-    Bun.sleepSync(3000);
-    status = decide(gh.prFacts(ref, ref.number, profile.oneWayGlobs));
+    await sleep(3000);
+    status = decide(forge.prFacts(ref, ref.number, profile.oneWayGlobs));
   }
   return { status, profile };
 }
@@ -94,8 +99,7 @@ function statusLine(s: Status): string {
 }
 
 async function prStatus(a: Args) {
-  const ref = gh.resolvePr(a._[2], str(a.flags.repo));
-  const { status } = statusOf(ref);
+  const { status } = await statusOf(forge.resolvePr(a._[2], str(a.flags.repo)));
   print(Boolean(a.flags.json), status, () => statusLine(status));
   return EXIT[status.verdict];
 }
@@ -103,13 +107,13 @@ async function prStatus(a: Args) {
 // One line per change, nothing while nothing moves: built for the Monitor
 // tool, which turns each line into a wake-up.
 async function prWatch(a: Args) {
-  const ref = gh.resolvePr(a._[2], str(a.flags.repo));
+  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
   const interval = Number(str(a.flags.interval) ?? 60) * 1000;
   let last = "";
   let failures = 0;
   for (;;) {
     try {
-      const { status } = statusOf(ref);
+      const { status } = await statusOf(ref);
       failures = 0;
       const fp = fingerprint(status);
       if (fp !== last) {
@@ -118,12 +122,12 @@ async function prWatch(a: Args) {
         last = fp;
       }
       if (status.next === "done") return EXIT[status.verdict];
-      await Bun.sleep(interval);
+      await sleep(interval);
     } catch (e) {
       failures++;
       console.log(`error (${failures}): ${(e as Error).message}`);
       if (failures >= 5) return 1;
-      await Bun.sleep(Math.min(interval * 2 ** failures, 300_000));
+      await sleep(Math.min(interval * 2 ** failures, 300_000));
     }
   }
 }
@@ -135,88 +139,86 @@ async function prVerdict(a: Args) {
   const reviewed = str(a.flags.sha);
   if (result !== "pass" && result !== "fail") throw new Exit(64, "--result pass|fail is required");
   if (!reviewed || !/^[0-9a-f]{7,40}$/.test(reviewed)) throw new Exit(64, "--sha <the commit the reviewers checked> is required");
-  const ref = gh.resolvePr(a._[2], str(a.flags.repo));
-  const headNow = () => gh.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`).head.sha as string;
+  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
+  const headNow = () => forge.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`).head.sha as string;
   const head = headNow();
   if (!head.startsWith(reviewed)) throw new Exit(3, `head is ${head.slice(0, 7)}, not the reviewed ${reviewed.slice(0, 7)}: review the new head`);
-  const patch = gh.patchId(ref, ref.number);
+  const patch = forge.patchId(ref, ref.number);
   if (headNow() !== head) throw new Exit(3, "head moved while the diff was read: review the new head");
   const summaryFile = str(a.flags["summary-file"]);
   // Quoted markers in the summary must not read as verdicts.
   const summary = (summaryFile ? readFileSync(summaryFile, "utf8").trim() : `Verification ${result}.`).replaceAll("<!--", "&lt;!--");
-  const body = `${summary}\n\n${renderMarker(head, patch, result)}`;
-  gh.api(`repos/${ref.owner}/${ref.repo}/issues/${ref.number}/comments`, { method: "POST", body: { body } });
+  forge.api(`repos/${ref.owner}/${ref.repo}/issues/${ref.number}/comments`, { method: "POST", body: { body: `${summary}\n\n${renderMarker(head, patch, result)}` } });
   console.log(`recorded ${result} for #${ref.number} at ${head.slice(0, 7)}`);
   return 0;
 }
 
 async function prMerge(a: Args) {
-  const ref = gh.resolvePr(a._[2], str(a.flags.repo));
-  const { status, profile } = statusOf(ref);
-  const ticketId = str(a.flags.ticket) ?? ticketFromBranch(status.headRef);
+  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
+  const { status, profile } = await statusOf(ref);
+  const repo = `${ref.owner}/${ref.repo}`.toLowerCase();
+  const flagged = str(a.flags.ticket);
+  const ticketId = flagged ? normalizeId(flagged, repo) : ticketFromBranch(status.headRef, repo);
   let ticketAutonomy: "merge" | "pr" | null = null;
   if (ticketId) {
     try {
-      ticketAutonomy = autonomy(await L.getIssue(ticketId));
+      ticketAutonomy = autonomy((await trackerFor(ticketId).get(ticketId)).ticket);
     } catch {
       ticketAutonomy = null;
     }
   }
-  const gate = mergeGate({
-    status,
-    ticketAutonomy,
-    repoMaxAutonomy: profile.maxAutonomy,
-    humanApproved: a.flags["human-approved"] === true,
-  });
+  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, humanApproved: a.flags["human-approved"] === true });
   if (!gate.allowed) {
     console.log(`refusing to merge #${status.pr}:\n${gate.reasons.map((r) => `  - ${r}`).join("\n")}`);
     return 3;
   }
-  gh.api(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/merge`, {
-    method: "PUT",
-    body: { merge_method: profile.mergeMethod, sha: status.headSha },
-  });
+  forge.api(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/merge`, { method: "PUT", body: { merge_method: profile.mergeMethod, sha: status.headSha } });
   console.log(`merged #${status.pr} (${profile.mergeMethod}) at ${status.headSha.slice(0, 7)}`);
   return 0;
 }
 
-function issueSummary(i: Issue) {
+function summary(t: Ticket) {
   return {
-    identifier: i.identifier,
-    title: i.title,
-    url: i.url,
-    state: i.state.name,
-    repo: repoOf(i),
-    autonomy: autonomy(i),
-    branchName: i.branchName,
-    labels: labelNames(i),
-    blockers: blockers(i).map((b) => `${b.identifier} (${b.state.name ?? b.state.type})`),
+    id: t.id,
+    tracker: t.tracker,
+    title: t.title,
+    url: t.url,
+    state: t.stateName,
+    repo: t.repo,
+    autonomy: autonomy(t),
+    branchName: t.branchName,
+    closes: t.closes,
+    labels: t.labels,
+    blockers: t.blockers.map((b) => `${b.id}${b.done ? " (done)" : ""}`),
   };
 }
 
 async function ticketsNext(a: Args) {
-  const repoFlag = str(a.flags.repo) ?? (a.flags.here ? (() => {
-    const r = gh.currentRepo();
-    return r ? `${r.owner}/${r.repo}` : undefined;
-  })() : undefined);
-  const { ready, skipped } = nextTickets(await L.readyIssues(), { repo: repoFlag });
-  const data = { ready: ready.map(issueSummary), skipped };
-  print(Boolean(a.flags.json), data, () => {
-    if (!ready.length) return `no ticket is ready${repoFlag ? ` for ${repoFlag}` : ""} (${skipped.length} labelled but waiting)`;
-    return ready.map((i) => `${i.identifier}  ${repoOf(i)}  autonomy:${autonomy(i)}  ${i.title}`).join("\n");
+  const repo = a.flags.here || a.flags.repo ? repoArg(a) : null;
+  if ((a.flags.here || a.flags.repo) && !repo) throw new Exit(64, "cannot tell which repository: pass --repo owner/name or run inside a clone");
+  const trackers = enabledTrackers(githubFor(repo));
+  if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
+  const all = (await Promise.all(trackers.map((t) => t.ready()))).flat();
+  const { ready, skipped } = nextTickets(all, { repo: repo ?? undefined });
+  print(Boolean(a.flags.json), { ready: ready.map(summary), skipped }, () => {
+    if (!ready.length) return `no ticket is ready${repo ? ` for ${repo}` : ""} (${skipped.length} labelled but waiting)`;
+    return ready.map((t) => `${t.id}  ${t.repo}  autonomy:${autonomy(t)}  ${t.title}`).join("\n");
   });
   return 0;
 }
 
+function idArg(a: Args, usage: string): string {
+  if (!a._[2]) throw new Exit(64, usage);
+  return normalizeId(a._[2], repoArg(a));
+}
+
 async function ticketShow(a: Args) {
-  const id = a._[2];
-  if (!id) throw new Exit(64, "usage: factory ticket show <ID>");
-  const issue = await L.getIssue(id);
-  const data = { ...issueSummary(issue), description: issue.description, comments: issue.comments.nodes };
-  print(Boolean(a.flags.json), data, () => {
-    const s = issueSummary(issue);
+  const id = idArg(a, "usage: factory ticket show <ID>");
+  const { ticket, comments } = await trackerFor(id).get(id);
+  print(Boolean(a.flags.json), { ...summary(ticket), body: ticket.body, comments }, () => {
+    const s = summary(ticket);
     return [
-      `${s.identifier} ${s.title}`,
+      `${s.id} ${s.title}`,
       `  ${s.url}`,
       `  state ${s.state} · repo ${s.repo ?? "?"} · autonomy ${s.autonomy} · branch ${s.branchName}`,
       `  labels ${s.labels.join(", ") || "none"}`,
@@ -226,88 +228,76 @@ async function ticketShow(a: Args) {
   return 0;
 }
 
+// Claim as the first write: assign and start, comment, then read back. The
+// oldest claim in the race window wins; a loser withdraws its comment.
 async function ticketClaim(a: Args) {
-  const id = a._[2];
-  if (!id) throw new Exit(64, "usage: factory ticket claim <ID>");
-  const issue = await L.getIssue(id);
-  if (!["triage", "backlog", "unstarted"].includes(issue.state.type)) {
-    throw new Exit(3, `${issue.identifier} is ${issue.state.name}: someone already took it`);
-  }
-  if (!labelNames(issue).includes(READY_LABEL)) throw new Exit(3, `${issue.identifier} has no ${READY_LABEL} label`);
-  const me = await L.viewerId();
-  const started = await L.firstState(issue.team.id, "started");
-  await L.updateIssue(issue.id, { assigneeId: me.id, ...(started ? { stateId: started } : {}) });
+  const id = idArg(a, "usage: factory ticket claim <ID>");
+  const tracker = trackerFor(id);
+  const { ticket } = await tracker.get(id);
+  if (ticket.state !== "queued") throw new Exit(3, `${id} is ${ticket.stateName}: someone already took it`);
+  if (!ticket.labels.includes(READY_LABEL)) throw new Exit(3, `${id} has no ${READY_LABEL} label`);
+  await tracker.start(id);
   const where = str(a.flags.session) ?? sessionUrl();
-  const mine = await L.comment(issue.id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`));
-  const winner = claimWinner((await L.getIssue(id)).comments.nodes, mine);
+  const mine = await tracker.comment(id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`));
+  const winner = claimWinner((await tracker.get(id)).comments, mine);
   if (winner && winner !== mine) {
-    await L.deleteComment(mine);
-    throw new Exit(3, `${issue.identifier} was claimed by another session first`);
+    await tracker.deleteComment(id, mine);
+    throw new Exit(3, `${id} was claimed by another session first`);
   }
-  print(Boolean(a.flags.json), issueSummary(issue), () =>
-    `claimed ${issue.identifier}: work on branch ${issue.branchName} in ${repoOf(issue) ?? "?"} (autonomy ${autonomy(issue)})`);
+  print(Boolean(a.flags.json), summary(ticket), () => `claimed ${id}: branch ${ticket.branchName} in ${ticket.repo ?? "?"}, autonomy ${autonomy(ticket)}, PR body says "${ticket.closes}"`);
   return 0;
 }
 
 async function ticketHandback(a: Args) {
-  const id = a._[2];
+  const id = idArg(a, "usage: factory ticket handback <ID> --brief-file <path>");
   const file = str(a.flags["brief-file"]);
-  if (!id || !file) throw new Exit(64, "usage: factory ticket handback <ID> --brief-file <path>");
-  const issue = await L.getIssue(id);
-  await L.comment(issue.id, readFileSync(file, "utf8").trim());
+  if (!file) throw new Exit(64, "usage: factory ticket handback <ID> --brief-file <path>");
+  const tracker = trackerFor(id);
+  const { comments } = await tracker.get(id);
+  await tracker.comment(id, readFileSync(file, "utf8").trim());
   // The claim belonged to this attempt; the next attempt claims afresh.
-  for (const c of issue.comments.nodes.filter((c) => c.body.includes(`<!-- ${CLAIM_PREFIX} -->`))) await L.deleteComment(c.id);
-  const labelled = await L.swapLabels(issue, READY_LABEL, HUMAN_LABEL);
-  const todo = await L.firstState(issue.team.id, "unstarted");
-  if (todo) await L.updateIssue(issue.id, { stateId: todo });
-  console.log(`handed ${issue.identifier} back${labelled ? ` (${HUMAN_LABEL})` : `; no ${HUMAN_LABEL} label exists in Linear, create it`}`);
+  for (const c of comments.filter(isClaim)) await tracker.deleteComment(id, c.id);
+  const { labelled } = await tracker.handBack(id);
+  console.log(`handed ${id} back${labelled ? ` (${HUMAN_LABEL})` : `; no ${HUMAN_LABEL} label exists in the tracker, create it`}`);
   return 0;
 }
 
 async function brief(a: Args) {
-  const issues = await L.briefIssues();
+  const trackers = enabledTrackers();
+  if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
+  const tickets = (await Promise.all(trackers.map((t) => t.portfolio()))).flat();
   const weekAgo = Date.now() - 7 * 864e5;
-  const prsOf = (i: Issue) => i.attachments.nodes.map((n) => n.url).filter((u) => /github\.com\/.+\/pull\/\d+/.test(u));
-  const prStatus = (url: string) => {
+  const prStatus = async (url: string) => {
     try {
-      return statusOf(gh.resolvePr(url, undefined)).status;
+      return (await statusOf(forge.resolvePr(url, undefined))).status;
     } catch {
       return null;
     }
   };
-  const handedBack = issues.filter((i) => labelNames(i).includes(HUMAN_LABEL) && !["completed", "canceled"].includes(i.state.type));
-  const running = issues.filter((i) => i.state.type === "started" && !handedBack.includes(i));
-  const { ready, skipped } = nextTickets(issues.filter((i) => labelNames(i).includes(READY_LABEL)));
-  const landed = issues.filter((i) => i.completedAt && Date.parse(i.completedAt) > weekAgo);
-  const runningWithPrs = running.map((i) => ({ ...issueSummary(i), prs: prsOf(i).map((u) => ({ url: u, status: prStatus(u) })) }));
+  const handedBack = tickets.filter((t) => t.labels.includes(HUMAN_LABEL) && (t.state === "queued" || t.state === "started"));
+  const running = tickets.filter((t) => t.state === "started" && !handedBack.includes(t));
   // pstack's audit rule: progress is a side effect. Started, no PR and no
   // update for hours means the session died after claiming.
-  const stalled = running.filter((i) => prsOf(i).length === 0 && i.updatedAt && Date.now() - Date.parse(i.updatedAt) > STALL_MS);
-  const data = {
-    handedBack: handedBack.map(issueSummary),
-    stalled: stalled.map(issueSummary),
-    running: runningWithPrs,
-    queued: { ready: ready.map(issueSummary), waiting: skipped },
-    landed: landed.map(issueSummary),
-  };
+  const stalled = running.filter((t) => t.prs.length === 0 && Date.now() - Date.parse(t.updatedAt) > STALL_MS);
+  const { ready, skipped } = nextTickets(tickets.filter((t) => t.labels.includes(READY_LABEL) && t.state === "queued"));
+  const landed = tickets.filter((t) => t.completedAt && Date.parse(t.completedAt) > weekAgo);
+  const runningWithPrs: (ReturnType<typeof summary> & { prs: { url: string; status: Status | null }[] })[] = [];
+  for (const t of running) runningWithPrs.push({ ...summary(t), prs: await Promise.all(t.prs.map(async (u) => ({ url: u, status: await prStatus(u) }))) });
+  const data = { handedBack: handedBack.map(summary), stalled: stalled.map(summary), running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
   print(Boolean(a.flags.json), data, () => {
-    const out: string[] = [];
-    out.push(`## Needs you`, ...handedBack.map((i) => `- ${i.identifier} ${i.title} — handed back`));
-    out.push(...stalled.map((i) => `- ${i.identifier} ${i.title} — stalled: started, no PR, quiet for over 3h`));
+    const out: string[] = ["## Needs you"];
+    out.push(...handedBack.map((t) => `- ${t.id} ${t.title} — handed back`));
+    out.push(...stalled.map((t) => `- ${t.id} ${t.title} — stalled: started, no PR, quiet for over 3h`));
     for (const r of runningWithPrs) {
       for (const p of r.prs) {
         if (p.status && (p.status.next === "human" || (p.status.verdict === "READY" && r.autonomy === "pr"))) {
-          out.push(`- ${r.identifier} ${p.url} — ${p.status.verdict === "READY" ? "ready, waiting on your merge" : "waiting on a review"}`);
+          out.push(`- ${r.id} ${p.url} — ${p.status.verdict === "READY" ? "ready, waiting on your merge" : "waiting on a review"}`);
         }
       }
     }
-    out.push(`## Running (${running.length})`);
-    for (const r of runningWithPrs) {
-      const pr = r.prs[0]?.status;
-      out.push(`- ${r.identifier} ${r.title}${pr ? ` — PR ${pr.verdict}` : " — no PR yet"}`);
-    }
-    out.push(`## Queued (${ready.length} ready, ${skipped.length} waiting)`, ...ready.map((i) => `- ${i.identifier} ${i.title}`));
-    out.push(`## Landed this week (${landed.length})`, ...landed.map((i) => `- ${i.identifier} ${i.title}`));
+    out.push(`## Running (${running.length})`, ...runningWithPrs.map((r) => `- ${r.id} ${r.title}${r.prs[0]?.status ? ` — PR ${r.prs[0].status.verdict}` : " — no PR yet"}`));
+    out.push(`## Queued (${ready.length} ready, ${skipped.length} waiting)`, ...ready.map((t) => `- ${t.id} ${t.title}`));
+    out.push(`## Landed this week (${landed.length})`, ...landed.map((t) => `- ${t.id} ${t.title}`));
     return out.join("\n");
   });
   return 0;
@@ -315,54 +305,48 @@ async function brief(a: Args) {
 
 type Check = { name: string; level: "ok" | "warn" | "fail"; detail: string };
 
-export function expectedSkills(agentsDir = AGENTS_DIR, mode = runtime()): string[] {
-  const lines = (file: string) => readFileSync(join(agentsDir, file), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-  const localOnly = mode === "cloud" ? lines("local-only.txt") : [];
-  const own = readdirSync(join(agentsDir, "skills"), { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !localOnly.includes(d.name))
+// Every skill folder next to this one must also be in ~/.claude/skills.
+export function expectedSkills(skillsDir = SKILLS_DIR): string[] {
+  return readdirSync(skillsDir, { withFileTypes: true })
+    .filter((d) => (d.isDirectory() || d.isSymbolicLink()) && existsSync(join(skillsDir, d.name, "SKILL.md")))
     .map((d) => d.name);
-  // Source lines look like owner/repo#<sha> skill...; the '#' is the pin,
-  // not a comment, and comment lines start with '#'.
-  const manifest = lines("skills.txt")
-    .filter((l) => /^[^\s#]+#[0-9a-f]{40}\s/.test(l))
-    .flatMap((l) => l.split(/\s+/).slice(1));
-  return [...own, ...manifest];
 }
 
 async function doctor(a: Args) {
   const checks: Check[] = [];
   const add = (name: string, level: Check["level"], detail: string) => checks.push({ name, level, detail });
-  add("runtime", "ok", `${runtime()}, bun ${Bun.version}`);
+  add("runtime", "ok", `${runtime()}, node ${process.version}`);
+  const login = forge.viewer();
+  add("gh", login ? "ok" : "fail", login ? `gh authenticated as ${login}` : "gh cannot reach GitHub: run `gh auth login` locally; in the cloud, connect GitHub to the session");
 
-  const login = gh.viewer();
-  add("github", login ? "ok" : "fail", login ? `gh authenticated as ${login}` : "gh cannot reach GitHub: run `gh auth login` locally; in the cloud, connect GitHub to the session");
-
-  try {
-    const me = await L.viewerId();
-    add("linear", "ok", `authenticated as ${me.name}`);
-  } catch (e) {
-    add("linear", "fail", (e as Error).message);
+  const trackers = enabledTrackers();
+  if (!trackers.length) add("trackers", "fail", "none: set LINEAR_API_KEY for Linear, FACTORY_GITHUB_REPOS=owner/a,owner/b for GitHub Issues");
+  for (const t of trackers) {
+    try {
+      const who = await t.viewer();
+      add(t.name, "ok", t.name === "github" ? `issues in ${githubRepos().join(", ")} as ${who}` : `authenticated as ${who}`);
+    } catch (e) {
+      add(t.name, "fail", (e as Error).message);
+    }
   }
 
-  const skillsDir = join(homedir(), ".claude", "skills");
-  const missing = expectedSkills().filter((s) => !existsSync(join(skillsDir, s, "SKILL.md")));
-  add("skills", missing.length ? "fail" : "ok", missing.length ? `missing in ${skillsDir}: ${missing.join(", ")} (run agents/install.sh)` : `all ${expectedSkills().length} installed`);
+  const skillsHome = join(homedir(), ".claude", "skills");
+  const missing = expectedSkills().filter((s) => !existsSync(join(skillsHome, s, "SKILL.md")));
+  add("skills", missing.length ? "fail" : "ok", missing.length ? `missing in ${skillsHome}: ${missing.join(", ")}` : `all ${expectedSkills().length} installed`);
 
-  const repo = gh.currentRepo();
-  const root = gh.repoRoot();
+  const repo = forge.currentRepo();
+  const root = forge.repoRoot();
   if (repo && root) {
-    const profileText = existsSync(join(root, PROFILE_PATH)) ? readFileSync(join(root, PROFILE_PATH), "utf8") : null;
-    const profile = parseProfile(profileText);
+    const path = join(root, PROFILE_PATH);
+    const profile = parseProfile(existsSync(path) ? readFileSync(path, "utf8") : null);
     add("profile", profile.found ? "ok" : "warn", profile.found
-      ? `${PROFILE_PATH}: max autonomy ${profile.maxAutonomy}, ${profile.gates.length} gate(s), ${profile.oneWayGlobs.length} one-way glob(s)`
+      ? `${PROFILE_PATH}: tracker ${profile.tracker ?? "?"}, max autonomy ${profile.maxAutonomy}, ${profile.gates.length} gate(s), ${profile.oneWayGlobs.length} one-way glob(s)`
       : `${repo.owner}/${repo.repo} has no ${PROFILE_PATH}: run /setup-factory`);
-    const verify = profile.verifySkill ?? [".claude/skills", ".cursor/skills"]
+    const verify = profile.verifySkill ?? [".claude/skills", ".agents/skills"]
       .map((d) => join(root, d))
       .filter((d) => existsSync(d))
       .flatMap((d) => readdirSync(d).filter((n) => n.startsWith("verify-")).map((n) => join(d, n)))[0];
-    add("verify-skill", verify ? "ok" : "warn", verify
-      ? `${verify}`
-      : "no verification skill: agents cannot see the app run, so autonomy stays at pr (run /create-verification-skill)");
+    add("verify-skill", verify ? "ok" : "warn", verify ? `${verify}` : "no verification skill: agents cannot see the app run, so autonomy stays at pr (run /create-verification-skill)");
   } else {
     add("repo", "warn", "not inside a GitHub clone: repo checks skipped");
   }
@@ -373,12 +357,14 @@ async function doctor(a: Args) {
 
 const HELP = `factory — deterministic helpers for the ticket → PR → merge factory
 
-  factory doctor [--json]                     check gh, Linear, skills, repo profile, verify skill
+Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a clone.
+
+  factory doctor [--json]                     check gh, trackers, skills, repo profile, verify skill
   factory tickets next [--repo o/r|--here] [--json]
                                               tickets labelled ${READY_LABEL} whose blockers are done
   factory ticket show <ID> [--json]           normalized ticket: repo, autonomy, blockers, branch
   factory ticket claim <ID> [--session URL]   assign, start and comment; exit 3 if someone has it
-  factory ticket handback <ID> --brief-file F comment the brief, swap to ${HUMAN_LABEL}, back to Todo
+  factory ticket handback <ID> --brief-file F comment the brief, swap to ${HUMAN_LABEL}, back to the queue
   factory pr status [PR] [--repo o/r] [--json]
                                               merge-readiness verdict; exit code encodes it
   factory pr watch [PR] [--interval 60]       one line per change until merged or closed
@@ -389,6 +375,9 @@ const HELP = `factory — deterministic helpers for the ticket → PR → merge 
                                               merge only if the gate allows it; exit 3 with reasons if not
   factory brief [--json]                      portfolio: needs you, running, queued, landed
 
+Trackers: Linear when LINEAR_API_KEY is set (or \`linear auth login\` locally); GitHub Issues
+for the repos in FACTORY_GITHUB_REPOS and any repo whose .agents/factory.md names GitHub.
+
 Exit codes for pr status: READY 0, CONFLICT 2, THREADS 3, CI_FAILING 4, CHANGES_REQUESTED 5,
 DRAFT 6, BEHIND 7, CI_PENDING 10, COMPUTING 11, AWAITING_REVIEW 12, MERGED 20, CLOSED 21.`;
 
@@ -396,8 +385,8 @@ export async function main(argv: string[]): Promise<number> {
   const a = parseArgs(argv);
   const [group, sub] = a._;
   const routes: Record<string, (a: Args) => Promise<number>> = {
-    "doctor": doctor,
-    "brief": brief,
+    doctor,
+    brief,
     "tickets next": ticketsNext,
     "ticket show": ticketShow,
     "ticket claim": ticketClaim,
@@ -424,4 +413,4 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-if (import.meta.main) process.exit(await main(process.argv.slice(2)));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await main(process.argv.slice(2));

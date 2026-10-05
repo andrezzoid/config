@@ -1,9 +1,13 @@
-// A repo's factory profile lives in the repo itself at docs/agents/factory.md,
-// written by /setup-factory. Parsing is line-based on purpose: the file is for
-// humans first and the CLI reads only the few fields that gate a merge.
+// A repo's factory profile lives in the repo itself at .agents/factory.md,
+// written by /setup-factory: it concerns the agents working on the repo, not
+// the code. Parsing is line-based on purpose: the file is for humans first and
+// the CLI reads only the few fields that route tickets and gate a merge.
 
 export type Profile = {
   found: boolean;
+  tracker: "linear" | "github" | null;
+  // The Linear team key, when the tracker is Linear.
+  team: string | null;
   maxAutonomy: "merge" | "pr";
   mergeMethod: "squash" | "merge" | "rebase";
   oneWayGlobs: string[];
@@ -11,10 +15,12 @@ export type Profile = {
   verifySkill: string | null;
 };
 
-export const PROFILE_PATH = "docs/agents/factory.md";
+export const PROFILE_PATH = ".agents/factory.md";
 
 const DEFAULTS: Profile = {
   found: false,
+  tracker: null,
+  team: null,
   maxAutonomy: "pr",
   mergeMethod: "squash",
   oneWayGlobs: [],
@@ -50,7 +56,11 @@ export function parseProfile(text: string | null): Profile {
     if (!field) continue;
     const key = field[1].replace(/[*_]/g, "").trim().toLowerCase();
     const values = ticks(field[2]);
-    if (key === "max autonomy" && values[0] === "merge") p.maxAutonomy = "merge";
+    if (key === "tracker") {
+      const text = field[2].toLowerCase();
+      p.tracker = text.includes("github") ? "github" : text.includes("linear") ? "linear" : null;
+      p.team = p.tracker === "linear" ? (values[0] ?? null) : null;
+    } else if (key === "max autonomy" && values[0] === "merge") p.maxAutonomy = "merge";
     else if (key === "merge method" && ["squash", "merge", "rebase"].includes(values[0])) {
       p.mergeMethod = values[0] as Profile["mergeMethod"];
     } else if (key === "gates") p.gates.push(...values);

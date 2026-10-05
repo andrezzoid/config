@@ -1,21 +1,19 @@
-// GitHub adapter. REST only, because cloud sessions block GitHub GraphQL; the
-// one exception is review-thread resolution, which REST does not expose:
-// cloud sessions read it from the proxy's ccr route, local ones from GraphQL.
+// The forge: GitHub pull requests through `gh api`. REST only, because cloud
+// sessions block GitHub GraphQL; the one exception is review-thread
+// resolution, which REST does not expose: cloud sessions read it from the
+// proxy's ccr route, local ones from GraphQL.
 
-import { latestMarker, patchKey, type PrFacts } from "./pr";
+import { latestMarker, patchKey, type PrFacts } from "./pr.ts";
+import { git, run } from "./proc.ts";
 
 const GH = process.env.FACTORY_GH ?? "gh";
 
 export class GhError extends Error {}
 
 export function gh(args: string[], input?: string): string {
-  const p = Bun.spawnSync([GH, ...args], {
-    stdin: input === undefined ? "ignore" : new TextEncoder().encode(input),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (p.exitCode !== 0) throw new GhError(`gh ${args.slice(0, 2).join(" ")}: ${p.stderr.toString().trim()}`);
-  return p.stdout.toString();
+  const r = run(GH, args, input);
+  if (r.code !== 0) throw new GhError(`gh ${args.slice(0, 2).join(" ")}: ${r.stderr.trim()}`);
+  return r.stdout;
 }
 
 type ApiOpts = { method?: string; accept?: string; body?: unknown };
@@ -50,11 +48,6 @@ export type Repo = { owner: string; repo: string };
 export function parseRepo(spec: string): Repo | null {
   const m = /([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(spec.trim());
   return m ? { owner: m[1], repo: m[2] } : null;
-}
-
-function git(args: string[]): string | null {
-  const p = Bun.spawnSync(["git", ...args], { stdout: "pipe", stderr: "pipe" });
-  return p.exitCode === 0 ? p.stdout.toString().trim() : null;
 }
 
 export function currentRepo(): Repo | null {

@@ -1,79 +1,58 @@
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseProfile } from "../src/profile";
-import { autonomy, byPriority, claimBody, claimWinner, nextTickets, readiness, repoOf, ticketFromBranch } from "../src/tickets";
-import { issue } from "./fixtures";
-
+import { describe, test } from "node:test";
+import { parseProfile } from "../scripts/profile.ts";
+import { autonomy, byPriority, claimBody, claimWinner, nextTickets, readiness, slug, ticketFromBranch } from "../scripts/tickets.ts";
+import { blockedByRefs, closedIssue, toTicket as githubTicket } from "../scripts/trackers/github.ts";
+import { normalizeId, trackerOf } from "../scripts/trackers/index.ts";
+import { repoOf, toTicket as linearTicket } from "../scripts/trackers/linear.ts";
+import { expect } from "./expect.ts";
+import { githubIssue, linearIssue, ticket } from "./fixtures.ts";
 
 describe("readiness", () => {
-  test("labelled, unstarted, unblocked and with a repo is ready", () => {
-    expect(readiness(issue())).toEqual({ ready: true });
+  test("labelled, queued, unblocked and with a repo is ready", () => {
+    expect(readiness(ticket())).toEqual({ ready: true });
   });
 
   test("each missing condition names itself", () => {
-    expect(readiness(issue({ labels: [] }))).toEqual({ ready: false, reason: "no ready-for-agent label" });
-    expect(readiness(issue({ state: { name: "In Progress", type: "started" } })).ready).toBe(false);
-    expect(readiness(issue({ description: "no repo here" }))).toEqual({ ready: false, reason: "no Repo: line or GitHub attachment" });
+    expect(readiness(ticket({ labels: [] }))).toEqual({ ready: false, reason: "no ready-for-agent label" });
+    expect(readiness(ticket({ state: "started", stateName: "In Progress" }))).toEqual({ ready: false, reason: "state is In Progress" });
+    expect(readiness(ticket({ repo: null }))).toEqual({ ready: false, reason: "no repository: add a Repo: owner/name line" });
   });
 
-  test("an open blocker blocks; a done or canceled one does not", () => {
-    const blocked = issue({
-      inverseRelations: {
-        nodes: [
-          { type: "blocks", issue: { identifier: "ENG-0", state: { type: "started" } } },
-          { type: "related", issue: { identifier: "ENG-9", state: { type: "started" } } },
-        ],
-      },
-    });
-    expect(readiness(blocked)).toEqual({ ready: false, reason: "blocked by ENG-0" });
-    const done = issue({ inverseRelations: { nodes: [{ type: "blocks", issue: { identifier: "ENG-0", state: { type: "completed" } } }] } });
-    expect(readiness(done).ready).toBe(true);
+  test("an open blocker blocks; a done one does not", () => {
+    expect(readiness(ticket({ blockers: [{ id: "ENG-0", title: "", done: false }] }))).toEqual({ ready: false, reason: "blocked by ENG-0" });
+    expect(readiness(ticket({ blockers: [{ id: "ENG-0", title: "", done: true }] })).ready).toBe(true);
   });
 
   test("a parent with open children is a spec, not a slice", () => {
-    const parent = issue({ children: { nodes: [{ identifier: "ENG-2", state: { type: "unstarted" } }] } });
-    expect(readiness(parent)).toEqual({ ready: false, reason: "parent of 1 open ticket(s)" });
+    expect(readiness(ticket({ openChildren: 1 }))).toEqual({ ready: false, reason: "parent of 1 open ticket(s)" });
   });
 
   test("--repo filters to one repository, case-insensitively", () => {
-    expect(readiness(issue(), { repo: "AndreZzoid/App" }).ready).toBe(true);
-    expect(readiness(issue(), { repo: "andrezzoid/other" })).toEqual({ ready: false, reason: "belongs to andrezzoid/app" });
-  });
-});
-
-describe("repoOf", () => {
-  test.each([
-    ["Repo: andrezzoid/app", "andrezzoid/app"],
-    ["**Repo:** `andrezzoid/app`", "andrezzoid/app"],
-    ["repository: https://github.com/Org/Thing.git", "org/thing"],
-    ["> Repo: org/my.repo", "org/my.repo"],
-  ])("%s", (description, expected) => {
-    expect(repoOf({ description, attachments: { nodes: [] } })).toBe(expected);
-  });
-
-  test("falls back to a GitHub attachment", () => {
-    expect(repoOf({ description: null, attachments: { nodes: [{ url: "https://github.com/org/app/pull/3" }] } })).toBe("org/app");
+    expect(readiness(ticket(), { repo: "AndreZzoid/App" }).ready).toBe(true);
+    expect(readiness(ticket(), { repo: "andrezzoid/other" })).toEqual({ ready: false, reason: "belongs to andrezzoid/app" });
   });
 });
 
 describe("autonomy", () => {
   test("flat label, label group, or default", () => {
-    expect(autonomy(issue({ labels: ["autonomy:merge"] }))).toBe("merge");
-    expect(autonomy({ labels: { nodes: [{ name: "merge", parent: { name: "Autonomy" } }] } })).toBe("merge");
-    expect(autonomy(issue({ labels: ["autonomy:pr"] }))).toBe("pr");
-    expect(autonomy(issue())).toBe("pr");
+    expect(autonomy(ticket({ labels: ["autonomy:merge"] }))).toBe("merge");
+    const grouped = { ...linearIssue(), labels: { nodes: [{ name: "Merge", parent: { name: "Autonomy" } }] } };
+    expect(autonomy(linearTicket(grouped))).toBe("merge");
+    expect(autonomy(ticket({ labels: ["autonomy:pr"] }))).toBe("pr");
+    expect(autonomy(ticket())).toBe("pr");
   });
 });
 
 describe("ordering and claims", () => {
   test("urgent first, no-priority last, then oldest", () => {
-    const a = issue({ identifier: "A", priority: 0 });
-    const b = issue({ identifier: "B", priority: 1 });
-    const c = issue({ identifier: "C", priority: 3, createdAt: "2026-01-01T00:00:00Z" });
-    const d = issue({ identifier: "D", priority: 3, createdAt: "2026-02-01T00:00:00Z" });
-    expect([a, d, c, b].sort(byPriority).map((i) => i.identifier)).toEqual(["B", "C", "D", "A"]);
-    expect(nextTickets([a, issue({ identifier: "X", labels: [] })]).skipped).toEqual([{ identifier: "X", reason: "no ready-for-agent label" }]);
+    const a = ticket({ id: "A", priority: 0 });
+    const b = ticket({ id: "B", priority: 1 });
+    const c = ticket({ id: "C", priority: 3, createdAt: "2026-01-01T00:00:00Z" });
+    const d = ticket({ id: "D", priority: 3, createdAt: "2026-02-01T00:00:00Z" });
+    expect([a, d, c, b].sort(byPriority).map((t) => t.id)).toEqual(["B", "C", "D", "A"]);
+    expect(nextTickets([a, ticket({ id: "X", labels: [] })]).skipped).toEqual([{ id: "X", reason: "no ready-for-agent label" }]);
   });
 
   test("the oldest claim inside the race window wins", () => {
@@ -93,24 +72,126 @@ describe("ordering and claims", () => {
     expect(claimWinner(comments, "mine")).toBe("mine");
   });
 
-  test.each([
-    ["andre/eng-123-fix-login", "ENG-123"],
-    ["eng-7", "ENG-7"],
-    ["feature/ABC2-44_thing", "ABC2-44"],
-    ["main", null],
-  ])("ticket from branch %s", (branch, expected) => {
-    expect(ticketFromBranch(branch)).toBe(expected);
+  for (const [branch, repo, expected] of [
+    ["andre/eng-123-fix-login", "o/r", "ENG-123"],
+    ["eng-7", null, "ENG-7"],
+    ["feature/ABC2-44_thing", null, "ABC2-44"],
+    ["issue-12-fix-login", "o/r", "o/r#12"],
+    ["andre/issue-3", "o/r", "o/r#3"],
+    ["issue-12-fix-login", null, null],
+    ["main", "o/r", null],
+  ] as const) {
+    test(`ticket from branch ${branch} in ${repo}`, () => {
+      expect(ticketFromBranch(branch, repo)).toBe(expected);
+    });
+  }
+
+  test("slugs are short, ascii and hyphenated", () => {
+    expect(slug("Café: fix the  Login flow!")).toBe("cafe-fix-the-login-flow");
+    expect(slug("a".repeat(60)).length).toBe(40);
+  });
+});
+
+describe("ticket ids", () => {
+  test("the id says which tracker owns the ticket", () => {
+    expect(trackerOf("ENG-12")).toBe("linear");
+    expect(trackerOf("andrezzoid/app#12")).toBe("github");
+    expect(trackerOf("#12")).toBe("github");
+    expect(trackerOf("12")).toBe(null);
+  });
+
+  test("#12 needs the repository at hand", () => {
+    expect(normalizeId("#12", "AndreZzoid/App")).toBe("andrezzoid/app#12");
+    expect(normalizeId("eng-4", null)).toBe("ENG-4");
+    expect(() => normalizeId("#12", null)).toThrow(/needs a repository/);
+  });
+});
+
+describe("Linear adapter", () => {
+  for (const [description, expected] of [
+    ["Repo: andrezzoid/app", "andrezzoid/app"],
+    ["**Repo:** `andrezzoid/app`", "andrezzoid/app"],
+    ["repository: https://github.com/Org/Thing.git", "org/thing"],
+    ["> Repo: org/my.repo", "org/my.repo"],
+  ]) {
+    test(`repo from "${description}"`, () => {
+      expect(repoOf({ description, attachments: { nodes: [] } })).toBe(expected);
+    });
+  }
+
+  test("repo falls back to a GitHub attachment", () => {
+    expect(repoOf({ description: null, attachments: { nodes: [{ url: "https://github.com/org/app/pull/3" }] } })).toBe("org/app");
+  });
+
+  test("normalizes state, blockers, children and linked PRs", () => {
+    const t = linearTicket(linearIssue({
+      state: { name: "In Review", type: "started" },
+      inverseRelations: { nodes: [
+        { type: "blocks", issue: { identifier: "ENG-0", title: "First", state: { type: "canceled" } } },
+        { type: "related", issue: { identifier: "ENG-9", state: { type: "started" } } },
+      ] },
+      children: { nodes: [{ identifier: "ENG-2", state: { type: "unstarted" } }, { identifier: "ENG-3", state: { type: "completed" } }] },
+      attachments: { nodes: [{ url: "https://github.com/o/r/pull/4" }, { url: "https://figma.com/x" }] },
+    }));
+    expect(t).toMatchObject({
+      id: "ENG-1",
+      tracker: "linear",
+      state: "started",
+      stateName: "In Review",
+      repo: "andrezzoid/app",
+      blockers: [{ id: "ENG-0", title: "First", done: true }],
+      openChildren: 1,
+      prs: ["https://github.com/o/r/pull/4"],
+      closes: "Closes ENG-1",
+    });
+  });
+});
+
+describe("GitHub adapter", () => {
+  test("an open labelled issue is a queued ticket in its repository", () => {
+    expect(githubTicket(githubIssue(), "o/r")).toMatchObject({
+      id: "o/r#12",
+      tracker: "github",
+      state: "queued",
+      repo: "o/r",
+      branchName: "issue-12-app-do-the-thing",
+      closes: "Closes #12",
+      openChildren: 0,
+    });
+  });
+
+  test("in-progress means started; closed means done unless not planned", () => {
+    expect(githubTicket(githubIssue({ labels: ["ready-for-agent", "In-Progress"] }), "o/r").state).toBe("started");
+    expect(githubTicket(githubIssue({ state: "closed", state_reason: "completed", closed_at: "2026-10-02T00:00:00Z" }), "o/r")).toMatchObject({ state: "done", completedAt: "2026-10-02T00:00:00Z" });
+    expect(githubTicket(githubIssue({ state: "closed", state_reason: "not_planned" }), "o/r").state).toBe("canceled");
+  });
+
+  test("open sub-issues make the issue a parent", () => {
+    expect(githubTicket(githubIssue({ sub_issues_summary: { total: 3, completed: 1 } }), "o/r").openChildren).toBe(2);
+  });
+
+  test("Blocked by lines name blockers when native dependencies are not used", () => {
+    expect(blockedByRefs("Do it.\n\nBlocked by: #3, #4\n**Blocked by** #4 and #9")).toEqual([3, 4, 9]);
+    expect(blockedByRefs("Fixes #3")).toEqual([]);
+  });
+
+  test("a PR closes an issue by keyword or by branch name", () => {
+    expect(closedIssue({ body: "Small fix.\n\nCloses #12", head: { ref: "x" } })).toBe(12);
+    expect(closedIssue({ body: "", head: { ref: "issue-7-thing" } })).toBe(7);
+    expect(closedIssue({ body: "See #12", head: { ref: "main" } })).toBe(null);
   });
 });
 
 describe("profile", () => {
   // The template /setup-factory copies into each repo: if it drifts from the
   // parser, this fails.
-  const template = readFileSync(join(import.meta.dir, "../../skills/setup-factory/references/profile-template.md"), "utf8");
+  const template = readFileSync(join(import.meta.dirname, "../../setup-factory/references/profile-template.md"), "utf8");
 
-  test("reads the fields that gate a merge from the setup-factory template", () => {
+  test("reads the fields that route tickets and gate a merge from the setup-factory template", () => {
     expect(parseProfile(template)).toEqual({
       found: true,
+      tracker: "linear",
+      team: "ENG",
       maxAutonomy: "pr",
       mergeMethod: "squash",
       gates: ["pnpm lint", "pnpm typecheck", "pnpm test"],
@@ -119,13 +200,17 @@ describe("profile", () => {
     });
   });
 
+  test("a GitHub Issues tracker has no team", () => {
+    expect(parseProfile("- **Tracker:** GitHub Issues")).toMatchObject({ tracker: "github", team: null });
+  });
+
   test("an edited profile raises autonomy and changes the method", () => {
     const edited = template.replace("**Max autonomy:** `pr`", "**Max autonomy:** `merge`").replace("`squash`", "`rebase`");
     expect(parseProfile(edited)).toMatchObject({ maxAutonomy: "merge", mergeMethod: "rebase" });
   });
 
   test("no profile means the conservative defaults", () => {
-    expect(parseProfile(null)).toMatchObject({ found: false, maxAutonomy: "pr", mergeMethod: "squash", oneWayGlobs: [] });
+    expect(parseProfile(null)).toMatchObject({ found: false, tracker: null, maxAutonomy: "pr", mergeMethod: "squash", oneWayGlobs: [] });
   });
 
   test("bare globs and an unhyphenated heading still count as doors", () => {

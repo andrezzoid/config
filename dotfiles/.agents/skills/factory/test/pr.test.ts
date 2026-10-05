@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, test } from "node:test";
+import { expect } from "./expect.ts";
 import {
   classifyChecks,
   classifyReviews,
@@ -10,7 +11,7 @@ import {
   touchedOneWay,
   verification,
   type PrFacts,
-} from "../src/pr";
+} from "../scripts/pr.ts";
 
 const SHA = "a".repeat(40);
 

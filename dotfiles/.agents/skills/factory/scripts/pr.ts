@@ -1,6 +1,9 @@
-// Pure merge-readiness policy. No I/O here: the adapters in gh.ts gather
-// PrFacts and every decision about them lives in this file, so it is tested
-// without a network.
+// Pure merge-readiness policy. No I/O here: forge.ts gathers PrFacts and
+// every decision about them lives in this file, so it is tested without a
+// network.
+
+import { createHash } from "node:crypto";
+import { matchesGlob } from "node:path";
 
 export type CheckRun = {
   id?: number;
@@ -189,8 +192,7 @@ export function verification(marker: VerdictMarker | null, headSha: string, patc
 
 export function touchedOneWay(files: string[], globs: string[]): string[] {
   if (globs.length === 0) return [];
-  const matchers = globs.map((g) => new Bun.Glob(g));
-  return files.filter((f) => matchers.some((m) => m.match(f)));
+  return files.filter((f) => globs.some((g) => matchesGlob(f, g)));
 }
 
 export type Status = {
@@ -325,5 +327,5 @@ export function patchKey(diff: string): string {
       kept.push(line);
     }
   }
-  return new Bun.CryptoHasher("sha256").update(kept.join("\n")).digest("hex").slice(0, 40);
+  return createHash("sha256").update(kept.join("\n")).digest("hex").slice(0, 40);
 }

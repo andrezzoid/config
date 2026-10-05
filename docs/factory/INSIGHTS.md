@@ -1,15 +1,19 @@
 # Insights behind the factory
 
-Two sources, both transcribed with yt-dlp on 2026-10-05:
+Two talks:
 
 - **[T]** poteto (Lauren Tan, Grok Bot at SpaceX AI), "here's how i shipped
-  2,500 PRs last month to production", X video, 38 min.
+  2,500 PRs last month to production", X video, 38 min:
+  https://x.com/poteto/status/2102050467505430555
 - **[I]** Matt Pocock's live interview with poteto, "Poteto (creator of pstack)
-  on shipping 1,000's of PR's a month at SpaceX", YouTube, 66 min, 2026-10-02.
+  on shipping 1,000's of PR's a month at SpaceX", YouTube, 66 min, 2026-10-02:
+  https://www.youtube.com/live/MN9dGgmLyso
 
-Each insight is crossed with poteto's skills (pstack, `cursor/plugins` at
-`4e5b1cf`) and Matt Pocock's (`mattpocock/skills` at `24fe0ef`). The last line
-of each entry says what it became here. Timestamps are mm:ss into the video.
+Each insight is crossed with poteto's skills
+([pstack](https://github.com/cursor/plugins/tree/main/pstack), at `4e5b1cf`)
+and Matt Pocock's ([mattpocock/skills](https://github.com/mattpocock/skills),
+at `24fe0ef`). The last line of each entry says what it became here.
+Timestamps are mm:ss into the video.
 
 ## Trust and verification
 
@@ -91,8 +95,8 @@ see it copied again, and files the bad example instead of following it.
 **10. Make the easy path the right path.** "Agents love taking shortcuts. So what
 if we design the framework such that the shortcut ... is the right path." [T 19:00]
 **Here:** applied to the harness itself: `factory pr merge` is the only merge
-path, the raw ones are blocked by a hook, and the profile is read from the base
-branch so a branch cannot loosen its own rules.
+path, the factory mod denies the raw ones, and the profile is read from the
+base branch so a branch cannot loosen its own rules.
 
 **11. Ban comments that justify workarounds.** Agents used them "as
 justification for why it wasn't going to solve the actual problem". [T 23:00]
@@ -166,12 +170,14 @@ mechanics (watch loops, check parsing, merge rules) moved into the CLI.
 **23. Put determinism in code, judgment in the agent.** "Extract out the
 deterministic parts and turn that into code." [I 21:00] Matt: a deterministic
 outer loop "is faster, cheaper, and more reliable".
-**Here:** the `factory` CLI, covered by `bun test` in `agents/`.
+**Here:** the `factory` CLI, zero-dependency TypeScript on Node, with a test
+suite of its own.
 
 **24. Carry your own knives.** "Every chef when they go to a different
 restaurant, they bring their knives with them." [I 1:01:30]
-**Here:** one installer, one pinned manifest, the same harness on the Mac and in
-every cloud session, with no skill committed to any work repo.
+**Here:** one dotfiles folder, one pinned lock file, the same harness on the
+Mac (stow) and in every cloud session (`cloud-setup.sh`), with no skill
+committed to any work repo.
 
 **25. Language is the interface.** The bottleneck is "the transfer of your
 intent" [I 08:00]; words like "tautological tests" carry intent in one token.

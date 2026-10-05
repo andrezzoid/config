@@ -1,101 +1,205 @@
-# Factory design
+# Factory
 
-The factory turns an approved Linear ticket into a merged PR with nobody
-watching, and stops at the exact point where only André can move it. It
-replaces ddd2, whose 33-session assessment is in [NOTES-2026-09.md](NOTES-2026-09.md),
-and it rests on the insights in [INSIGHTS.md](INSIGHTS.md).
+The factory turns an approved ticket into a merged pull request with nobody
+watching, and stops at the exact point where only André can move it. It runs
+the same on the Mac and in Claude Code cloud sessions, and reads tickets from
+Linear or GitHub Issues. The ideas behind it, and where each came from, are in
+[INSIGHTS.md](INSIGHTS.md).
 
-## What changed from the September notes
+## Stages
 
-The notes' four stages (Shape, Iterate, Babysit, Upkeep) and their artifacts
-stand: the ticket body is agreed state, comments are the event log, working
-notes are disposable, briefs come in two kinds. Five things are new.
+```mermaid
+flowchart LR
+  subgraph Shape["Shape · André drives"]
+    direction TB
+    G[grill-with-docs] --> S[to-spec] --> P1[poke-holes on the theory] --> T[to-tickets]
+  end
+  subgraph Iterate["Iterate · per ticket, autonomous"]
+    direction TB
+    I[implement] --> V[gates · live proof · poke-holes] --> D{acceptance holds?}
+    D -- yes --> PR[open PR + verdict]
+  end
+  subgraph Babysit["Babysit · human on the loop"]
+    direction TB
+    B[babysit-pr] --> M{merge gate}
+  end
+  Shape -- "ready-for-agent" --> Iterate
+  D -- "no: hand back" --> Shape
+  PR --> Babysit
+  M -- "allowed" --> Merged((merged))
+  M -- "refused" --> Human((André merges))
+  Upkeep["Upkeep · routines<br/>dispatch · brief · garden"] -.-> Shape
+  Upkeep -.-> Iterate
+  Upkeep -.-> Babysit
+```
 
-1. **Trust is granted per ticket and per repo, and enforced in code.** The notes
-   said autonomy is set per ticket. Now it is a label (`autonomy:merge`), the
-   repo caps it in `docs/agents/factory.md`, and the `factory` CLI is the only
-   merge path. A hook blocks every other one.
-2. **Verification is the trust lever.** A green test run is a gate. A PR may
-   merge itself only with live proof from the repo's verification skill and an
-   independent verdict recorded for its head SHA. A repo without a verification
-   skill stays at autonomy `pr`.
-3. **The deterministic half is a CLI.** Readiness, claims, PR state, verdicts,
-   the merge gate and the brief's data come from `factory`, tested and identical
-   on the Mac and in the cloud. Skills keep only judgment.
-4. **The outer loop runs on events.** Routines dispatch, report and garden;
-   PR events wake the session that owns the PR. No agent polls in its own
-   context.
-5. **The harness travels without touching any repo.** One installer links the
-   skills into `~/.claude` on the Mac and in every cloud session. Repos carry
-   only their own profile and, when they have one, their verification skill.
+| Stage | Driven by | Skills | Produces |
+|---|---|---|---|
+| Shape | André, interviewed | grilling, grill-with-docs, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
+| Iterate | an agent per ticket | implement, test-driven-development, poke-holes | a PR with live evidence and a recorded verdict |
+| Babysit | an agent per PR | babysit-pr | a merged PR, or a brief saying what André must do |
+| Upkeep | routines | factory (dispatch, brief, garden), correct | started sessions, the standing brief, a garden log |
 
-## Where each decision lives
+Shape is the only stage that changes what a ticket means. When Iterate finds
+that acceptance cannot hold, it hands the ticket back instead of absorbing the
+change, and the definition is reshaped on André's command.
+
+## A ticket's life
+
+```mermaid
+sequenceDiagram
+  actor A as André
+  participant T as Tracker
+  participant R as Dispatch routine
+  participant I as implement session
+  participant F as factory CLI
+  participant GH as GitHub
+  A->>T: label ready-for-agent (and autonomy:merge)
+  R->>F: factory tickets next
+  F->>T: labelled, queued, blockers done, not a parent
+  R->>I: one session per ready ticket: /implement ID
+  I->>F: factory ticket claim ID
+  F->>T: assign, start, comment, read back: oldest claim wins
+  I->>I: build test-first, gates, live proof, fresh reviewers
+  I->>GH: push branch, open PR ending in the Closes line
+  I->>F: factory pr verdict PR --sha HEAD --result pass
+  I->>F: babysit: factory pr status, fix, sleep until the next event
+  I->>F: factory pr merge PR
+  F->>GH: merge pinned to the head SHA, only if the gate allows
+  GH->>T: Closes line closes the ticket
+```
+
+## Who decides what
 
 | Decision | Owner | Mechanism |
 |---|---|---|
 | What to build | André | grilling, to-spec, to-tickets, his approval |
 | Whether to start | André | `ready-for-agent` label |
-| Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the profile |
-| Which ticket is next | CLI | `factory tickets next`: label, state, blockers, not a parent, has a repo |
-| Who works it | CLI | `factory ticket claim`: first write wins, the loser withdraws |
-| Whether it works | agent, then fresh agents | gates, live proof, poke-holes, `factory pr verdict` |
-| Whether GitHub would merge it | CLI | `factory pr status`: conflicts → threads → CI → reviews |
-| Whether it merges | CLI | `factory pr merge`: the gate in the README |
-| What André must look at | CLI + agent | `factory brief`, then `/factory brief` writes it up |
+| Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the repo profile |
+| Which ticket is next | CLI | `factory tickets next` |
+| Who works it | CLI | `factory ticket claim`: first write, oldest claim in a 15-minute window wins |
+| Whether it works | agent, then fresh agents | gates, the repo's verification skill, poke-holes, `factory pr verdict` |
+| Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
+| Whether it merges | CLI | `factory pr merge`, below |
+| What André must look at | CLI, then agent | `factory brief`, written up by `/factory brief` |
+
+Skills hold judgment. Everything with one right answer lives in the `factory`
+CLI, so every session reaches it the same way.
+
+## Pieces
+
+```mermaid
+flowchart TB
+  subgraph dotfiles["config repo · dotfiles/.agents"]
+    AG[AGENTS.md]
+    SK["skills/ (own + vendored, pinned in .skill-lock.json)"]
+    subgraph FS["skills/factory"]
+      MD[SKILL.md]
+      BIN[bin/factory → scripts/cli.ts]
+      MOD["hooks/register.ts (the mod)"]
+      TR["scripts/trackers: linear.ts, github.ts"]
+    end
+  end
+  Mac["Mac: stow → ~/.agents, ~/.claude"]
+  Cloud["Cloud: cloud-setup.sh → ~/.agent-config, links in ~/.claude"]
+  dotfiles --> Mac
+  dotfiles --> Cloud
+  subgraph repo["each work repo"]
+    PF[".agents/factory.md (profile)"]
+    VS[".claude/skills/verify-* (verification skill)"]
+  end
+  Mac --> repo
+  Cloud --> repo
+```
+
+- **Skills** live once, in `dotfiles/.agents/skills`. `dotfiles/.claude/skills`
+  links to them, so Claude Code and every harness that reads `~/.agents` load
+  the same files. Third-party skills are vendored and pinned, so they can be
+  tuned and still diffed against upstream.
+- **The `factory` CLI** is zero-dependency TypeScript run by Node 22.18+ type
+  stripping. `bin/factory` is the entry point.
+- **The factory mod.** The factory skill folder is also a Claude Code mod,
+  loaded from `~/.claude/skills/factory` with nothing in `settings.json`. At
+  session start it puts `bin/` on PATH; in the cloud it re-runs
+  `cloud-setup.sh`, which pulls the latest harness. On every tool call it denies
+  a raw merge (`gh pr merge`, the merge API, the GitHub MCP merge tools) and a
+  plain force push. It applies inside subagents too.
+- **The repo profile**, `.agents/factory.md`, written by `/setup-factory`:
+  tracker, max autonomy, merge method, gates, verify skill and one-way doors.
+  The CLI reads it from the base branch, so a branch cannot raise its own
+  autonomy.
+- **The verification skill**, one per repo, made with
+  `/create-verification-skill`. Without one a repo stays at autonomy `pr`.
+
+## Trackers
+
+Ticket policy works on one normalized ticket; each tracker is an adapter
+behind the same interface (`scripts/trackers/types.ts`). Adding Todoist means
+adding one adapter.
+
+| | Linear | GitHub Issues |
+|---|---|---|
+| Id | `ENG-123` | `owner/repo#12`, or `#12` inside a clone |
+| Enabled by | `LINEAR_API_KEY`, or `linear auth login` on the Mac | `FACTORY_GITHUB_REPOS`, or a profile naming GitHub |
+| Queued / started | workflow state type | open / open with `in-progress` |
+| Blockers | "blocked by" relations | issue dependencies, or a `## Blocked by` section |
+| Parent | children | sub-issues |
+| Repo | `Repo: owner/name` line in the body | the issue's repository |
+| PR closes it with | `Closes ENG-123` | `Closes #12` |
+| Transport | GraphQL over fetch | `gh api` REST only: cloud sessions block GitHub GraphQL |
+
+In a cloud environment on Pro or Max, the Linear key can be an API credential
+the proxy adds to requests; `LINEAR_API_KEY=proxy-injected` tells the CLI to
+send none of its own.
 
 ## Events
 
 | Event | Cloud | Mac |
 |---|---|---|
-| Ticket queued | hourly `factory dispatch` routine | `/factory dispatch --here` |
-| PR activity on a cloud PR | `subscribe_pr_activity` wakes the owner | n/a |
-| PR activity on a local PR | GitHub-event routine on label `factory` | Monitor on `factory pr watch` |
-| Morning | `factory brief` routine, push notification | `/factory` |
-| Weekly | `factory garden` routine per repo | `/factory garden` |
+| Ticket queued | hourly dispatch routine | `/factory dispatch --here` |
+| Activity on a PR opened in the cloud | `subscribe_pr_activity` wakes the session that owns it | n/a |
+| Activity on a PR opened on the Mac | label it `factory`: a GitHub-event routine babysits it | Monitor on `factory pr watch` |
+| Morning | brief routine, weekdays | `/factory` |
+| Weekly | garden routine per repo | `/factory garden` |
 
-Linear has no routine trigger, so dispatch polls hourly. If an hour is too slow,
-the upgrade is a small relay that turns Linear's webhook into a routine API call
-(`POST /v1/claude_code/routines/<id>/fire`); it is not built because nothing yet
-says an hour is too slow.
+Neither Linear nor GitHub issue events can start a routine, so dispatch polls
+hourly. `/setup-factory cloud` gives each routine's exact trigger, repositories
+and prompt.
 
-## Bright lines
+## The merge gate
 
-Mechanize the bright lines, never the judgment (from the ddd-hooks note).
+`factory pr merge` merges only when all of these hold, and pins the merge to
+the head SHA it checked:
 
-- No merge outside `factory pr merge`. The PreToolUse hook enforces that against
-  drift, not against intent: an agent set on it can still script the API. The
-  wall is the forge's branch protection, so a repo whose profile allows `merge`
-  should require its CI checks there.
-- A verdict counts only when the identity running the factory wrote it, as the
-  last line of its comment, for the SHA the reviewers checked or a byte-identical
-  patch. `git patch-id` is not used: it ignores whitespace, and whitespace is
-  code in Python and YAML.
-- Without a known identity, no verdict counts.
-- The repo profile is read from the base branch, so a branch cannot raise its
-  own autonomy.
-- Review threads that cannot be read block a merge, and so does a file list
-  GitHub truncated.
-- A ticket that is a parent of open tickets is never dispatched: it is a spec.
+- GitHub reports the PR mergeable, CI green, no unresolved review thread and no
+  changes requested. Threads it cannot read block the merge.
+- Either André said "merge" in words (`--human-approved`), or every one of:
+  - the ticket carries `autonomy:merge` and the profile allows `merge`;
+  - a passing verdict marker, written by the identity running the factory as
+    the last line of its comment, names this head SHA or a byte-identical patch
+    (`git patch-id` is not used: it ignores whitespace, which is code in Python
+    and YAML);
+  - the diff touches no one-way door, and GitHub did not truncate the file list.
+
+The mod stops an agent drifting onto the short path; it does not stop one set
+on getting through, since a script can still call the API. The wall is the
+forge: a repo whose profile allows `merge` requires its CI checks in branch
+protection.
 
 ## Known gaps
 
-- The cloud review-thread route (`ccr/review_threads`) returned an empty list in
-  every probe, so its non-empty shape is a guess. The parser accepts the likely
-  field names and returns "unreadable" otherwise, which blocks merges rather
-  than guessing.
-- The merge guard reads shell text, not intent. Two independent reviews found
-  fourteen ways around earlier versions; all are now tests. What it still
-  cannot see: a merge from a script file, a heredoc, or a language other than
-  shell. A claim older than fifteen minutes loses a race to a newer one, so two
-  sessions can only both hold a ticket if the first stalled that long.
-- Whether a routine's prompt receives the GitHub event's PR is not documented;
-  the babysit routine assumes it does.
+- The cloud review-thread route (`ccr/review_threads`) returned an empty list
+  in every probe, so its non-empty shape is a guess. The parser returns
+  "unreadable" for a shape it does not know, which blocks the merge.
+- The mod reads shell text, not intent: a merge from a script file or another
+  language gets past it.
+- Whether a GitHub-event routine's session receives the PR is not documented;
+  the babysit prompt falls back to the repo's open PRs labelled `factory`.
 - Whether routine sessions can call `create_session` is not documented. When
   they cannot, `/factory dispatch` lists the commands instead of launching.
-- `claude --bg -n <ID> -w <id>` ran in a Linux container and did its work in
-  its own worktree, but only after the workspace was trusted: run `claude` once
-  interactively in each repo before dispatching locally. The herdr branch of
-  `lfg` and `/factory dispatch` has run only against a fake `herdr`.
-- The Linear queries are validated against Linear's published schema and a mock
-  server, never against a live workspace. The first `factory doctor` with a real
-  `LINEAR_API_KEY` is the first live call.
+- `claude --bg -w` dispatches locally only after the repo's workspace is
+  trusted: run `claude` once interactively in each repo first.
+- The Linear queries are validated against Linear's schema, a mock server and
+  a live authentication check, but have never run against a real workspace.
+  The GitHub adapter ran against a real repository with no labelled issues.
+  The first `factory doctor` on real data is the first full live run.

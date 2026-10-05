@@ -59,10 +59,24 @@ cd ~/Projects/config
 
 ## Agent harness
 
-`agents/` holds everything an agent loads: global instructions, skills, subagents
-and the `factory` CLI. `./agents/install.sh` links it into `~/.claude` (setup.sh
-runs it), and the same installer runs in Claude Code cloud sessions. See
-[agents/README.md](agents/README.md).
+`dotfiles/.agents` holds what agents load: `AGENTS.md`, the skills and the
+subagents. Stow links it to `~/.agents`, and `dotfiles/.claude` links the same
+files into `~/.claude` for Claude Code, so one edit reaches every harness.
+Third-party skills are committed and pinned in `dotfiles/.agents/.skill-lock.json`;
+update one with `npx skills add <owner/repo> --skill <name> -g -a claude-code -y`
+and review the diff.
+
+The factory skills and the `factory` CLI turn approved tickets into merged PRs.
+[docs/factory/DESIGN.md](docs/factory/DESIGN.md) explains the system;
+`/setup-factory cloud` gives the cloud environment and routines, and
+`scripts/cloud-setup.sh` is the environment's setup script.
+
+Tests need only Node 22.18 or later:
+
+```bash
+node --test tests/*.test.ts "dotfiles/.agents/skills/*/test/*.spec.ts"
+claude plugin test dotfiles/.agents/skills/factory   # the factory mod, on the engine
+```
 
 ## Linking dotfiles
 

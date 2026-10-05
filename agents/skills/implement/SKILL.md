@@ -83,7 +83,10 @@ All three layers, in order. A green test run is a gate, not proof.
 3. **Independent verdict.** Call the Skill tool with "complexity-red-flags" on
    the diff, then call it with "poke-holes" at the artifact target. Its
    reviewers start fresh and did not write the code. Give every finding a
-   disposition per `references/dispositions.md`.
+   disposition per `references/dispositions.md`. Scale the reviewers to the
+   diff, never to zero: a ten-line change still gets one fresh reviewer, because
+   the author is the one reader who cannot see its own gaps. Small diffs are
+   where this layer is cheapest, not where it is optional.
 
 ## 5. Triage deviations
 

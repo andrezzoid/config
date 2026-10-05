@@ -71,7 +71,8 @@ current although the setup snapshot is cached for about a week.
 - `/factory` prints the brief. `factory brief`, `factory tickets next` and
   `factory pr status` give the same facts in a terminal.
 - `lfg <name> [prompt]` starts Claude on its own worktree, in a herdr workspace
-  when inside herdr.
+  when inside herdr. Background sessions only start in a workspace Claude
+  already trusts, so run `claude` once in a new repo first.
 - `factory doctor` says what is missing: GitHub, Linear, skills, the repo
   profile, the verification skill.
 

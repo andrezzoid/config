@@ -80,5 +80,10 @@ Mechanize the bright lines, never the judgment (from the ddd-hooks note).
   the babysit routine assumes it does.
 - Whether routine sessions can call `create_session` is not documented. When
   they cannot, `/factory dispatch` lists the commands instead of launching.
-- Local dispatch (`claude --bg`, herdr) is exercised by tests only through its
-  command strings; it has not run on the Mac.
+- `claude --bg -n <ID> -w <id>` ran in a Linux container and did its work in
+  its own worktree, but only after the workspace was trusted: run `claude` once
+  interactively in each repo before dispatching locally. The herdr branch of
+  `lfg` and `/factory dispatch` has run only against a fake `herdr`.
+- The Linear queries are validated against Linear's published schema and a mock
+  server, never against a live workspace. The first `factory doctor` with a real
+  `LINEAR_API_KEY` is the first live call.

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { merge } from "../factory/src/settings";
 
@@ -48,11 +50,18 @@ describe("guard-merge", () => {
   });
 
   test("works without jq through the python fallback", () => {
-    const p = Bun.spawnSync(["bash", "-c", `PATH=/usr/bin:/bin; hash -r; command -v jq >/dev/null && exit 99; bash "${GUARD}"`], {
-      stdin: new TextEncoder().encode(JSON.stringify({ tool_name: "Bash", tool_input: { command: "gh pr merge 1" } })),
-    });
-    // /usr/bin may hold jq on this machine; the fallback is only provable without it.
-    if (p.exitCode !== 99) expect(p.exitCode).toBe(2);
+    // A PATH holding only what the hook needs, minus jq.
+    const bin = mkdtempSync(join(tmpdir(), "nojq-"));
+    for (const tool of ["bash", "cat", "grep", "python3", "printf"]) {
+      const real = Bun.which(tool);
+      if (real) symlinkSync(real, join(bin, tool));
+    }
+    const run = (payload: unknown) =>
+      Bun.spawnSync([join(bin, "bash"), GUARD], { stdin: new TextEncoder().encode(JSON.stringify(payload)), env: { PATH: bin }, stderr: "pipe" });
+    expect(Bun.spawnSync([join(bin, "bash"), "-c", "command -v jq"], { env: { PATH: bin } }).exitCode).not.toBe(0);
+    expect(run({ tool_name: "Bash", tool_input: { command: "gh pr merge 1" } }).exitCode).toBe(2);
+    expect(run({ tool_name: "Bash", tool_input: { command: "gh pr view 1" } }).exitCode).toBe(0);
+    expect(run({ tool_name: "mcp__github__merge_pull_request", tool_input: {} }).exitCode).toBe(2);
   });
 });
 

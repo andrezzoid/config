@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-factory-skills`.
+The issue tracker, the triage labels and the repo's factory profile live in `docs/agents/factory.md`. If it is missing, tell the user to run `/setup-factory`.
 
 ## Process
 
@@ -66,11 +66,11 @@ Give each ticket its **blocking edges**: the other tickets that must complete be
 
 ### 5. Write each ticket
 
-Use the same register as the spec: ASD-STE100 Simplified Technical English with the ubiquitous language from `CONTEXT.md` (follow `CONTEXT-MAP.md` to the right one if the repo has more than one). One idea per sentence, active voice, present tense.
+Use the same register as the spec: ASD-STE100 Simplified Technical English with the ubiquitous language from the glossary (`GLOSSARY.md`, or `CONTEXT.md` in repos set up before Matt Pocock's rename; follow `GLOSSARY-MAP.md` or `CONTEXT-MAP.md` to the right one when the repo has several). One idea per sentence, active voice, present tense.
 
 Titles name the change. Write "App: acknowledge Kai's answer from the chat surface". Do not write "Runner: stop stalling on client tool calls nobody will answer".
 
-**What to build.** The end-to-end behaviour this ticket makes work, from the user's perspective, not a layer-by-layer implementation list. Define the terms the ticket turns on in the first lines. Name the modules and components the work touches, so the reader does not spend an hour finding out which module "the chat surface" is. Use the shape that carries the content: write triggers and their outcomes as a table, an ordered interaction as numbered steps or a two-actor sequence diagram, a structural change as a file tree or a component list. Follow the `show-me` conventions.
+**What to build.** The end-to-end behaviour this ticket makes work, from the user's perspective, not a layer-by-layer implementation list. Define the terms the ticket turns on in the first lines. Name the modules and components the work touches, so the reader does not spend an hour finding out which module "the chat surface" is. Use the shape that carries the content: write triggers and their outcomes as a table, an ordered interaction as numbered steps or a two-actor sequence diagram, a structural change as a file tree or a component list, using the forms in the `pr` skill's Summary section.
 
 **Problem Statement** and **Implementation Decisions.** Include these only when no parent spec carries them. A ticket without a parent is a small spec, so it holds its own context: the problem from the user's perspective, and one entry for each decision someone could get wrong with the fact that forced it and the rejected alternative in one clause. A ticket with a parent inherits both by reference, because whoever implements it reads the parent first.
 
@@ -97,10 +97,10 @@ Iterate until the user approves the breakdown. Ask the shape question first, bec
 
 ### 7. Publish the tickets to the configured tracker
 
-Publish the approved tickets. **How** depends on the tracker `/setup-factory-skills` configured; the tickets are the same either way, only the shape of the blocking edges changes:
+Publish the approved tickets. **How** depends on the tracker `docs/agents/factory.md` names; the tickets are the same either way, only the shape of the blocking edges changes:
 
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
-- **A real issue tracker (GitHub, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one; otherwise set each ticket's "Blocked by" to the blocking issues. Do NOT apply the `ready-for-agent` label: approval is the user's.
+- **A real issue tracker (GitHub, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one (on Linear, call the Skill tool with "linear-cli" and use `linear issue relation add`); otherwise set each ticket's "Blocked by" to the blocking issues. Do NOT apply the `ready-for-agent` label: approval is the user's.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 
@@ -125,6 +125,8 @@ Do NOT close or modify any parent issue.
 </local-ticket-template>
 
 <issue-template>
+
+Repo: <owner/name, the GitHub repository this ticket ships in>
 
 ## Parent
 
@@ -157,3 +159,13 @@ A reference to each blocking ticket. Omit this section when there are none, rath
 </issue-template>
 
 In either form, avoid specific file paths or code snippets: they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
+
+Every published ticket starts with its `Repo: owner/name` line. The dispatcher reads that line to know where the work ships; a ticket without it never leaves the queue.
+
+### 8. Hand over
+
+Tell the user, in one short list, what queues the work, because nothing starts until they act:
+
+- Label a ticket `ready-for-agent` to queue it. The hourly dispatch routine, or `/factory dispatch`, starts one `implement` session per ready ticket whose blockers are done.
+- Add `autonomy:merge` only to two-way-door tickets in a repo with a verification skill. Without it, the PR stops at ready and waits for their merge.
+- Name the tickets you recommend keeping for themselves, and why.

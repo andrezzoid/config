@@ -17,16 +17,20 @@ Spawn fresh subagents, on the smartest family of models your harness provides, o
 
 - **Territory** — briefed with the plan: verify every assumption's evidence against the actual code, docs, tests, and sources. Attack the ones tagged `guess` first; then spot-check the tagged ones — evidence can be stale or misread. When the plan never tagged its assumptions, extracting that list is this lens's first job.
 - **Simplicity** — briefed with the plan: is there a materially simpler approach it skipped? Not a style opinion — a genuinely smaller design that meets the same intent.
-- **Failure** — briefed with the plan: how does this break? Edge cases, migrations, rollback, partial failure, the path nobody drew. Load complexity-red-flags for this lens.
+- **Failure** — briefed with the plan: how does this break? Edge cases, migrations, rollback, partial failure, the path nobody drew. Call the Skill tool with "complexity-red-flags" for this lens.
 - **Cold** — briefed with the *intent only*, never the plan: from the territory, it states what any solution must respect and the shape it would expect. Where its picture and the plan disagree, one of them is anchored on the wrong thing — find out which. This is the only lens the plan's framing cannot contaminate.
 
 ### The artifact — before anything merges
 
-Fresh subagent(s), briefed with the theory plus the diff:
+Fresh subagent(s), briefed with the theory (the ticket, its parent, the spec) plus the diff, never with the PR body or the author's summary:
 
 - **Run the acceptance checks.** Their run is the evidence; the author's run was only the gate.
+- **Prove it live.** When the repo has a verification skill (`.claude/skills/verify-*` or the one `docs/agents/factory.md` names), drive each acceptance line through the running app the way a user would, and keep the evidence. This lane is the floor: a verdict without it is a code review, and must say so.
+- **Check the base still works.** Run the same load-bearing scenario on the base branch too. If the base lacks the feature, say so and check the end state the user waits for instead.
 - **Attempt refutation.** Actively try to break it — don't confirm it passes.
 - **Audit the diff against the theory.** What landed that the theory never said; what the theory said that never landed. Both directions.
+
+When the findings are dispositioned and no fix-now finding is open, the caller records the verdict for the head SHA with `factory pr verdict <PR> --result pass`. A new head with a changed patch needs a fresh verdict.
 
 ### The harvest — after knowledge moves to its long-term homes
 

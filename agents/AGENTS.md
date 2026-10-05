@@ -23,6 +23,11 @@ Everything you produce is read by someone busy who isn't inside your head. This 
 - **Assume I haven't read your output.** Files you wrote and commands you ran are not shared context. Say what's in them.
 - **Warnings before the step.** If something can lose data or break a system, say so before you describe or run it.
 
+## When I correct you
+
+- Fix the mistake, then say where to stop it happening again, preferring what fails loudly: code that makes the mistake impossible, then types or a lint whose error names the fix, then a test, and only last a skill or doc line. Nothing fails when an agent skips a doc.
+- When the same correction has come up twice, suggest `/correct`.
+
 ## Version control
 
 - Commit only the file changes you made. Leave unrelated working-tree changes alone unless I say otherwise.

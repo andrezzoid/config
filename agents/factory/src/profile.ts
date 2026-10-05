@@ -40,7 +40,8 @@ export function parseProfile(text: string | null): Profile {
     if (/^one[- ]way door/.test(section)) {
       // `glob`: why, or a bare glob followed by a colon, space or bracket.
       if (/^[-*]\s/.test(line)) {
-        const glob = ticks(line)[0] ?? line.replace(/^[-*]\s+/, "").split(/[\s:,(]/)[0];
+        const entry = line.replace(/^[-*]\s+/, "");
+        const glob = entry.startsWith("`") ? ticks(entry)[0] : entry.split(/[\s:,(]/)[0];
         if (glob) p.oneWayGlobs.push(glob);
       }
       continue;

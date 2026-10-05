@@ -83,6 +83,11 @@ Mechanize the bright lines, never the judgment (from the ddd-hooks note).
   every probe, so its non-empty shape is a guess. The parser accepts the likely
   field names and returns "unreadable" otherwise, which blocks merges rather
   than guessing.
+- The merge guard reads shell text, not intent. Two independent reviews found
+  fourteen ways around earlier versions; all are now tests. What it still
+  cannot see: a merge from a script file, a heredoc, or a language other than
+  shell. A claim older than fifteen minutes loses a race to a newer one, so two
+  sessions can only both hold a ticket if the first stalled that long.
 - Whether a routine's prompt receives the GitHub event's PR is not documented;
   the babysit routine assumes it does.
 - Whether routine sessions can call `create_session` is not documented. When

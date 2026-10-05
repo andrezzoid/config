@@ -37,6 +37,20 @@ describe("guard-merge", () => {
     "git push origin +HEAD:feature",
     "git -C . push --force origin x",
     "git push -fu origin x",
+    // Bypasses found by the second review:
+    "gh pr -R o/r merge 1",
+    "gh pr --repo=o/r merge 3",
+    "gh pr merge; git checkout main",
+    "out=$(gh pr merge)",
+    "gh pr merge&&git pull",
+    "gh api -X PUT repos/o/r/pulls/3/merge;echo",
+    "gh api -X PUT \\\n  repos/o/r/pulls/12/merge \\\n  -f merge_method=squash",
+    "git push \\\n  --force origin feat",
+    "gh pr \\\nmerge 1",
+    "git status\ngh pr merge 1",
+    "curl -X PUT -H 'Authorization: token x' https://api.github.com/repos/o/r/pulls/1/merge",
+    'bash -c "gh pr merge 1"',
+    "eval 'gh pr merge 1'",
   ])("blocks %s", (command) => {
     const r = bash(command);
     expect(r.code).toBe(2);
@@ -56,6 +70,15 @@ describe("guard-merge", () => {
     "git merge origin/main",
     "gh pr view 5 --json mergeable",
     "git commit -m 'Fix the merge gate' && git push -u origin fix",
+    // False positives found by the second review:
+    'git commit -m "Fix push retries: +1 attempt"',
+    'git commit -m "hook: block push -f"',
+    'git stash push -m "wip +tests"',
+    "rg mergePullRequest src/",
+    "git push --follow-tags",
+    'git commit -m "first line\n\ngh pr merge happens in factory"',
+    'git commit -m "explain why gh pr merge is gated"',
+    "gh pr comment 3 --body 'run gh pr merge 3 when ready'",
   ])("allows %s", (command) => {
     expect(bash(command).code).toBe(0);
   });
@@ -69,7 +92,7 @@ describe("guard-merge", () => {
   test("works without jq through the python fallback", () => {
     // A PATH holding only what the hook needs, minus jq.
     const bin = mkdtempSync(join(tmpdir(), "nojq-"));
-    for (const tool of ["bash", "cat", "grep", "sed", "tr", "python3", "printf"]) {
+    for (const tool of ["bash", "cat", "grep", "sed", "tr", "awk", "python3", "printf"]) {
       const real = Bun.which(tool);
       if (real) symlinkSync(real, join(bin, tool));
     }
@@ -83,14 +106,21 @@ describe("guard-merge", () => {
 
   test("without jq or python it still blocks, matching the raw payload", () => {
     const bin = mkdtempSync(join(tmpdir(), "noparser-"));
-    for (const tool of ["bash", "cat", "grep", "sed", "tr", "printf"]) {
+    for (const tool of ["bash", "cat", "grep", "sed", "tr", "awk", "printf"]) {
       const real = Bun.which(tool);
       if (real) symlinkSync(real, join(bin, tool));
     }
-    const run = (payload: unknown) =>
-      Bun.spawnSync([join(bin, "bash"), GUARD], { stdin: new TextEncoder().encode(JSON.stringify(payload)), env: { PATH: bin }, stderr: "pipe" });
-    expect(run({ tool_name: "Bash", tool_input: { command: "gh pr merge 1" } }).exitCode).toBe(2);
-    expect(run({ tool_name: "Bash", tool_input: { command: "gh pr view 1" } }).exitCode).toBe(0);
+    // Real payloads carry a description after the command.
+    const run = (command: string, description = "Run it, +1 step") =>
+      Bun.spawnSync([join(bin, "bash"), GUARD], {
+        stdin: new TextEncoder().encode(JSON.stringify({ tool_name: "Bash", tool_input: { command, description } })),
+        env: { PATH: bin },
+        stderr: "pipe",
+      }).exitCode;
+    for (const blocked of ["gh pr merge", "git push origin feat --force", "git push origin feat -f", "gh api -X PUT repos/o/r/pulls/7/merge", "git status\ngh pr merge 1"]) {
+      expect({ blocked, code: run(blocked) }).toEqual({ blocked, code: 2 });
+    }
+    for (const allowed of ["gh pr view 1", "git push -u origin feat"]) expect({ allowed, code: run(allowed, "Push feat, +1 commit") }).toEqual({ allowed, code: 0 });
   });
 });
 

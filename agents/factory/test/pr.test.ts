@@ -238,6 +238,16 @@ describe("patchKey", () => {
     expect(patchKey(diff("    delete_all()"))).not.toBe(patchKey(diff("delete_all()")));
   });
 
+  test("different binary contents are different patches", () => {
+    const bin = (index: string) =>
+      `diff --git a/blob.bin b/blob.bin\n${index}\nBinary files a/blob.bin and b/blob.bin differ\n`;
+    expect(patchKey(bin("index 1111111..2222222 100644"))).not.toBe(patchKey(bin("index 1111111..3333333 100644")));
+  });
+
+  test("trailing whitespace on the last line is still code", () => {
+    expect(patchKey(diff("x  "))).not.toBe(patchKey(diff("x")));
+  });
+
   test("a rebase that only moves line numbers and blob ids keeps the patch", () => {
     expect(patchKey(diff("x", "@@ -10,2 +10,2 @@", "index aaaaaaa..bbbbbbb 100644"))).toBe(patchKey(diff("x")));
   });

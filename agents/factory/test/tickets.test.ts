@@ -133,6 +133,11 @@ describe("profile", () => {
     expect(p.oneWayGlobs).toEqual(["db/migrations/**", "infra/**", "auth/**"]);
   });
 
+  test("a backticked word in a bare glob's explanation does not replace the glob", () => {
+    const p = parseProfile("## One-way doors\n\n- db/migrations/**: apply with `make migrate`, never by hand\n");
+    expect(p.oneWayGlobs).toEqual(["db/migrations/**"]);
+  });
+
   test("anything but an explicit merge caps autonomy at pr", () => {
     expect(parseProfile("- Max autonomy: `yolo`").maxAutonomy).toBe("pr");
   });

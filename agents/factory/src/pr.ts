@@ -313,8 +313,17 @@ export function fingerprint(s: Status): string {
 
 // git patch-id ignores whitespace, so a re-indent in Python or YAML would keep
 // a verdict for code nobody reviewed. This key keeps every byte of the diff
-// except what a rebase changes on its own: blob ids and hunk line numbers.
+// except what a rebase changes on its own: hunk line numbers, and blob ids of
+// text files. A binary file's blob ids are its only content, so they stay.
 export function patchKey(diff: string): string {
-  const kept = diff.trimEnd().split("\n").filter((l) => !l.startsWith("index ") && !l.startsWith("@@"));
+  const kept: string[] = [];
+  for (const file of diff.replace(/\n+$/, "").split(/^(?=diff --git )/m)) {
+    const binary = /^(Binary files |GIT binary patch)/m.test(file);
+    for (const line of file.split("\n")) {
+      if (line.startsWith("@@")) continue;
+      if (line.startsWith("index ") && !binary) continue;
+      kept.push(line);
+    }
+  }
   return new Bun.CryptoHasher("sha256").update(kept.join("\n")).digest("hex").slice(0, 40);
 }

@@ -87,21 +87,18 @@ alias docker-compose='podman compose'
 
 
 ## Functions
+# Start a Claude session on its own worktree, in a new herdr workspace when
+# inside herdr, in the background otherwise. `lfg eng-123 "/implement ENG-123"`.
 lfg() {
-    local branch="$1"
-    local prompt="$2"
-
-    # Create worktree (--no-cd keeps current tab in place)
-    wt switch -c "$branch" --no-cd
-    # Resolve worktree path in a subshell
-    local wt_path
-    wt_path="$(wt switch "$branch" -y >&2 && pwd)"
-
-    local tmpfile=$(mktemp /tmp/lfg-XXXXXX.kdl)
-    WT_PROMPT="$prompt" envsubst '$WT_PROMPT' \
-        < "${XDG_CONFIG_HOME:-$HOME/.config}/zellij/layouts/worktrunk_ide.kdl" > "$tmpfile"
-    zellij action new-tab --layout "$tmpfile" --cwd "$wt_path" --name "$branch"
-    rm -f "$tmpfile"
+    local name="$1" prompt="$2"
+    [ -n "$name" ] || { echo "usage: lfg <name> [prompt]" >&2; return 64; }
+    if [ "${HERDR_ENV:-}" = "1" ] && command -v herdr >/dev/null; then
+        local pane
+        pane="$(herdr workspace create --cwd "$PWD" --label "$name" --no-focus | jq -r '.result.root_pane.pane_id')" || return
+        herdr agent start "$name" --kind claude --pane "$pane" -- -w "$name" --permission-mode auto ${prompt:+"$prompt"}
+    else
+        claude --bg -n "$name" -w "$name" --permission-mode auto ${prompt:+"$prompt"}
+    fi
 }
 
 # Recover magicnas shares when SMB wedges the automounts (ops fail with
@@ -145,7 +142,6 @@ eval "$(zoxide init zsh)"  # Use z/zi commands, don't override cd (breaks Claude
 eval "$(mise activate zsh)"
 eval "$(starship init zsh)"
 
-if command -v wt >/dev/null 2>&1; then eval "$(command wt config shell init zsh)"; fi
 
 # Vite+ bin (https://viteplus.dev)
 if [ -f "$HOME/.vite-plus/env" ]; then source "$HOME/.vite-plus/env"; fi

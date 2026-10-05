@@ -44,7 +44,4 @@ table.insert(config.hyperlink_rules, {
 	format = "https://www.github.com/$1/$3",
 })
 
--- Launch
-config.default_prog = { "/opt/homebrew/bin/zellij", "-l", "welcome" }
-
 return config

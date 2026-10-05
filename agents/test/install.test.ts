@@ -21,7 +21,10 @@ beforeEach(() => {
   bin = join(home, "fakebin");
   mkdirSync(bin);
   // Fake npx: install each --skill as a directory with a SKILL.md, log the call.
+  // Like the real npx, it reads stdin: an installer loop that feeds the
+  // manifest on stdin would lose every line after the first.
   writeFileSync(join(bin, "npx"), `#!/usr/bin/env bash
+cat >/dev/null
 echo "$*" >> "$HOME/npx.log"
 args=("$@")
 for ((i=0; i<\${#args[@]}; i++)); do

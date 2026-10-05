@@ -48,7 +48,7 @@ if [ "$BUMP" = 1 ]; then
     if printf '%s' "$line" | grep -qE '^[^[:space:]#]+#[0-9a-f]{40}[[:space:]]'; then
       src="${line%%#*}"
       old="$(printf '%s' "$line" | sed -E 's/^[^#]+#([0-9a-f]{40}).*/\1/')"
-      new="$(git ls-remote "https://github.com/$src" HEAD | cut -c1-40)"
+      new="$(git ls-remote "https://github.com/$src" HEAD </dev/null | cut -c1-40)"
       [ -n "$new" ] || { warn "cannot reach $src, keeping $old"; new="$old"; }
       [ "$old" = "$new" ] || say "bump $src ${old:0:7} -> ${new:0:7}"
       printf '%s\n' "${line/$old/$new}" >>"$tmp"
@@ -167,7 +167,8 @@ else
       [ -L "$CLAUDE_HOME/skills/$n" ] && rm "$CLAUDE_HOME/skills/$n"
       flags="$flags --skill $n"
     done
-    if npx -y "$SKILLS_CLI" add "$src" $flags -g -a claude-code -y >/dev/null 2>&1; then
+    # npx reads stdin; without </dev/null it eats the rest of the manifest.
+    if npx -y "$SKILLS_CLI" add "$src" $flags -g -a claude-code -y </dev/null >/dev/null 2>&1; then
       say "installed $src: $*"
     else
       warn "npx skills add $src failed"

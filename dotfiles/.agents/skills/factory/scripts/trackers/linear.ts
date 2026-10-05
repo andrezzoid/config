@@ -23,7 +23,7 @@ export function linearToken(): string | null {
 export async function linear<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const key = linearToken();
   if (!key) throw new LinearError("no Linear credentials: run `linear auth login` locally; in the cloud set LINEAR_API_KEY, or add an API credential for api.linear.app and set LINEAR_API_KEY=proxy-injected");
-  const auth = key === PROXY_INJECTED ? {} : { Authorization: key.startsWith("lin_api_") ? key : `Bearer ${key}` };
+  const auth: Record<string, string> = key === PROXY_INJECTED ? {} : { Authorization: key.startsWith("lin_api_") ? key : `Bearer ${key}` };
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },

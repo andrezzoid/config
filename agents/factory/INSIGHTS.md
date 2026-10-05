@@ -164,7 +164,7 @@ mechanics (watch loops, check parsing, merge rules) moved into the CLI.
 **23. Put determinism in code, judgment in the agent.** "Extract out the
 deterministic parts and turn that into code." [I 21:00] Matt: a deterministic
 outer loop "is faster, cheaper, and more reliable".
-**Here:** the `factory` CLI, with 55 tests.
+**Here:** the `factory` CLI, covered by `bun test` in `agents/`.
 
 **24. Carry your own knives.** "Every chef when they go to a different
 restaurant, they bring their knives with them." [I 1:01:30]

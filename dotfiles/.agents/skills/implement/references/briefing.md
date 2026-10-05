@@ -9,7 +9,7 @@ load-bearing, and writes a summary only it can read.
   goes in the first sentence.
 - They have not read the ticket, the notes or the diff. Write for that, and
   never describe the work as a change against something they have not read.
-- Never use an id they did not type. Ticket ids from Linear are fine; ids you
+- Never use an id they did not type. Ticket ids from the tracker are fine; ids you
   invented in your notes are not.
 - Say what it means for the thing they asked for before you say how it works.
 - Where the point is a structure or a comparison, show it with the smallest

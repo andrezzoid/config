@@ -16,7 +16,8 @@ export function parseId(id: string): { repo: string; number: number } {
 }
 
 const FACTORY_LABELS = [READY_LABEL, HUMAN_LABEL, STARTED_LABEL];
-const BLOCKED_BY_LINE = /^[ \t>*_-]*blocked[ -]by[*_]*\s*:?(.*)$/gim;
+const BLOCKED_BY_LINE = /^[ \t>*_-]*blocked[ -]by\b[*_]*\s*:?(.*)$/i;
+const ISSUE_REF = /(?<![\w/])(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/g;
 
 function repoOfUrl(url: string | undefined, fallback: string): string {
   const m = /repos\/([\w.-]+\/[\w.-]+)$/.exec(url ?? "");
@@ -50,12 +51,22 @@ export function toTicket(issue: any, repo: string, blockers: TicketRef[] = []): 
   };
 }
 
-// Native issue dependencies first; a "Blocked by: #12, #13" line in the body
-// covers repositories that do not use them.
-export function blockedByRefs(body: string): number[] {
-  const out: number[] = [];
-  for (const m of body.matchAll(BLOCKED_BY_LINE)) for (const n of m[1].matchAll(/#(\d+)/g)) out.push(Number(n[1]));
-  return [...new Set(out)];
+// Native issue dependencies first; the body covers repositories that do not
+// use them, as a "Blocked by: #12, o/r#13" line or a "## Blocked by" section
+// (the to-tickets template). Returns full ids.
+export function blockedByRefs(body: string, repo: string): string[] {
+  const out = new Set<string>();
+  let section = false;
+  for (const line of body.split("\n")) {
+    const heading = /^#{1,6}\s+(.*)$/.exec(line.trim());
+    if (heading) {
+      section = /^blocked[ -]by\b/i.test(heading[1] ?? "");
+      continue;
+    }
+    const text = section ? line : BLOCKED_BY_LINE.exec(line)?.[1];
+    for (const m of text?.matchAll(ISSUE_REF) ?? []) out.add(`${(m[1] ?? repo).toLowerCase()}#${m[2]}`);
+  }
+  return [...out];
 }
 
 // Which open issue a pull request closes: a closing keyword in its body, or an
@@ -85,11 +96,11 @@ export class GithubTracker implements Tracker {
     } catch {
       // repositories without issue dependencies fall back to the body
     }
-    for (const n of blockedByRefs(issue.body ?? "")) {
-      const id = `${repo}#${n}`;
+    for (const id of blockedByRefs(issue.body ?? "", repo)) {
       if (refs.has(id)) continue;
       try {
-        const b = api<any>(`repos/${repo}/issues/${n}`);
+        const ref = parseId(id);
+        const b = api<any>(`repos/${ref.repo}/issues/${ref.number}`);
         refs.set(id, { id, title: b.title, done: b.state === "closed" });
       } catch {
         refs.set(id, { id, title: "(unreadable)", done: false });

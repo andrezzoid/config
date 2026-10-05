@@ -4,7 +4,7 @@ description: "Turn the current conversation into a spec for the user to approve:
 disable-model-invocation: true
 ---
 
-This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
+This skill takes the current conversation context and codebase understanding and produces a spec, the factory's Shape stage turned into an artifact. Do NOT interview the user; just synthesize what you already know.
 
 Write a spec for every unit of work the conversation settled. Usually that is one. Where the conversation settled more than one, write each of them. Do not write a spec for a unit that is still open: it takes little time to name a unit and much longer to shape one.
 

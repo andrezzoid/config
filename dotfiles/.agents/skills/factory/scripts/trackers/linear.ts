@@ -1,5 +1,8 @@
-// Linear adapter: GraphQL over fetch. The key comes from LINEAR_API_KEY (a
-// cloud environment variable) or, locally, from the linear CLI's own login.
+// Linear adapter: GraphQL over fetch. The key comes from LINEAR_API_KEY or,
+// locally, from the linear CLI's own login. In a cloud environment the key can
+// instead be an API credential that the agent proxy adds to requests for
+// api.linear.app, unseen by the session: LINEAR_API_KEY=proxy-injected (the
+// placeholder the cloud uses for GitHub too) says so, and the CLI sends no key.
 // The query documents are validated against Linear's published schema.
 
 import { run } from "../proc.ts";
@@ -7,6 +10,7 @@ import { HUMAN_LABEL, READY_LABEL } from "../tickets.ts";
 import type { Ticket, TicketComment, TicketState, Tracker } from "./types.ts";
 
 const ENDPOINT = process.env.FACTORY_LINEAR_URL ?? "https://api.linear.app/graphql";
+export const PROXY_INJECTED = "proxy-injected";
 
 export class LinearError extends Error {}
 
@@ -18,10 +22,11 @@ export function linearToken(): string | null {
 
 export async function linear<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const key = linearToken();
-  if (!key) throw new LinearError("no Linear credentials: set LINEAR_API_KEY (cloud: environment variable; local: `linear auth login`)");
+  if (!key) throw new LinearError("no Linear credentials: run `linear auth login` locally; in the cloud set LINEAR_API_KEY, or add an API credential for api.linear.app and set LINEAR_API_KEY=proxy-injected");
+  const auth = key === PROXY_INJECTED ? {} : { Authorization: key.startsWith("lin_api_") ? key : `Bearer ${key}` };
   const res = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: key.startsWith("lin_api_") ? key : `Bearer ${key}` },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({ query, variables }),
   });
   const json: any = await res.json().catch(() => ({}));

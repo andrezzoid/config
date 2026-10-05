@@ -6,9 +6,9 @@ disable-model-invocation: true
 
 # To Tickets
 
-Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it.
+Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it. This is the last step of the factory's Shape stage: nothing here starts work.
 
-The issue tracker, the triage labels and the repo's factory profile live in `docs/agents/factory.md`. If it is missing, tell the user to run `/setup-factory`.
+The issue tracker, the triage labels and the repo's factory profile live in `.agents/factory.md`. If it is missing, tell the user to run `/setup-factory`.
 
 ## Process
 
@@ -97,10 +97,13 @@ Iterate until the user approves the breakdown. Ask the shape question first, bec
 
 ### 7. Publish the tickets to the configured tracker
 
-Publish the approved tickets. **How** depends on the tracker `docs/agents/factory.md` names; the tickets are the same either way, only the shape of the blocking edges changes:
+Publish the approved tickets in dependency order, blockers first, so each ticket's blocking edges can name real ids. The tracker is the one `.agents/factory.md` names. The tickets are the same everywhere; only how the edges are stored changes:
 
-- **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
-- **A real issue tracker (GitHub, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one (on Linear, call the Skill tool with "linear-cli" and use `linear issue relation add`); otherwise set each ticket's "Blocked by" to the blocking issues. Do NOT apply the `ready-for-agent` label: approval is the user's.
+- **Linear** → call the Skill tool with "linear-cli". Create each issue in the profile's team with the body from the issue template, which starts with the `Repo:` line. Store each edge natively with `linear issue relation add`, and a parent as the issue's parent.
+- **GitHub Issues** → `gh issue create --repo <owner/name> --title <title> --body-file <file>` in the repo the ticket ships in; leave out the `Repo:` line, since the issue's repository says it. Write each edge in the body's Blocked by section as `#12`, or `owner/name#12` for an issue in another repo: the factory reads that section on every repo. Where the repo has issue dependencies, also add each edge natively, which needs the blocker's numeric `id`, not its number: `gh api repos/<o>/<r>/issues/<n>/dependencies/blocked_by -X POST -F issue_id=<id>`. Attach children to a parent with `gh api repos/<o>/<r>/issues/<parent>/sub_issues -X POST -F sub_issue_id=<id>`.
+- **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order. Each file's "Blocked by" lists the numbers and titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
+
+Do NOT apply the `ready-for-agent` label: approval is the user's.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 
@@ -126,7 +129,7 @@ Do NOT close or modify any parent issue.
 
 <issue-template>
 
-Repo: <owner/name, the GitHub repository this ticket ships in>
+Repo: <owner/name, the GitHub repository this ticket ships in; Linear only>
 
 ## Parent
 
@@ -154,13 +157,13 @@ The seam this slice tests at, and the nearest similar test in the codebase. One 
 
 ## Blocked by
 
-A reference to each blocking ticket. Omit this section when there are none, rather than writing "none".
+One line per blocking ticket: its id (`ENG-12` in Linear, `#12` or `owner/name#12` in GitHub Issues). Omit this section when there are none, rather than writing "none".
 
 </issue-template>
 
 In either form, avoid specific file paths or code snippets: they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
 
-Every published ticket starts with its `Repo: owner/name` line. The dispatcher reads that line to know where the work ships; a ticket without it never leaves the queue.
+Every Linear ticket starts with its `Repo: owner/name` line. The dispatcher reads that line to know where the work ships; a Linear ticket without it never leaves the queue.
 
 ### 8. Hand over
 

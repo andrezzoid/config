@@ -1,8 +1,8 @@
 # Factory profile
 
 How agents work in this repo. The factory skills read it, and the `factory`
-CLI reads the fields that gate a merge from the base branch, so a pull request
-cannot raise its own autonomy. Written by `/setup-factory`.
+CLI reads the fields that route tickets and gate a merge from the base branch,
+so a pull request cannot raise its own autonomy. Written by `/setup-factory`.
 
 - **Tracker:** Linear team `ENG`
 - **Max autonomy:** `pr`
@@ -21,8 +21,10 @@ A revert cannot undo a change here, so it never merges without André.
 
 Issues live in Linear, team `ENG`; code and pull requests live on GitHub. Use
 the `linear` CLI (skill `linear-cli`). Every ticket body starts with
-`Repo: <owner/name>`. Branch from the ticket's `branchName` and put
-`Closes <ID>` in the PR body, so Linear links the PR and closes the ticket on
+`Repo: <owner/name>`. Blockers are Linear "blocked by" relations.
+
+`factory ticket show <ID>` gives the branch to work on and the `Closes` line
+the PR body ends with, so the tracker links the PR and closes the ticket on
 merge.
 
 ## Triage labels

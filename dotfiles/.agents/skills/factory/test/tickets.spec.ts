@@ -171,8 +171,16 @@ describe("GitHub adapter", () => {
   });
 
   test("Blocked by lines name blockers when native dependencies are not used", () => {
-    expect(blockedByRefs("Do it.\n\nBlocked by: #3, #4\n**Blocked by** #4 and #9")).toEqual([3, 4, 9]);
-    expect(blockedByRefs("Fixes #3")).toEqual([]);
+    expect(blockedByRefs("Do it.\n\nBlocked by: #3, O/Other#4\n**Blocked by** #4 and #9", "o/r")).toEqual(["o/r#3", "o/other#4", "o/r#4", "o/r#9"]);
+    expect(blockedByRefs("Fixes #3\n\n## Testing\n\nSee #5", "o/r")).toEqual([]);
+  });
+
+  test("the Blocked by section of the to-tickets issue template names blockers", () => {
+    const skill = readFileSync(join(import.meta.dirname, "../../to-tickets/SKILL.md"), "utf8");
+    const template = /<issue-template>([\s\S]*?)<\/issue-template>/.exec(skill)?.[1] ?? "";
+    expect(template).toContain("## Blocked by");
+    const body = template.replace(/(## Blocked by\n\n)[^\n]*/, "$1- #12\n- o/api#3").replace(/(## Acceptance criteria\n\n)[^\n]*/, "$1- [ ] see #99");
+    expect(blockedByRefs(body, "o/r")).toEqual(["o/r#12", "o/api#3"]);
   });
 
   test("a PR closes an issue by keyword or by branch name", () => {

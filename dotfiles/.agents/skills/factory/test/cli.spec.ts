@@ -25,7 +25,7 @@ index 1111111..2222222 100644
 +export const a = 2;
 `;
 
-type LinearCall = { op: string; variables: any };
+type LinearCall = { op: string; variables: any; auth: string | undefined };
 let linearCalls: LinearCall[] = [];
 let linearIssues: any[] = [];
 let issueComments: any[] = [];
@@ -76,7 +76,7 @@ const server = createServer((req, res) => {
   req.on("end", () => {
     const { query, variables } = JSON.parse(raw);
     const op = /(?:query|mutation)\s+(\w+)/.exec(query)?.[1] ?? "?";
-    linearCalls.push({ op, variables });
+    linearCalls.push({ op, variables, auth: req.headers.authorization });
     const { status, body } = answer(op, variables);
     res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
   });
@@ -292,6 +292,15 @@ describe("Linear tickets", () => {
     expect(d.ready.map((t: any) => t.id)).toEqual(["ENG-1"]);
     expect(d.ready[0]).toMatchObject({ tracker: "linear", repo: "andrezzoid/app", autonomy: "merge", closes: "Closes ENG-1" });
     expect(d.skipped).toEqual([{ id: "ENG-2", reason: "blocked by ENG-1" }]);
+  });
+
+  test("sends the personal key as is, and no key when the cloud proxy injects it", async () => {
+    await run(["ticket", "show", "ENG-1"]);
+    expect(linearCalls.map((c) => c.auth)).toEqual(["lin_api_test"]);
+    linearCalls = [];
+    const r = await run(["ticket", "show", "ENG-1"], { LINEAR_API_KEY: "proxy-injected" });
+    expect(r.code).toBe(0);
+    expect(linearCalls.map((c) => c.auth)).toEqual([undefined]);
   });
 
   test("claim assigns, moves to the first started state, and comments", async () => {

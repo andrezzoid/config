@@ -5,7 +5,7 @@ description: Drive a pull request to merge-ready as a senior engineer would, and
 
 # Babysit PR
 
-Take the PR from wherever it stands to merged, or to the exact point where only
+The factory's Babysit stage. Take the PR from wherever it stands to merged, or to the exact point where only
 the human can move it. Getting green and landing are different decisions:
 babysitting earns the first, and the merge gate decides the second.
 
@@ -107,12 +107,13 @@ on your merge" with the PR link and stop.
 When the human tells you in this conversation, in words, to merge, run
 `factory pr merge <PR> --human-approved`. It still refuses a PR the forge would
 not accept. A label, an approving review or a green pipeline is not the human
-saying merge. Never merge any other way: a hook blocks raw merges.
+saying merge. Never merge any other way: the factory mod blocks raw merges.
 
 ## After the merge
 
-Linear closes the ticket through `Closes <ID>`. Check it did; if not, move it to
-Done with the linear CLI. Comment on the ticket only when a review finding
+The tracker closes the ticket through the PR's `Closes` line. Check that
+`factory ticket show <ID>` reads done; if not, close it the way the profile's
+Issue tracker section says. Comment on the ticket only when a review finding
 changed the design. Routine fixes leave their trace in the diff.
 
 A followup disposition becomes a ticket in triage once the human has seen it.

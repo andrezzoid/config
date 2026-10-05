@@ -1,14 +1,15 @@
 ---
 name: factory
-description: "Run the factory's outer loop: dispatch ready Linear tickets into implement sessions, write the standing brief, or buffer gardening findings. Usage: /factory [brief|dispatch|garden] [--repo owner/name] [--max N]."
+description: "Run the factory's outer loop: dispatch ready tickets (Linear or GitHub Issues) into implement sessions, write the standing brief, or buffer gardening findings. Usage: /factory [brief|dispatch|garden] [--repo owner/name] [--max N]."
 disable-model-invocation: true
 ---
 
 # Factory
 
 You are the executive chef, not a line cook: you route work and report on it,
-and you never write product code here. Every mode starts with
-`factory doctor`; if `github` or `linear` fails, report that line and stop.
+and you never write product code here. Dispatch hands Shape's approved tickets
+to Iterate; brief and garden are Upkeep. Every mode starts with
+`factory doctor`; if a line reads `fail`, report it and stop.
 
 The deterministic half lives in the `factory` CLI. Use its answers rather than
 re-deriving them: `factory --help` lists the commands.
@@ -46,12 +47,14 @@ claiming shows up in the brief as stalled.
      `https://github.com/<repo>` titled `<ID> <title>`, with the prompt
      `/implement <ID>`.
    - **Local**: from the repo's clone, run
-     `claude --bg -n <ID> -w <id> --permission-mode auto "/implement <ID>"`, so
-     each ticket gets its own worktree. Inside herdr (`HERDR_ENV=1`), create a
-     workspace with `herdr workspace create --cwd <clone> --label <ID>
-     --no-focus` and start the agent in its root pane with `herdr agent start
-     <ID> --kind claude --pane <pane> -- -w <id> --permission-mode auto
-     "/implement <ID>"`, so it shows in herdr's agent panel.
+     `claude --bg -n <ID> -w <slug> --permission-mode auto "/implement <ID>"`,
+     so each ticket gets its own worktree. `<slug>` is the id lowercased with
+     every character outside `a-z0-9` turned into `-` (`eng-123`, `o-r-12`).
+     Inside herdr (`HERDR_ENV=1`), create a workspace with `herdr workspace
+     create --cwd <clone> --label <ID> --no-focus` and start the agent in its
+     root pane with `herdr agent start <slug> --kind claude --pane <pane> --
+     -w <slug> --permission-mode auto "/implement <ID>"`, so it shows in herdr's
+     agent panel.
    - Neither available: list the tickets and the exact commands, and stop.
 4. Report one line per launched ticket with its session link or name, and how
    many tickets wait and why.
@@ -71,11 +74,13 @@ PR on each.
    explain a workaround.
 2. Group what you find into classes. A class counts once it happened twice,
    each occurrence with a link or `file:line`.
-3. Append one comment to the repo's garden log, a Linear issue titled
-   `Garden log: <repo>` (create it in triage if it does not exist; call the
-   Skill tool with "linear-cli"). Per class: what agents do, the evidence, and
-   the most enforceable place to stop it, in this order of preference:
-   architecture that makes it impossible, then types or a lint whose error
-   names the fix, then a test, then a skill or doc line.
+3. Append one comment to the repo's garden log, an issue titled
+   `Garden log: <repo>` in the tracker its `.agents/factory.md` names. Create
+   it in triage if it does not exist: on Linear, call the Skill tool with
+   "linear-cli"; on GitHub Issues, use `gh issue create` and `gh issue
+   comment`. Per class: what agents do, the evidence, and the most enforceable
+   place to stop it, in this order of preference: architecture that makes it
+   impossible, then types or a lint whose error names the fix, then a test,
+   then a skill or doc line.
 4. Reply with the number of classes and the log's link. The human picks classes
    and runs `/correct` on them.

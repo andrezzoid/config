@@ -49,8 +49,7 @@ Verify before you call it done:
 - Run lint, typecheck and the test suite.
 - Follow the complexity-red-flags skill.
 - Load and follow the poke-holes skills at the artifact target for findings
-- Every finding gets a disposition: fix now, followup, or rejected with a
-  reason.
+- Give every finding a disposition. Follow `references/dispositions.md`.
 - If the same check fails three times running, stop and brief. Grinding at a red
   check is how a session burns an afternoon and arrives with nothing.
 

@@ -13,7 +13,7 @@ Any claim-bearing artifact is a target — a ticket's spec, a PRD, plan-mode out
 
 ### The theory — before the human agrees to a plan
 
-Spawn fresh subagents, one lens each — a single agent asked for everything regresses to a book report:
+Spawn fresh subagents, on the smartest family of models your harness provides, one lens each — a single agent asked for everything regresses to a book report:
 
 - **Territory** — briefed with the plan: verify every assumption's evidence against the actual code, docs, tests, and sources. Attack the ones tagged `guess` first; then spot-check the tagged ones — evidence can be stale or misread. When the plan never tagged its assumptions, extracting that list is this lens's first job.
 - **Simplicity** — briefed with the plan: is there a materially simpler approach it skipped? Not a style opinion — a genuinely smaller design that meets the same intent.
@@ -44,6 +44,4 @@ One fresh agent, briefed with only the repo — never the plan, the ticket, or t
 
 ## Findings triage
 
-Every finding gets a disposition, written down where the work's record lives: **fix now**, **followup**, or **rejected** with the reason. Anything touching intent is the human's call. After a fix-now repair, the re-check is a fresh pass over the repaired area plus the acceptance checks — never a walk through the finding list, because confirming a list is how the list gets gamed.
-
-**Done when:** every finding has a disposition and none was silently dropped.
+Follow `references/dispositions.md`.

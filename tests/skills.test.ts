@@ -14,7 +14,10 @@ const SKILLS = join(AGENTS, "skills");
 const CLAUDE = join(DOTFILES, ".claude");
 const all = readdirSync(SKILLS).filter((n) => existsSync(join(SKILLS, n, "SKILL.md")));
 const vendored = Object.keys(JSON.parse(readFileSync(join(AGENTS, ".skill-lock.json"), "utf8")).skills);
-const own = all.filter((n) => !vendored.includes(n));
+// Pinned upstream so an update can be diffed, but edited here: they get the
+// same checks as my own skills.
+const FORKS = ["to-spec", "to-tickets"];
+const own = all.filter((n) => !vendored.includes(n) || FORKS.includes(n));
 
 // The YAML subset skill frontmatter needs: `key: value` scalars, quoted
 // strings and block scalars. Anything else throws, so a description with a

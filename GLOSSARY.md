@@ -21,6 +21,20 @@ The stage where one agent takes one pull request to merged, or to the point wher
 **Upkeep**:
 The stage of jobs that run on a trigger rather than on a ticket, such as the brief and garden.
 
+## Building blocks
+
+**Skill**:
+A folder an agent loads to follow a procedure, such as `implement` or `babysit-pr`.
+_Avoid_: Workflow, playbook
+
+**Principle**:
+One rule of taste with a trigger, read through the principles index rather than run as a skill.
+_Avoid_: Guideline, best practice
+
+**Protocol**:
+A contract between parties that never talk directly, kept in shared state (tracker, pull request comments, labels) and written and read through the factory CLI, such as the claim or the verdict.
+_Avoid_: Convention, handshake
+
 ## Work
 
 **Ticket**:

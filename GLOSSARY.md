@@ -35,6 +35,19 @@ _Avoid_: Guideline, best practice
 A contract between parties that never talk directly, kept in shared state (tracker, pull request comments, labels) and written and read through the factory CLI, such as the claim or the verdict.
 _Avoid_: Convention, handshake
 
+**Standard**:
+A rule specific to one repo, kept in that repo's `CLAUDE.md`, `AGENTS.md` or `CODING_STANDARDS.md`. Wins over a principle when the two conflict.
+_Avoid_: House rule, repo principle
+
+## Learning
+
+**Failure mode**:
+A way agents keep going wrong, backed by at least two occurrences in past sessions.
+_Avoid_: Bug, issue, lesson
+
+**Occurrence**:
+One moment in one session where a failure mode happened, pinned to the turn before the mistake so it can be replayed as an eval case.
+
 ## Work
 
 **Ticket**:

@@ -295,12 +295,19 @@ export function decide(f: PrFacts): Status {
   };
 }
 
+// Agents see the app run through the built-in /run skill, which loads the
+// repo's recipe from .claude/skills/run-<name>/, where /run-skill-generator
+// records it. A recorded /verify skill does not count: since Claude Code
+// 2.1.215 only a human can start /verify.
+export const REPO_SKILLS = ".claude/skills";
+export const isRunSkill = (name: string): boolean => name.startsWith("run-");
+
 export type MergeGateInput = {
   status: Status;
   ticketAutonomy: "merge" | "pr" | null;
   repoMaxAutonomy: "merge" | "pr";
-  // The profile's verification skill exists on the base branch.
-  verifySkill: boolean;
+  // A run skill exists on the base branch.
+  runSkill: boolean;
   humanApproved: boolean;
 };
 
@@ -314,7 +321,7 @@ export function mergeGate(input: MergeGateInput): { allowed: boolean; reasons: s
   if (!input.humanApproved) {
     if (input.ticketAutonomy !== "merge") reasons.push("ticket does not carry autonomy:merge");
     if (input.repoMaxAutonomy !== "merge") reasons.push("repo profile caps autonomy at pr");
-    else if (!input.verifySkill) reasons.push("the profile's verification skill is not on the base branch, so nothing showed the change working");
+    else if (!input.runSkill) reasons.push(`no run skill (${REPO_SKILLS}/run-*) on the base branch, so no agent could see the change working`);
     if (s.verification.result !== "pass" || !["current", "carried"].includes(s.verification.status)) {
       reasons.push(`no passing verdict for head ${s.headSha.slice(0, 7)} (verification ${s.verification.status})`);
     }

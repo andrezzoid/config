@@ -78,7 +78,7 @@ sequenceDiagram
 | Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the repo profile |
 | Which ticket is next | CLI | `factory tickets next` |
 | Who works it | CLI | `factory ticket claim`: first write, oldest claim in a 15-minute window wins |
-| Whether it works | agent, then fresh agents | gates, the repo's verification skill, poke-holes, `factory pr verdict` |
+| Whether it works | agent, then fresh agents | gates, the app started through `/run`, poke-holes, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
 | What André must look at | CLI, then agent | `factory brief`, written up by `/factory brief` |
@@ -106,7 +106,7 @@ flowchart TB
   dotfiles --> Cloud
   subgraph repo["each work repo"]
     PF[".agents/factory.md (profile)"]
-    VS[".claude/skills/verify-* (verification skill)"]
+    VS[".claude/skills/run-* (run skill)"]
   end
   Mac --> repo
   Cloud --> repo
@@ -125,11 +125,16 @@ flowchart TB
   a raw merge (`gh pr merge`, the merge API, the GitHub MCP merge tools) and a
   plain force push. It applies inside subagents too.
 - **The repo profile**, `.agents/factory.md`, written by `/setup-factory`:
-  tracker, max autonomy, merge method, gates, verify skill and one-way doors.
+  tracker, max autonomy, merge method, gates and one-way doors.
   The CLI reads it from the base branch, so a branch cannot raise its own
   autonomy.
-- **The verification skill**, one per repo, made with
-  `/create-verification-skill`. Without one a repo stays at autonomy `pr`.
+- **The run skill**, `.claude/skills/run-<name>/`, recorded by Claude Code's
+  built-in `/run-skill-generator`. Agents start the app through the built-in
+  `/run`, which loads it. Without one a repo stays at autonomy `pr`. The
+  built-in `/verify` also records `.claude/skills/verify/` as it learns, but
+  only a human can start it, so the gate does not count it. The same shape
+  fits any repo-specific procedure: one global entry skill that loads the
+  repo's `<verb>-<name>` recipe, written the first time it is needed.
 
 ## Trackers
 
@@ -176,7 +181,7 @@ the head SHA it checked:
 - Either André said "merge" in words (`--human-approved`), or every one of:
   - the ticket the PR names, in its branch or its `Closes` line, carries
     `autonomy:merge`, and the profile allows `merge`;
-  - the profile's verification skill exists on the base branch;
+  - a run skill (`.claude/skills/run-*/SKILL.md`) exists on the base branch;
   - CI has reported at least one passing check on the head, since GitHub lists
     no checks for a few seconds after a push;
   - a passing verdict marker, written by the identity running the factory as

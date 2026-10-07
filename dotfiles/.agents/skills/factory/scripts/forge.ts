@@ -185,6 +185,16 @@ export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts
   };
 }
 
+// The entry names of a directory in the repo; empty when it does not exist.
+export function listRepoDir(r: Repo, path: string): string[] {
+  try {
+    const entries = api<{ name: string }[]>(`repos/${r.owner}/${r.repo}/contents/${path}`);
+    return Array.isArray(entries) ? entries.map((e) => e.name) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function readRepoFile(r: Repo, path: string): string | null {
   try {
     const f = api<{ content: string; encoding: string }>(`repos/${r.owner}/${r.repo}/contents/${path}`);

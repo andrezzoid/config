@@ -22,8 +22,8 @@ different definition, that is the human's to reshape.
   another session has it, or it is not labelled `ready-for-agent`: stop and say
   so in one line. Skip the claim when the human handed you the ticket in this
   conversation and it is already yours.
-- **Repo profile:** `.agents/factory.md` names the tracker, the gates, the
-  verify skill and the one-way doors. Without it, tell the human to run `/setup-factory` and
+- **Repo profile:** `.agents/factory.md` names the tracker, the gates and the
+  one-way doors. Without it, tell the human to run `/setup-factory` and
   continue with the defaults: autonomy `pr`, gates from the README or CI.
 - **Domain:** read the glossary (`GLOSSARY.md`, or `CONTEXT.md` in repos set up
   before Matt Pocock's rename) and the ADRs in the area you touch. Use their
@@ -75,12 +75,11 @@ All three layers, in order. A green test run is a gate, not proof.
 
 1. **Gates.** Run every gate the profile lists. If the same check fails three
    times running, stop and brief: grinding at a red check burns the afternoon.
-2. **Live proof.** When the repo has a verification skill
-   (`.claude/skills/verify-*`, or the profile's verify skill), use it to drive
-   each acceptance line through the running app the way a user would, and keep
-   the evidence: the command, its output, the screenshot path. When the repo
-   has none, say so in the PR's Evidence and in the brief: without live proof
-   the PR cannot self-merge.
+2. **Live proof.** Call the Skill tool with "run" to start the app from the
+   repo's recipe (`.claude/skills/run-*`), then drive each acceptance line
+   through it the way a user would, and keep the evidence: the command, its
+   output, the screenshot path. When the repo has no run skill, say so in the
+   PR's Evidence and in the brief: without one the PR cannot self-merge.
 3. **Independent verdict.** Call the Skill tool with "complexity-red-flags" on
    the diff, then call it with "poke-holes" at the artifact target. Its
    reviewers start fresh and did not write the code. Give every finding a

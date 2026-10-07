@@ -204,7 +204,7 @@ describe("mergeGate", () => {
   const passing = facts({ comments: [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
 
   test("autonomy:merge + repo allows + passing verdict + no one-way door = allowed", () => {
-    const g = mergeGate({ status: decide(passing), ticketAutonomy: "merge", repoMaxAutonomy: "merge", verifySkill: true, humanApproved: false });
+    const g = mergeGate({ status: decide(passing), ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: true, humanApproved: false });
     expect(g).toEqual({ allowed: true, reasons: [] });
   });
 
@@ -212,7 +212,7 @@ describe("mergeGate", () => {
     const g = mergeGate({
       status: decide(facts({ files: ["db/migrations/1.sql"], oneWayGlobs: ["db/migrations/**"] })),
       ticketAutonomy: "pr",
-      repoMaxAutonomy: "pr", verifySkill: true,
+      repoMaxAutonomy: "pr", runSkill: true,
       humanApproved: false,
     });
     expect(g.allowed).toBe(false);
@@ -220,36 +220,36 @@ describe("mergeGate", () => {
   });
 
   test("the human's word replaces the autonomy conditions but never the forge", () => {
-    expect(mergeGate({ status: decide(facts()), ticketAutonomy: null, repoMaxAutonomy: "pr", verifySkill: true, humanApproved: true }).allowed).toBe(true);
+    expect(mergeGate({ status: decide(facts()), ticketAutonomy: null, repoMaxAutonomy: "pr", runSkill: true, humanApproved: true }).allowed).toBe(true);
     const red = decide(facts({ checkRuns: [{ name: "t", status: "completed", conclusion: "failure" }] }));
-    expect(mergeGate({ status: red, ticketAutonomy: "merge", repoMaxAutonomy: "merge", verifySkill: true, humanApproved: true }).allowed).toBe(false);
+    expect(mergeGate({ status: red, ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: true, humanApproved: true }).allowed).toBe(false);
   });
 
   test("no CI reported on the head blocks self-merge, not the human's merge", () => {
     const quiet = { ...passing, checkRuns: [], statuses: [] };
-    expect(mergeGate({ status: decide(quiet), ticketAutonomy: "merge", repoMaxAutonomy: "merge", verifySkill: true, humanApproved: false }).reasons).toEqual([`no CI has reported on head ${SHA.slice(0, 7)}`]);
-    expect(mergeGate({ status: decide(quiet), ticketAutonomy: null, repoMaxAutonomy: "pr", verifySkill: true, humanApproved: true }).allowed).toBe(true);
+    expect(mergeGate({ status: decide(quiet), ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: true, humanApproved: false }).reasons).toEqual([`no CI has reported on head ${SHA.slice(0, 7)}`]);
+    expect(mergeGate({ status: decide(quiet), ticketAutonomy: null, repoMaxAutonomy: "pr", runSkill: true, humanApproved: true }).allowed).toBe(true);
   });
 
-  test("a repo without its verification skill cannot self-merge", () => {
-    const g = mergeGate({ status: decide(passing), ticketAutonomy: "merge", repoMaxAutonomy: "merge", verifySkill: false, humanApproved: false });
+  test("a repo without a run skill cannot self-merge", () => {
+    const g = mergeGate({ status: decide(passing), ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: false, humanApproved: false });
     expect(g.reasons).toHaveLength(1);
-    expect(g.reasons[0]).toContain("verification skill");
+    expect(g.reasons[0]).toContain("no run skill");
   });
 
   test("a truncated file list blocks self-merge", () => {
-    const g = mergeGate({ status: decide({ ...passing, filesComplete: false }), ticketAutonomy: "merge", repoMaxAutonomy: "merge", verifySkill: true, humanApproved: false });
+    const g = mergeGate({ status: decide({ ...passing, filesComplete: false }), ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: true, humanApproved: false });
     expect(g.reasons).toEqual(["GitHub truncated the file list, so one-way doors cannot be checked"]);
   });
 
   test("unreadable threads block even an approved merge", () => {
-    const g = mergeGate({ status: decide(facts({ unresolvedThreads: null })), ticketAutonomy: null, repoMaxAutonomy: "pr", verifySkill: true, humanApproved: true });
+    const g = mergeGate({ status: decide(facts({ unresolvedThreads: null })), ticketAutonomy: null, repoMaxAutonomy: "pr", runSkill: true, humanApproved: true });
     expect(g.allowed).toBe(false);
   });
 
   test("a stale verdict does not authorize a new head", () => {
     const moved = facts({ headSha: "b".repeat(40), comments: passing.comments });
-    const g = mergeGate({ status: decide(moved), ticketAutonomy: "merge", repoMaxAutonomy: "merge", verifySkill: true, humanApproved: false });
+    const g = mergeGate({ status: decide(moved), ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: true, humanApproved: false });
     expect(g.reasons.join()).toContain("verification stale");
   });
 });

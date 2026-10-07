@@ -8,7 +8,6 @@ so a pull request cannot raise its own autonomy. Written by `/setup-factory`.
 - **Max autonomy:** `pr`
 - **Merge method:** `squash`
 - **Gates:** `pnpm lint`, `pnpm typecheck`, `pnpm test`
-- **Verify skill:** `.claude/skills/verify-app`
 
 ## One-way doors
 

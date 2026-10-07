@@ -1,6 +1,6 @@
 ---
 name: setup-factory
-description: "Make a repo factory-ready, or wire the cloud side once: writes .agents/factory.md (tracker, gates, autonomy cap, one-way doors), creates the triage labels in Linear or GitHub Issues, checks the verification skill, and gives the exact cloud environment and routines to create. Usage: /setup-factory [repo|cloud|check]."
+description: "Make a repo factory-ready, or wire the cloud side once: writes .agents/factory.md (tracker, gates, autonomy cap, one-way doors), creates the triage labels in Linear or GitHub Issues, checks the run skill, and gives the exact cloud environment and routines to create. Usage: /setup-factory [repo|cloud|check]."
 disable-model-invocation: true
 ---
 
@@ -26,7 +26,8 @@ answer, the way the grilling skill does, and write nothing until he confirms.
   anything that sends email or deletes data.
 - Existing `CLAUDE.md` or `AGENTS.md`, `.agents/`, the glossary (`GLOSSARY.md`
   or `CONTEXT.md`) and `docs/adr/`.
-- A verification skill under `.claude/skills/verify-*` or `.cursor/skills/verify-*`.
+- A run skill under `.claude/skills/run-*`: the recipe the built-in `/run`
+  loads to start the app, recorded by `/run-skill-generator`.
 - Where the repo's tickets live: open issues on GitHub, or a Linear team whose
   issues name this repo. Then whether the labels below exist there
   (`linear label list`, or `gh label list --repo <o>/<r>`).
@@ -37,10 +38,10 @@ Ask in one round, each with your recommendation:
 
 - **Tracker.** Linear (which team) or GitHub Issues on this repo. Recommend
   where the work is already tracked.
-- **Max autonomy.** Recommend `pr` until a verification skill exists and has
-  been seen working. `merge` lets tickets labelled `autonomy:merge` merge
-  themselves after an independent verdict, and `factory pr merge` honours it
-  only while the profile's Verify skill exists on the default branch. Before agreeing to `merge`, require
+- **Max autonomy.** Recommend `pr` until a run skill exists and has been seen
+  working. `merge` lets tickets labelled `autonomy:merge` merge themselves
+  after an independent verdict, and `factory pr merge` honours it only while a
+  run skill exists on the default branch. Before agreeing to `merge`, require
   the CI checks in the default branch's protection: the factory mod stops
   drift, the forge is what stops a determined bypass.
 - **Gates**, from what CI runs.
@@ -83,10 +84,10 @@ Ask in one round, each with your recommendation:
   `ready-for-agent`, `ready-for-human`, `autonomy:merge` and `in-progress`.
 - A GitHub Issues repo: tell André to add it to `FACTORY_GITHUB_REPOS` on the
   cloud environment (see `cloud`), so the hourly dispatch sees its tickets.
-- No verification skill: tell André to run `/create-verification-skill` and to
-  have it write `.claude/skills/verify-<app>/` instead of `.cursor/skills/`,
-  because Claude Code loads `.claude/skills`. Until one exists, the repo stays
-  at autonomy `pr`.
+- No run skill: tell André to run `/run-skill-generator` in the repo and
+  commit the `.claude/skills/run-<name>/` it records. Agents start the app
+  through it with `/run`. Until one exists, the repo stays at autonomy `pr`.
+  `/verify` is his to run by hand: agents cannot start it.
 - Run `factory doctor` and show the result.
 
 ## cloud

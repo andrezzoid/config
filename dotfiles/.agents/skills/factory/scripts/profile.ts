@@ -12,7 +12,6 @@ export type Profile = {
   mergeMethod: "squash" | "merge" | "rebase";
   oneWayGlobs: string[];
   gates: string[];
-  verifySkill: string | null;
 };
 
 export const PROFILE_PATH = ".agents/factory.md";
@@ -27,7 +26,6 @@ const DEFAULTS: Profile = {
   // after it.
   oneWayGlobs: [PROFILE_PATH],
   gates: [],
-  verifySkill: null,
 };
 
 function ticks(line: string): string[] {
@@ -66,7 +64,6 @@ export function parseProfile(text: string | null): Profile {
     else if (key === "merge method" && ["squash", "merge", "rebase"].includes(values[0])) {
       p.mergeMethod = values[0] as Profile["mergeMethod"];
     } else if (key === "gates") p.gates.push(...values);
-    else if (key === "verify skill" && values[0]) p.verifySkill = values[0];
   }
   return p;
 }

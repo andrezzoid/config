@@ -90,7 +90,7 @@ after(() => server.close());
 
 let dir: string;
 function routes(over: Record<string, unknown> = {}) {
-  const profile = Buffer.from("- **Max autonomy:** `merge`\n- **Verify skill:** `.claude/skills/verify-app`\n\n## One-way doors\n\n- `db/**`\n").toString("base64");
+  const profile = Buffer.from("- **Max autonomy:** `merge`\n\n## One-way doors\n\n- `db/**`\n").toString("base64");
   const all = {
     "GET repos/o/r/pulls/7": {
       number: 7, html_url: "https://github.com/o/r/pull/7", title: "App: thing", state: "open", merged: false,
@@ -103,7 +103,8 @@ function routes(over: Record<string, unknown> = {}) {
     "GET repos/o/r/issues/7/comments": [],
     "GET repos/o/r/pulls/7/files": [{ filename: "src/a.ts" }],
     "GET repos/o/r/contents/.agents/factory.md": { encoding: "base64", content: profile },
-    "GET repos/o/r/contents/.claude/skills/verify-app/SKILL.md": { encoding: "base64", content: Buffer.from("# verify").toString("base64") },
+    "GET repos/o/r/contents/.claude/skills": [{ name: "verify", type: "dir" }, { name: "run-app", type: "dir" }],
+    "GET repos/o/r/contents/.claude/skills/run-app/SKILL.md": { encoding: "base64", content: Buffer.from("# run").toString("base64") },
     "GET user": { login: "andrezzoid" },
     "GRAPHQL": { data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: true }] } } } } },
     "DIFF repos/o/r/pulls/7": DIFF,
@@ -241,15 +242,26 @@ describe("pr merge", () => {
     expect((await run(["pr", "merge", "7", "--repo", "o/r"])).code).toBe(0);
   });
 
-  test("without the profile's verification skill on the base branch, no self-merge", async () => {
+  test("without a run skill on the base branch, no self-merge", async () => {
+    // A recorded /verify skill is not enough: agents cannot start /verify.
     routes({
       "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-      "GET repos/o/r/contents/.claude/skills/verify-app/SKILL.md": undefined,
+      "GET repos/o/r/contents/.claude/skills": [{ name: "verify", type: "dir" }],
     });
     const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
     expect(r.code).toBe(3);
-    expect(r.out).toContain("verification skill");
-    expect(ghCalls().some((c) => c.args[1] === "repos/o/r/contents/.claude/skills/verify-app/SKILL.md?ref=main")).toBe(true);
+    expect(r.out).toContain("no run skill");
+    expect(ghCalls().some((c) => c.args[1] === "repos/o/r/contents/.claude/skills?ref=main")).toBe(true);
+  });
+
+  test("a run-* folder without a SKILL.md does not count", async () => {
+    routes({
+      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
+      "GET repos/o/r/contents/.claude/skills/run-app/SKILL.md": undefined,
+    });
+    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("no run skill");
   });
 
   test("a switch before the PR number does not swallow it", async () => {

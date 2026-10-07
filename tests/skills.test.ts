@@ -17,6 +17,8 @@ const vendored = Object.keys(JSON.parse(readFileSync(join(AGENTS, ".skill-lock.j
 // Pinned upstream so an update can be diffed, but edited here: they get the
 // same checks as my own skills.
 const FORKS = ["to-spec", "to-tickets"];
+// Bundled with Claude Code, so every session has them without a folder here.
+const BUILTINS = ["run"];
 const own = all.filter((n) => !vendored.includes(n) || FORKS.includes(n));
 
 // The YAML subset skill frontmatter needs: `key: value` scalars, quoted
@@ -106,14 +108,14 @@ for (const name of own) {
     test("every skill it calls is installed and model-invocable", () => {
       const calls = skillCalls(text);
       assert.ok(calls.length > 0 || !/skill tool/i.test(text), "mentions the Skill tool but no call parses");
-      for (const called of calls) {
+      for (const called of calls.filter((c) => !BUILTINS.includes(c))) {
         assert.ok(all.includes(called), `calls ${called}, which is not in .agents/skills`);
         assert.ok(modelInvocable(called), `calls ${called}, which sets disable-model-invocation`);
       }
     });
 
     test("names no retired skill or command", () => {
-      for (const retired of ["ddd2", "setup-factory-skills", "check-pr", "find-unknowns", "quiz-me", "visualize", "design-it-twice", "worktrunk", "zellij", "docs/agents/factory.md"]) {
+      for (const retired of ["ddd2", "setup-factory-skills", "check-pr", "find-unknowns", "quiz-me", "visualize", "design-it-twice", "worktrunk", "zellij", "docs/agents/factory.md", "create-verification-skill"]) {
         assert.ok(!new RegExp(`[\`/"]${retired}[\`"\\s]`).test(text), `mentions ${retired}`);
       }
     });

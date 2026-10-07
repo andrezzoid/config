@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import * as forge from "./forge.ts";
-import { decide, EXIT, fingerprint, mergeGate, renderMarker, type Status } from "./pr.ts";
+import { decide, EXIT, fingerprint, isRunSkill, mergeGate, renderMarker, REPO_SKILLS, type Status } from "./pr.ts";
 import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
 import { autonomy, claimBody, claimWinner, HUMAN_LABEL, isClaim, nextTickets, READY_LABEL, ticketsOfPr } from "./tickets.ts";
 import type { GithubTracker } from "./trackers/github.ts";
@@ -166,8 +166,9 @@ async function prMerge(a: Args) {
   if (ticketId && !named.includes(ticketId)) {
     throw new Exit(3, `refusing to merge #${status.pr}: it does not name ${ticketId} in its branch or a Closes line (it names ${named.join(", ") || "nothing"})`);
   }
-  const verifySkill = profile.verifySkill !== null &&
-    forge.readRepoFile(ref, `${profile.verifySkill}/SKILL.md?ref=${encodeURIComponent(pull.base.ref)}`) !== null;
+  const base = encodeURIComponent(pull.base.ref);
+  const runSkill = forge.listRepoDir(ref, `${REPO_SKILLS}?ref=${base}`).filter(isRunSkill)
+    .some((n) => forge.readRepoFile(ref, `${REPO_SKILLS}/${n}/SKILL.md?ref=${base}`) !== null);
   let ticketAutonomy: "merge" | "pr" | null = null;
   if (ticketId) {
     try {
@@ -176,7 +177,7 @@ async function prMerge(a: Args) {
       ticketAutonomy = null;
     }
   }
-  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, verifySkill, humanApproved: a.flags["human-approved"] === true });
+  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, runSkill, humanApproved: a.flags["human-approved"] === true });
   if (!gate.allowed) {
     console.log(`refusing to merge #${status.pr}:\n${gate.reasons.map((r) => `  - ${r}`).join("\n")}`);
     return 3;
@@ -354,11 +355,9 @@ async function doctor(a: Args) {
     add("profile", profile.found ? "ok" : "warn", profile.found
       ? `${PROFILE_PATH}: tracker ${profile.tracker ?? "?"}, max autonomy ${profile.maxAutonomy}, ${profile.gates.length} gate(s), ${profile.oneWayGlobs.length} one-way glob(s)`
       : `${repo.owner}/${repo.repo} has no ${PROFILE_PATH}: run /setup-factory`);
-    const verify = profile.verifySkill ?? [".claude/skills", ".agents/skills"]
-      .map((d) => join(root, d))
-      .filter((d) => existsSync(d))
-      .flatMap((d) => readdirSync(d).filter((n) => n.startsWith("verify-")).map((n) => join(d, n)))[0];
-    add("verify-skill", verify ? "ok" : "warn", verify ? `${verify}` : "no verification skill: agents cannot see the app run, so autonomy stays at pr (run /create-verification-skill)");
+    const skills = join(root, REPO_SKILLS);
+    const run = existsSync(skills) ? readdirSync(skills).filter(isRunSkill).find((n) => existsSync(join(skills, n, "SKILL.md"))) : undefined;
+    add("run-skill", run ? "ok" : "warn", run ? `${REPO_SKILLS}/${run}` : "no run skill: agents cannot see the app run, so autonomy stays at pr (run /run-skill-generator)");
   } else {
     add("repo", "warn", "not inside a GitHub clone: repo checks skipped");
   }
@@ -371,7 +370,7 @@ const HELP = `factory: deterministic helpers for the ticket → PR → merge fac
 
 Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a clone.
 
-  factory doctor [--json]                     check gh, trackers, skills, repo profile, verify skill
+  factory doctor [--json]                     check gh, trackers, skills, repo profile, run skill
   factory tickets next [--repo o/r|--here] [--json]
                                               tickets labelled ${READY_LABEL} whose blockers are done
   factory ticket show <ID> [--json]           normalized ticket: repo, autonomy, blockers, branch

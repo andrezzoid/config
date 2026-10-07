@@ -209,7 +209,6 @@ describe("profile", () => {
       maxAutonomy: "pr",
       mergeMethod: "squash",
       gates: ["pnpm lint", "pnpm typecheck", "pnpm test"],
-      verifySkill: ".claude/skills/verify-app",
       oneWayGlobs: [".agents/factory.md", "db/migrations/**", "infra/**"],
     });
   });

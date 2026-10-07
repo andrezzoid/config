@@ -25,7 +25,7 @@ Spawn fresh subagents, on the smartest family of models your harness provides, o
 Fresh subagent(s), briefed with the theory (the ticket, its parent, the spec) plus the diff, never with the PR body or the author's summary:
 
 - **Run the acceptance checks.** Their run is the evidence; the author's run was only the gate.
-- **Prove it live.** When the repo has a verification skill (`.claude/skills/verify-*` or the one `.agents/factory.md` names), drive each acceptance line through the running app the way a user would, and keep the evidence. This lane is the floor: a verdict without it is a code review, and must say so.
+- **Prove it live.** When the repo has a run skill (`.claude/skills/run-*`), start the app with `/run` and drive each acceptance line through the running app the way a user would, and keep the evidence. This lane is the floor: a verdict without it is a code review, and must say so.
 - **Check the base still works.** Run the same load-bearing scenario on the base branch too. If the base lacks the feature, say so and check the end state the user waits for instead.
 - **Attempt refutation.** Actively try to break it — don't confirm it passes.
 - **Audit the diff against the theory.** What landed that the theory never said; what the theory said that never landed. Both directions.

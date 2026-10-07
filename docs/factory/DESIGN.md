@@ -4,7 +4,8 @@ The factory turns an approved ticket into a merged pull request with nobody
 watching, and stops at the exact point where only André can move it. It runs
 the same on the Mac and in Claude Code cloud sessions, and reads tickets from
 Linear or GitHub Issues. The ideas behind it, and where each came from, are in
-[INSIGHTS.md](INSIGHTS.md).
+[INSIGHTS.md](INSIGHTS.md). Evals for its skills, and experiments still to run,
+live in [andrezzoid/newsroom-evals](https://github.com/andrezzoid/newsroom-evals).
 
 ## Stages
 

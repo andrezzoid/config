@@ -18,7 +18,7 @@ const vendored = Object.keys(JSON.parse(readFileSync(join(AGENTS, ".skill-lock.j
 // same checks as my own skills.
 const FORKS = ["to-spec", "to-tickets", "triage"];
 // Bundled with Claude Code, so every session has them without a folder here.
-const BUILTINS = ["run"];
+const BUILTINS = ["run", "code-review"];
 const own = all.filter((n) => !vendored.includes(n) || FORKS.includes(n));
 
 // The YAML subset skill frontmatter needs: `key: value` scalars, quoted

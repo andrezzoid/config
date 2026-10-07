@@ -73,7 +73,7 @@ brief. It is not yours to build.
 
 ## 4. Verify
 
-All three layers, in order. A green test run is a gate, not proof.
+All four layers, in order. A green test run is a gate, not proof.
 
 1. **Gates.** Run every gate the profile lists. If the same check fails three
    times running, stop and brief: grinding at a red check burns the afternoon.
@@ -82,13 +82,20 @@ All three layers, in order. A green test run is a gate, not proof.
    through it the way a user would, and keep the evidence: the command, its
    output, the screenshot path. When the repo has no run skill, say so in the
    PR's Evidence and in the brief: without one the PR cannot self-merge.
-3. **Independent verdict.** Call the Skill tool with "complexity-red-flags" on
-   the diff, then call it with "poke-holes" at the artifact target. Its
-   reviewers start fresh and did not write the code. Give every finding a
-   disposition per `references/dispositions.md`. Scale the reviewers to the
-   diff, never to zero: a ten-line change still gets one fresh reviewer, because
-   the author is the one reader who cannot see its own gaps. Small diffs are
-   where this layer is cheapest, not where it is optional.
+3. **Code review.** Call the Skill tool with "code-review" and
+   "complexity-red-flags", each on the diff against the base branch. Both run
+   in their own context, so neither shares your reasoning: `code-review` hunts
+   bugs and checks the CLAUDE.md rules, `complexity-red-flags` checks the design
+   and the repo's `CODING_STANDARDS.md`. Give every finding a disposition per
+   `references/dispositions.md`, fix the fix-now ones, and rerun the gates.
+4. **Independent verdict.** Once the code has settled, call the Skill tool with
+   "poke-holes" at the artifact target, on the commit you will record. Its
+   reviewers start fresh and did not write the code. The verdict pins that
+   commit, so any later change to the code needs a fresh one: review before you
+   prove. Give every finding a disposition. Scale the reviewers to the diff,
+   never to zero: a ten-line change still gets one fresh reviewer, because the
+   author is the one reader who cannot see its own gaps. Small diffs are where
+   this layer is cheapest, not where it is optional.
 
 ## 5. Triage deviations
 

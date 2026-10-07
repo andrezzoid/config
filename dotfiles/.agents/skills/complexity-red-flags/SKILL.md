@@ -7,6 +7,7 @@ description: |
   before declaring it done, when reviewing PRs or diffs, when refactoring,
   or when the user says "review", "audit", "simplify", "clean up", or "is
   this code good?", or code "feels complex".
+context: fork
 ---
 
 # Complexity Red Flags
@@ -32,7 +33,23 @@ Complexity creeps in one small decision at a time — a shallow wrapper, a leake
 - Throwaway scripts and one-off prototypes
 - Generated code (fix the generator, not the output)
 
+## Input and output
+
+You run in a fresh context and see only what you were called with, never the
+conversation that called you. That is the point: a reviewer who shares the
+author's reasoning shares its blind spots. Expect a git ref to diff against, or
+paths. With neither, review the working tree's changes against the default
+branch. Return each finding with its concrete fix; the caller applies it.
+
 ## The Audit Workflow
+
+### Standards first
+
+Read `CODING_STANDARDS.md` at the repo root, and any other standards file the
+repo's `CLAUDE.md` or `AGENTS.md` points to. Each rule there is a standard: it
+wins over a red flag when the two disagree, and a change that breaks one is a
+finding that quotes the rule. Skip rules a linter or type checker already
+enforces. With no such file, go on.
 
 ### Phase 0 — Run strata, the deterministic pre-scanner (TypeScript only)
 

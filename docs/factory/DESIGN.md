@@ -17,7 +17,7 @@ flowchart LR
   end
   subgraph Iterate["Iterate · per ticket, autonomous"]
     direction TB
-    I[implement] --> V[gates · live proof · poke-holes] --> D{acceptance holds?}
+    I[implement] --> V[gates · code review · poke-holes] --> D{acceptance holds?}
     D -- yes --> PR[open PR + verdict]
   end
   subgraph Babysit["Babysit · human on the loop"]
@@ -37,7 +37,7 @@ flowchart LR
 | Stage | Driven by | Skills | Produces |
 |---|---|---|---|
 | Shape | André, interviewed | grilling, grill-with-docs, triage, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
-| Iterate | an agent per ticket | implement, test-driven-development, poke-holes | a PR with live evidence and a recorded verdict |
+| Iterate | an agent per ticket | implement, test-driven-development, code-review, complexity-red-flags, poke-holes | a PR with live evidence and a recorded verdict |
 | Babysit | an agent per PR | babysit-pr | a merged PR, or a brief saying what André must do |
 | Upkeep | routines, or André | factory (dispatch, brief, garden), retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
 
@@ -82,7 +82,7 @@ sequenceDiagram
 | Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the repo profile |
 | Which ticket is next | CLI | `factory tickets next` |
 | Who works it | CLI | `factory ticket claim`: first write, oldest claim in a 15-minute window wins |
-| Whether it works | agent, then fresh agents | gates, the app started through `/run`, poke-holes, `factory pr verdict` |
+| Whether it works | agent, then fresh agents | gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the app started through `/run`, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
 | What André must look at | CLI, then agent | `factory brief`, written up by `/factory brief` |

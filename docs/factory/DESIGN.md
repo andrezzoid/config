@@ -36,14 +36,17 @@ flowchart LR
 
 | Stage | Driven by | Skills | Produces |
 |---|---|---|---|
-| Shape | André, interviewed | grilling, grill-with-docs, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
+| Shape | André, interviewed | grilling, grill-with-docs, triage, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
 | Iterate | an agent per ticket | implement, test-driven-development, poke-holes | a PR with live evidence and a recorded verdict |
 | Babysit | an agent per PR | babysit-pr | a merged PR, or a brief saying what André must do |
-| Upkeep | routines | factory (dispatch, brief, garden), correct | started sessions, the standing brief, a garden log |
+| Upkeep | routines, or André | factory (dispatch, brief, garden), retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
 
 Shape is the only stage that changes what a ticket means. When Iterate finds
 that acceptance cannot hold, it hands the ticket back instead of absorbing the
-change, and the definition is reshaped on André's command.
+change, and the definition is reshaped on André's command. Tickets that arrive
+without a grilling session, from André's notes or from other people, go
+through Matt Pocock's `triage`, whose agent brief uses the same ticket template
+as `to-tickets`.
 
 ## A ticket's life
 
@@ -86,6 +89,25 @@ sequenceDiagram
 
 Skills hold judgment. Everything with one right answer lives in the `factory`
 CLI, so every session reaches it the same way.
+
+## Learning
+
+Four skills change the harness, or a repo's guards, from what went wrong. They
+belong to Upkeep: André or a routine starts them, never a ticket.
+
+| | Finds | Fixes |
+|---|---|---|
+| One session | `retro` (Matt Pocock's): candidates ranked by severity, in seven kinds: navigation pointers, automated checks, reviewer rules, AGENTS.md trims, tool economy, no-op instructions, information access | `hillclimb`: a wording change to a skill or AGENTS.md, kept only when it improves both the cases it was tuned on and held-out ones |
+| Repo history | `/factory garden`: classes of mistake that happened at least twice in two weeks of PRs, reverts and hand-backs | `correct`: makes one class impossible, trying architecture, then types, then a lint, then a test, and docs last |
+
+A candidate whose fix is a check, a test or a `CODING_STANDARDS.md` rule gets
+written directly: a check proves itself. Only wording changes go to
+`hillclimb`, because only an eval shows that wording changed what agents do.
+`hillclimb` first searches past sessions for other occurrences of the failure,
+and each one, cut at the turn before the mistake, becomes an eval case. Fewer
+than two occurrences means it is not a failure mode yet. Past sessions exist
+only on the Mac, in `~/.claude/projects`, kept for ten years; cloud sessions
+keep none, so `hillclimb` runs locally.
 
 ## Pieces
 
@@ -130,12 +152,15 @@ flowchart TB
   The CLI reads it from the base branch, so a branch cannot raise its own
   autonomy.
 - **The run skill**, `.claude/skills/run-<name>/`, recorded by Claude Code's
-  built-in `/run-skill-generator`. Agents start the app through the built-in
+  built-in `/run-skill-generator`, which only André can start, so
+  `/setup-factory` asks him to. Agents start the app through the built-in
   `/run`, which loads it. Without one a repo stays at autonomy `pr`. The
-  built-in `/verify` also records `.claude/skills/verify/` as it learns, but
-  only a human can start it, so the gate does not count it. The same shape
-  fits any repo-specific procedure: one global entry skill that loads the
-  repo's `<verb>-<name>` recipe, written the first time it is needed.
+  built-in `/verify`, also André's to start, uses a `run-*` skill as its
+  handle; it records `.claude/skills/verify/` only after working out the
+  steps with no run skill, so in a factory repo the run skill is the one
+  recipe both use. The same shape fits any repo-specific procedure: one global
+  entry skill that loads the repo's `<verb>-<name>` recipe, written the first
+  time it is needed.
 
 ## Trackers
 

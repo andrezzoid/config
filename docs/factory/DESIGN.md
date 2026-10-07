@@ -162,7 +162,9 @@ flowchart TB
   built-in `/verify`, also André's to start, uses a `run-*` skill as its
   handle; it records `.claude/skills/verify/` only after working out the
   steps with no run skill, so in a factory repo the run skill is the one
-  recipe both use. The same shape fits any repo-specific procedure: one global
+  recipe both use. No setting lets an agent start the bundled `/verify`:
+  `skillOverrides` only hides skills. A root `.claude/skills/verify/` replaces
+  the bundled one for André and agents alike, and agents can call it. The same shape fits any repo-specific procedure: one global
   entry skill that loads the repo's `<verb>-<name>` recipe, written the first
   time it is needed.
 

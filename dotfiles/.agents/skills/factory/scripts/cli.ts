@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import * as forge from "./forge.ts";
 import { decide, EXIT, fingerprint, isRunSkill, mergeGate, renderMarker, REPO_SKILLS, type Status } from "./pr.ts";
 import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
-import { autonomy, claimant, claimBody, claimWinner, currentLease, HUMAN_LABEL, isClaim, nextTickets, phaseOf, READY_LABEL, ticketsOfPr } from "./tickets.ts";
+import { autonomy, claimant, claimBody, claimWinner, contract, currentLease, HUMAN_LABEL, isClaim, nextTickets, phaseOf, READY_LABEL, ticketsOfPr } from "./tickets.ts";
 import type { GithubTracker } from "./trackers/github.ts";
 import { enabledTrackers, normalizeId, trackerFor } from "./trackers/index.ts";
 import type { Ticket } from "./trackers/types.ts";
@@ -229,12 +229,13 @@ async function ticketShow(a: Args) {
   const { ticket, comments } = await trackerFor(id).get(id);
   const open = ticket.repo ? forge.openPrs(ticket.repo, ticket.branchName, ticket.prs) : [];
   const phase = phaseOf(ticket, open);
-  print(Boolean(a.flags.json), { ...summary(ticket), phase, openPrs: open, body: ticket.body, comments }, () => {
+  const agreed = contract(ticket, comments);
+  print(Boolean(a.flags.json), { ...summary(ticket), phase, openPrs: open, contract: agreed, body: ticket.body, comments }, () => {
     const s = summary(ticket);
     return [
       `${s.id} ${s.title}`,
       `  ${s.url}`,
-      `  phase ${phase}${open.length ? ` · ${open.join(", ")}` : ""}`,
+      `  phase ${phase}${open.length ? ` · ${open.join(", ")}` : ""} · contract from the ${agreed.source === "brief" ? "triage agent brief" : "body"}`,
       `  state ${s.state} · repo ${s.repo ?? "?"} · autonomy ${s.autonomy} · branch ${s.branchName}`,
       `  labels ${s.labels.join(", ") || "none"}`,
       `  blockers ${s.blockers.join(", ") || "none"}`,

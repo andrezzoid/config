@@ -82,6 +82,15 @@ export function claimWinner(comments: TicketComment[], mine: string): string | n
   return live[0]?.id ?? null;
 }
 
+// What a ticket asks for. Triage posts its agent brief as a comment and
+// leaves the reporter's text alone, so the latest comment carrying an
+// "## Agent Brief" heading is the contract, and the body only until one exists.
+export function contract(t: Pick<Ticket, "body">, comments: TicketComment[]): { source: "brief" | "body"; text: string } {
+  const briefs = comments.filter((c) => /^## Agent Brief\s*$/m.test(c.body)).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const latest = briefs.at(-1);
+  return latest ? { source: "brief", text: latest.body } : { source: "body", text: t.body };
+}
+
 // A claim is a lease between agent sessions, never ownership: the assignee
 // stays the human's. It lives while its session shows progress, a comment on
 // the ticket or a push to its branch, and lapses after LEASE_MS without any,

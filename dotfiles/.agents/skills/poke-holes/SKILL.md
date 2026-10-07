@@ -26,6 +26,7 @@ Fresh subagent(s), briefed with the theory (the ticket, its parent, the spec) pl
 
 - **Run the acceptance checks.** Their run is the evidence; the author's run was only the gate.
 - **Prove it live.** When the repo has a run skill (`.claude/skills/run-*`), start the app with `/run` and drive each acceptance line through the running app the way a user would, and keep the evidence. This lane is the floor: a verdict without it is a code review, and must say so.
+- **Keep the ledger.** Report every acceptance line, each either PASS with its evidence or a finding (it failed, or you could not reach a state that shows it). PASS lines go into the PR's evidence; findings get dispositions like any other. The artifact review is not done until every line is accounted for.
 - **Check the base still works.** Run the same load-bearing scenario on the base branch too. If the base lacks the feature, say so and check the end state the user waits for instead.
 - **Attempt refutation.** Actively try to break it — don't confirm it passes.
 - **Audit the diff against the theory.** What landed that the theory never said; what the theory said that never landed. Both directions.

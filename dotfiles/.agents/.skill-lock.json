@@ -246,6 +246,17 @@
       "pluginName": "mattpocock-skills",
       "installedAt": "2026-09-21T08:30:25.936Z",
       "updatedAt": "2026-09-21T08:30:25.936Z"
+    },
+    "triage": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/mattpocock/skills.git",
+      "ref": "24fe0ef7737efae15c87225755e9f6f5965e4888",
+      "skillPath": "skills/engineering/triage/SKILL.md",
+      "skillFolderHash": "a683e69163e23630f39c05a50fb9d83a3795a6a6fbd317357669e082cd43a158",
+      "pluginName": "mattpocock-skills",
+      "installedAt": "2026-10-07T08:48:59.870Z",
+      "updatedAt": "2026-10-07T08:48:59.870Z"
     }
   },
   "lastSelectedAgents": [

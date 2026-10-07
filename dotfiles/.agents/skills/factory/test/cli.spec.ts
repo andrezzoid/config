@@ -29,6 +29,8 @@ type LinearCall = { op: string; variables: any; auth: string | undefined };
 let linearCalls: LinearCall[] = [];
 let linearIssues: any[] = [];
 let issueComments: any[] = [];
+// A claim another session posts a second before ours, to stage a race.
+let rivalClaim: any = null;
 
 function answer(op: string, variables: any): { status: number; body: unknown } {
   const data = (d: unknown) => ({ status: 200, body: { data: d } });
@@ -50,6 +52,8 @@ function answer(op: string, variables: any): { status: number; body: unknown } {
     case "FactoryUpdate":
       return data({ issueUpdate: { success: true } });
     case "FactoryComment": {
+      if (rivalClaim) issueComments.push({ ...rivalClaim, createdAt: new Date(Date.now() - 1000).toISOString() });
+      rivalClaim = null;
       const id = `mine-${issueComments.length}`;
       issueComments.push({ id, body: variables.body, createdAt: new Date().toISOString(), user: { name: "André" } });
       return data({ commentCreate: { success: true, comment: { id } } });
@@ -153,6 +157,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "factory-cli-"));
   linearCalls = [];
   issueComments = [];
+  rivalClaim = null;
   linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "autonomy:merge"] })];
   routes();
 });
@@ -367,7 +372,7 @@ describe("Linear tickets", () => {
   });
 
   test("a claim that lost the race withdraws its comment", async () => {
-    issueComments.push({ id: "theirs", body: claimBody(null, "local"), createdAt: new Date(Date.now() - 1000).toISOString(), user: null });
+    rivalClaim = { id: "theirs", body: claimBody(null, "local"), user: null };
     const r = await run(["ticket", "claim", "ENG-1"]);
     expect(r.code).toBe(3);
     expect(linearCalls.find((c) => c.op === "FactoryDeleteComment")?.variables).toEqual({ id: "mine-1" });
@@ -386,16 +391,45 @@ describe("Linear tickets", () => {
     expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
   });
 
-  test("a stale claim from an earlier attempt does not block a new one", async () => {
+  test("a lapsed claim is taken over, and the new claim names it", async () => {
     issueComments.push({ id: "stale", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z", user: null });
     expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
+    expect(issueComments.at(-1).body).toContain("Takes over from a cloud session, quiet since 2026-09-01");
   });
 
-  test("claim refuses a ticket already in progress", async () => {
-    linearIssues = [linearIssue({ identifier: "ENG-1", state: { name: "In Progress", type: "started" } })];
+  test("a live claim from another session refuses without commenting", async () => {
+    issueComments.push({ id: "theirs", body: claimBody("https://claude.ai/code/session_x", "cloud"), createdAt: new Date(Date.now() - 3600_000).toISOString(), user: null });
     const r = await run(["ticket", "claim", "ENG-1"]);
     expect(r.code).toBe(3);
+    expect(r.err).toContain("claimed by");
+    expect(linearCalls.some((c) => c.op === "FactoryComment")).toBe(false);
+  });
+
+  test("the session that holds the claim may claim again", async () => {
+    issueComments.push({ id: "own", body: claimBody("https://claude.ai/code/session_abc", "cloud"), createdAt: new Date(Date.now() - 3600_000).toISOString(), user: null });
+    const r = await run(["ticket", "claim", "ENG-1"], { CLAUDE_CODE_REMOTE_SESSION_ID: "cse_abc" });
+    expect(r.code).toBe(0);
+    expect(linearCalls.some((c) => c.op === "FactoryComment")).toBe(false);
+  });
+
+  test("claim takes a ticket a human already started, keeping its state and assignee", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", state: { name: "In Progress", type: "started" }, assignee: { id: "me", name: "André", isMe: true } })];
+    const r = await run(["ticket", "claim", "ENG-1"]);
+    expect(r.code).toBe(0);
     expect(linearCalls.some((c) => c.op === "FactoryUpdate")).toBe(false);
+    expect(issueComments[0].body).toContain("<!-- factory:claim -->");
+  });
+
+  test("claim leaves a colleague's assignee and only starts the ticket", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", assignee: { id: "u9", name: "Rita", isMe: false } })];
+    expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
+    expect(linearCalls.find((c) => c.op === "FactoryUpdate")?.variables.input).toEqual({ stateId: "s-doing" });
+  });
+
+  test("ticket show names the phase", async () => {
+    const d = JSON.parse((await run(["ticket", "show", "ENG-1", "--json"])).out);
+    expect(d.phase).toBe("iterate");
+    expect(d.openPrs).toEqual([]);
   });
 });
 
@@ -494,11 +528,42 @@ describe("GitHub Issues tickets", () => {
   test("a claim that lost the race deletes its own comment", async () => {
     routes({
       ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/issues/12/comments": [{ id: 1, body: claimBody(null, "cloud"), created_at: new Date(Date.now() - 1000).toISOString() }],
+      $rival: { id: 1, body: claimBody(null, "cloud") },
     });
     const r = await run(["ticket", "claim", "o/r#12"], gh);
     expect(r.code).toBe(3);
     expect(ghCalls().filter((c) => c.args.includes("DELETE")).map((c) => c.args[1])).toEqual(["repos/o/r/issues/comments/9001"]);
+  });
+
+  test("claim leaves a colleague's assignee", async () => {
+    routes({
+      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
+      "GET repos/o/r/issues/12": githubIssue({ number: 12, assignees: [{ login: "rita" }] }),
+    });
+    expect((await run(["ticket", "claim", "o/r#12"], gh)).code).toBe(0);
+    expect(sent("POST", "repos/o/r/issues/12/assignees")).toEqual([]);
+    expect(sent("POST", "repos/o/r/issues/12/labels")).toEqual([{ labels: ["in-progress"] }]);
+  });
+
+  test("a push to the ticket's branch keeps an old claim alive", async () => {
+    routes({
+      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
+      "GET repos/o/r/issues/12/comments": [{ id: 1, body: claimBody(null, "cloud"), created_at: new Date(Date.now() - 5 * 3600_000).toISOString() }],
+      "GET repos/o/r/branches/issue-12-app-do-the-thing": { commit: { commit: { committer: { date: new Date(Date.now() - 3600_000).toISOString() } } } },
+    });
+    const r = await run(["ticket", "claim", "o/r#12"], gh);
+    expect(r.code).toBe(3);
+    expect(sent("POST", "repos/o/r/issues/12/comments")).toEqual([]);
+  });
+
+  test("ticket show is in babysit while a PR from its branch is open", async () => {
+    routes({
+      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
+      "GET repos/o/r/pulls?head=o:issue-12-app-do-the-thing&state=open": [{ number: 7, html_url: "https://github.com/o/r/pull/7" }],
+    });
+    const d = JSON.parse((await run(["ticket", "show", "o/r#12", "--json"], gh)).out);
+    expect(d.phase).toBe("babysit");
+    expect(d.openPrs).toEqual(["https://github.com/o/r/pull/7"]);
   });
 
   test("handback comments the brief, drops the claim and relabels for a human", async () => {

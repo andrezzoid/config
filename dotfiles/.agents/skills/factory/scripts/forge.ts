@@ -185,6 +185,37 @@ export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts
   };
 }
 
+// When the branch's head commit was made, or null when there is no branch: a
+// session's pushes are progress on its claim.
+export function branchPushedAt(repo: string, branch: string): string | null {
+  try {
+    return api<any>(`repos/${repo}/branches/${branch}`)?.commit?.commit?.committer?.date ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// A ticket's open pull requests: those from its branch, plus the ones its
+// tracker links while they stay open.
+export function openPrs(repo: string, branch: string, linked: string[]): string[] {
+  const urls = new Set<string>();
+  try {
+    for (const p of api<any[]>(`repos/${repo}/pulls?head=${repo.split("/")[0]}:${branch}&state=open`) ?? []) urls.add(p.html_url);
+  } catch {
+    // no such branch or no access: no open pull request we can see
+  }
+  for (const url of linked) {
+    const m = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(url);
+    if (!m || urls.has(url)) continue;
+    try {
+      if (api<any>(`repos/${m[1]}/pulls/${m[2]}`).state === "open") urls.add(url);
+    } catch {
+      // unreadable: not counted as open
+    }
+  }
+  return [...urls];
+}
+
 // The entry names of a directory in the repo; empty when it does not exist.
 export function listRepoDir(r: Repo, path: string): string[] {
   try {

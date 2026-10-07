@@ -41,7 +41,7 @@ fragment IssueFields on Issue {
   id identifier title description url branchName priority createdAt updatedAt completedAt
   state { id name type }
   team { id key }
-  assignee { id name }
+  assignee { id name isMe }
   labels { nodes { id name parent { name } } }
   parent { identifier }
   children { nodes { identifier title state { type name } } }
@@ -131,7 +131,7 @@ export type LinearIssue = {
   completedAt?: string | null;
   state: { id?: string; name: string; type: string };
   team: { id: string; key: string };
-  assignee: { id: string; name: string } | null;
+  assignee: { id: string; name: string; isMe?: boolean } | null;
   labels: { nodes: { id?: string; name: string; parent?: { name: string } | null }[] };
   parent: { identifier: string } | null;
   children: { nodes: Ref[] };
@@ -180,6 +180,7 @@ export function toTicket(i: LinearIssue): Ticket {
     openChildren: i.children.nodes.filter((c) => !DONE.includes(c.state.type)).length,
     prs: i.attachments.nodes.map((a) => a.url).filter((u) => /github\.com\/.+\/pull\/\d+/.test(u)),
     closes: `Closes ${i.identifier}`,
+    assignees: i.assignee ? [{ name: i.assignee.name, me: i.assignee.isMe === true }] : [],
   };
 }
 
@@ -215,11 +216,15 @@ export class LinearTracker implements Tracker {
     return { ticket: toTicket(i), comments: i.comments.nodes.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt })) };
   }
 
-  async start(id: string): Promise<void> {
-    const i = this.raw.get(id) ?? (await this.issue(id));
-    const me = (await linear<{ viewer: { id: string } }>(VIEWER_QUERY)).viewer;
-    const started = await this.firstState(i.team.id, "started");
-    await linear(UPDATE_ISSUE, { id: i.id, input: { assigneeId: me.id, ...(started ? { stateId: started } : {}) } });
+  async start(t: Ticket): Promise<void> {
+    const i = this.raw.get(t.id) ?? (await this.issue(t.id));
+    const input: Record<string, string> = {};
+    if (t.assignees.length === 0) input.assigneeId = (await linear<{ viewer: { id: string } }>(VIEWER_QUERY)).viewer.id;
+    if (t.state !== "started") {
+      const started = await this.firstState(i.team.id, "started");
+      if (started) input.stateId = started;
+    }
+    if (Object.keys(input).length > 0) await linear(UPDATE_ISSUE, { id: i.id, input });
   }
 
   async comment(id: string, body: string): Promise<string> {

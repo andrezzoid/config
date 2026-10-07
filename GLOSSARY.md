@@ -69,7 +69,8 @@ A path whose changes a revert cannot undo, so they never merge without André.
 _Avoid_: Protected path
 
 **Claim**:
-The first write a session makes on a ticket, marking it as taken.
+A lease one agent session holds on a ticket, kept as a comment: it lapses after three hours without progress, a push or a comment, and never changes who the ticket belongs to.
+_Avoid_: Assignment, lock
 
 **Verdict**:
 A pass or fail recorded for one commit by reviewers who did not write it.

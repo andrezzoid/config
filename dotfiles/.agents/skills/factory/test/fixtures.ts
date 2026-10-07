@@ -21,6 +21,7 @@ export function ticket(over: Partial<Ticket> = {}): Ticket {
     openChildren: 0,
     prs: [],
     closes: "Closes ENG-1",
+    assignees: [],
     ...over,
   };
 }

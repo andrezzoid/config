@@ -66,7 +66,9 @@ Agents copy what they see, so leave nothing you would not want copied:
   artifact.
 
 Push the branch after every verifiable unit. Work that exists only on one
-machine when it dies was never done.
+machine when it dies was never done, and a push is what keeps the claim alive:
+three hours without a push or a comment and the next session takes the ticket
+over.
 
 If the work needs something that belongs to another ticket, stop, name it and
 brief. It is not yours to build.

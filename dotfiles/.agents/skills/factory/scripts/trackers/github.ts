@@ -24,7 +24,7 @@ function repoOfUrl(url: string | undefined, fallback: string): string {
   return (m?.[1] ?? fallback).toLowerCase();
 }
 
-export function toTicket(issue: any, repo: string, blockers: TicketRef[] = []): Ticket {
+export function toTicket(issue: any, repo: string, blockers: TicketRef[] = [], me: string | null = null): Ticket {
   const labels: string[] = (issue.labels ?? []).map((l: any) => String(typeof l === "string" ? l : l.name).toLowerCase());
   const closed = issue.state === "closed";
   const started = !closed && labels.includes(STARTED_LABEL);
@@ -48,6 +48,7 @@ export function toTicket(issue: any, repo: string, blockers: TicketRef[] = []): 
     openChildren: subs ? Math.max(0, (subs.total ?? 0) - (subs.completed ?? 0)) : 0,
     prs: [],
     closes: `Closes #${issue.number}`,
+    assignees: (issue.assignees ?? []).map((a: any) => ({ name: a.login, me: a.login === me })),
   };
 }
 
@@ -112,7 +113,7 @@ export class GithubTracker implements Tracker {
   // The issue payload carries a sub-issue summary on most hosts; ask the
   // sub-issues route when it does not, since a parent must never read as a slice.
   private full(repo: string, issue: any): Ticket {
-    const t = toTicket(issue, repo, this.blockers(repo, issue));
+    const t = toTicket(issue, repo, this.blockers(repo, issue), forgeViewer());
     if (!issue.sub_issues_summary) {
       try {
         t.openChildren = (api<any[]>(`repos/${repo}/issues/${issue.number}/sub_issues`) ?? []).filter((s) => s.state === "open").length;
@@ -147,11 +148,10 @@ export class GithubTracker implements Tracker {
     return { ticket: this.full(repo, issue), comments };
   }
 
-  async start(id: string): Promise<void> {
-    const { repo, number } = parseId(id);
-    const me = await this.viewer();
-    api(`repos/${repo}/issues/${number}/assignees`, { method: "POST", body: { assignees: [me] } });
-    api(`repos/${repo}/issues/${number}/labels`, { method: "POST", body: { labels: [STARTED_LABEL] } });
+  async start(t: Ticket): Promise<void> {
+    const { repo, number } = parseId(t.id);
+    if (t.assignees.length === 0) api(`repos/${repo}/issues/${number}/assignees`, { method: "POST", body: { assignees: [await this.viewer()] } });
+    if (!t.labels.includes(STARTED_LABEL)) api(`repos/${repo}/issues/${number}/labels`, { method: "POST", body: { labels: [STARTED_LABEL] } });
   }
 
   async comment(id: string, body: string): Promise<string> {
@@ -183,7 +183,7 @@ export class GithubTracker implements Tracker {
       const prs = paginate<any>(`repos/${repo}/pulls?state=open`);
       const touched = [...this.issues(repo, "state=open"), ...this.issues(repo, `state=closed&since=${since}`)];
       for (const i of touched) {
-        let t = toTicket(i, repo);
+        let t = toTicket(i, repo, [], forgeViewer());
         if (!t.labels.some((l) => FACTORY_LABELS.includes(l))) continue;
         // The brief counts ready tickets the way `tickets next` does.
         if (t.state === "queued" && t.labels.includes(READY_LABEL)) t = this.full(repo, i);

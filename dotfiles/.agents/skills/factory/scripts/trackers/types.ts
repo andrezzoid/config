@@ -33,6 +33,8 @@ export type Ticket = {
   prs: string[];
   // What a PR body says so the tracker closes the ticket on merge.
   closes: string;
+  // The humans it belongs to; `me` marks the account running the factory.
+  assignees: { name: string; me: boolean }[];
 };
 
 export type TicketComment = { id: string; body: string; createdAt: string };
@@ -42,8 +44,9 @@ export interface Tracker {
   // Labelled ready-for-agent and not started.
   ready(): Promise<Ticket[]>;
   get(id: string): Promise<{ ticket: Ticket; comments: TicketComment[] }>;
-  // Assign to the viewer and mark started.
-  start(id: string): Promise<void>;
+  // Mark started where it is not yet, and assign the viewer only when nobody
+  // is assigned: the assignee stays the human's.
+  start(t: Ticket): Promise<void>;
   comment(id: string, body: string): Promise<string>;
   deleteComment(id: string, commentId: string): Promise<void>;
   // Back to the queue for a human: ready-for-human instead of ready-for-agent.

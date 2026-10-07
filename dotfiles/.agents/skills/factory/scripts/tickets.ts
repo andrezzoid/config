@@ -25,6 +25,11 @@ export function readiness(t: Ticket, opts: { repo?: string } = {}): Readiness {
   // build every child at once (Matt Pocock's to-spec hazard).
   if (t.openChildren > 0) return { ready: false, reason: `parent of ${t.openChildren} open ticket(s)` };
   if (!t.repo) return { ready: false, reason: "no repository: add a Repo: owner/name line" };
+  // The assignee is the human the ticket belongs to: a colleague's ticket is
+  // for their agents, not ours.
+  if (t.assignees.length > 0 && !t.assignees.some((a) => a.me)) {
+    return { ready: false, reason: `assigned to ${t.assignees.map((a) => a.name).join(", ")}` };
+  }
   if (opts.repo && t.repo !== opts.repo.toLowerCase()) return { ready: false, reason: `belongs to ${t.repo}` };
   return { ready: true };
 }
@@ -48,9 +53,15 @@ export function nextTickets(tickets: Ticket[], opts: { repo?: string } = {}) {
   return { ready, skipped };
 }
 
-export function claimBody(sessionUrl: string | null, runtime: string): string {
+export function claimBody(sessionUrl: string | null, runtime: string, replaces?: string): string {
   const where = sessionUrl ? `[${runtime} session](${sessionUrl})` : `a ${runtime} session`;
-  return `Claimed by ${where}.\n\n<!-- ${CLAIM_PREFIX} -->`;
+  const takeover = replaces ? ` Takes over from ${replaces}.` : "";
+  return `Claimed by ${where}.${takeover}\n\n<!-- ${CLAIM_PREFIX} -->`;
+}
+
+// Who a claim names, for a takeover's message: the session link, or the runtime.
+export function claimant(c: Pick<TicketComment, "body">): string {
+  return /Claimed by (.*?)\.(?:\s|$)/.exec(c.body)?.[1] ?? "an earlier session";
 }
 
 export function isClaim(c: Pick<TicketComment, "body">): boolean {
@@ -69,6 +80,37 @@ export function claimWinner(comments: TicketComment[], mine: string): string | n
     .filter((c) => Date.parse(c.createdAt) >= since)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   return live[0]?.id ?? null;
+}
+
+// A claim is a lease between agent sessions, never ownership: the assignee
+// stays the human's. It lives while its session shows progress, a comment on
+// the ticket or a push to its branch, and lapses after LEASE_MS without any,
+// the same quiet spell the brief calls stalled. Any later comment counts, a
+// human's too: that only keeps a lease longer, never ends it early.
+export const LEASE_MS = 3 * 3600_000;
+export type Lease = { claim: TicketComment; lastProgress: string; live: boolean };
+
+export function currentLease(comments: TicketComment[], lastPush: string | null, now = Date.now()): Lease | null {
+  const claims = comments.filter(isClaim).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const newest = claims.at(-1);
+  if (!newest) return null;
+  const claim = claims.find((c) => c.id === claimWinner(comments, newest.id))!;
+  const since = Date.parse(claim.createdAt);
+  const progress = [claim.createdAt, ...comments.filter((c) => !isClaim(c)).map((c) => c.createdAt), ...(lastPush ? [lastPush] : [])]
+    .filter((at) => Date.parse(at) >= since)
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  const lastProgress = progress.at(-1)!;
+  return { claim, lastProgress, live: now - Date.parse(lastProgress) < LEASE_MS };
+}
+
+// Where a ticket is in the factory: the stage that acts on it next. Shape is
+// André's (or triage's); iterate builds it; babysit lands its pull request.
+export type Phase = "shape" | "iterate" | "babysit" | "done";
+export function phaseOf(t: Pick<Ticket, "state" | "labels">, openPrs: string[]): Phase {
+  if (t.state === "done" || t.state === "canceled") return "done";
+  if (openPrs.length > 0) return "babysit";
+  if (t.labels.includes(READY_LABEL) && !t.labels.includes(HUMAN_LABEL)) return "iterate";
+  return "shape";
 }
 
 // The ticket a branch works on. GitHub branches are issue-<n>-slug (checked

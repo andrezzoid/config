@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import * as forge from "./forge.ts";
 import { decide, EXIT, fingerprint, isRunSkill, mergeGate, renderMarker, REPO_SKILLS, type Status } from "./pr.ts";
 import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
-import { autonomy, claimBody, claimWinner, HUMAN_LABEL, isClaim, nextTickets, READY_LABEL, ticketsOfPr } from "./tickets.ts";
+import { autonomy, claimant, claimBody, claimWinner, currentLease, HUMAN_LABEL, isClaim, nextTickets, phaseOf, READY_LABEL, ticketsOfPr } from "./tickets.ts";
 import type { GithubTracker } from "./trackers/github.ts";
 import { enabledTrackers, normalizeId, trackerFor } from "./trackers/index.ts";
 import type { Ticket } from "./trackers/types.ts";
@@ -227,11 +227,14 @@ function idArg(a: Args, usage: string): string {
 async function ticketShow(a: Args) {
   const id = idArg(a, "usage: factory ticket show <ID>");
   const { ticket, comments } = await trackerFor(id).get(id);
-  print(Boolean(a.flags.json), { ...summary(ticket), body: ticket.body, comments }, () => {
+  const open = ticket.repo ? forge.openPrs(ticket.repo, ticket.branchName, ticket.prs) : [];
+  const phase = phaseOf(ticket, open);
+  print(Boolean(a.flags.json), { ...summary(ticket), phase, openPrs: open, body: ticket.body, comments }, () => {
     const s = summary(ticket);
     return [
       `${s.id} ${s.title}`,
       `  ${s.url}`,
+      `  phase ${phase}${open.length ? ` · ${open.join(", ")}` : ""}`,
       `  state ${s.state} · repo ${s.repo ?? "?"} · autonomy ${s.autonomy} · branch ${s.branchName}`,
       `  labels ${s.labels.join(", ") || "none"}`,
       `  blockers ${s.blockers.join(", ") || "none"}`,
@@ -245,17 +248,28 @@ async function ticketShow(a: Args) {
 async function ticketClaim(a: Args) {
   const id = idArg(a, "usage: factory ticket claim <ID>");
   const tracker = trackerFor(id);
-  const { ticket } = await tracker.get(id);
-  if (ticket.state !== "queued") throw new Exit(3, `${id} is ${ticket.stateName}: someone already took it`);
+  const { ticket, comments } = await tracker.get(id);
+  if (ticket.state === "done" || ticket.state === "canceled") throw new Exit(3, `${id} is ${ticket.stateName}`);
   if (!ticket.labels.includes(READY_LABEL)) throw new Exit(3, `${id} has no ${READY_LABEL} label`);
-  await tracker.start(id);
+  // The claim comment is the lock, not the tracker's state: a human may have
+  // started the ticket before handing it to an agent.
   const where = str(a.flags.session) ?? sessionUrl();
-  const mine = await tracker.comment(id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`));
+  const lease = currentLease(comments, ticket.repo ? forge.branchPushedAt(ticket.repo, ticket.branchName) : null);
+  if (lease?.live) {
+    if (where && lease.claim.body.includes(where)) {
+      print(Boolean(a.flags.json), summary(ticket), () => `${id} is already claimed by this session`);
+      return 0;
+    }
+    throw new Exit(3, `${id} is claimed by ${claimant(lease.claim)}, last active ${lease.lastProgress}`);
+  }
+  const replaces = lease ? `${claimant(lease.claim)}, quiet since ${lease.lastProgress.slice(0, 16).replace("T", " ")}` : undefined;
+  const mine = await tracker.comment(id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`, replaces));
   const winner = claimWinner((await tracker.get(id)).comments, mine);
   if (winner && winner !== mine) {
     await tracker.deleteComment(id, mine);
     throw new Exit(3, `${id} was claimed by another session first`);
   }
+  await tracker.start(ticket);
   print(Boolean(a.flags.json), summary(ticket), () => `claimed ${id}: branch ${ticket.branchName} in ${ticket.repo ?? "?"}, autonomy ${autonomy(ticket)}, PR body says "${ticket.closes}"`);
   return 0;
 }

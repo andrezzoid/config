@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseProfile } from "../scripts/profile.ts";
-import { autonomy, byPriority, claimBody, claimWinner, nextTickets, readiness, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
+import { autonomy, byPriority, claimBody, claimWinner, currentLease, nextTickets, phaseOf, readiness, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
 import { blockedByRefs, closedIssue, toTicket as githubTicket } from "../scripts/trackers/github.ts";
 import { normalizeId, trackerOf } from "../scripts/trackers/index.ts";
 import { repoOf, toTicket as linearTicket } from "../scripts/trackers/linear.ts";
@@ -27,6 +27,11 @@ describe("readiness", () => {
 
   test("a parent with open children is a spec, not a slice", () => {
     expect(readiness(ticket({ openChildren: 1 }))).toEqual({ ready: false, reason: "parent of 1 open ticket(s)" });
+  });
+
+  test("a ticket assigned to someone else is theirs; unassigned or mine is ready", () => {
+    expect(readiness(ticket({ assignees: [{ name: "Rita", me: false }] }))).toEqual({ ready: false, reason: "assigned to Rita" });
+    expect(readiness(ticket({ assignees: [{ name: "Rita", me: false }, { name: "André", me: true }] })).ready).toBe(true);
   });
 
   test("--repo filters to one repository, case-insensitively", () => {
@@ -97,6 +102,52 @@ describe("ordering and claims", () => {
   });
 });
 
+describe("leases", () => {
+  const now = Date.parse("2026-10-07T12:00:00Z");
+  const ago = (hours: number) => new Date(now - hours * 3600_000).toISOString();
+  const claim = (id: string, hours: number) => ({ id, body: claimBody(null, "cloud"), createdAt: ago(hours) });
+
+  test("no claim, no lease", () => {
+    expect(currentLease([], null, now)).toBe(null);
+  });
+
+  test("a claim lives while its session shows progress: a comment or a push", () => {
+    expect(currentLease([claim("c", 1)], null, now)?.live).toBe(true);
+    expect(currentLease([claim("c", 5)], null, now)?.live).toBe(false);
+    expect(currentLease([claim("c", 5), { id: "x", body: "Deviation", createdAt: ago(1) }], null, now)?.live).toBe(true);
+    expect(currentLease([claim("c", 5)], ago(2), now)?.live).toBe(true);
+  });
+
+  test("a push from before the claim is not its progress", () => {
+    expect(currentLease([claim("c", 5)], ago(6), now)?.live).toBe(false);
+  });
+
+  test("the winner of the newest race holds the ticket", () => {
+    expect(currentLease([claim("old", 9), claim("new", 1)], null, now)?.claim.id).toBe("new");
+    expect(currentLease([claim("first", 1), { ...claim("second", 1), createdAt: new Date(now - 3600_000 + 60_000).toISOString() }], null, now)?.claim.id).toBe("first");
+  });
+
+  test("a takeover names the claim it replaces", () => {
+    expect(claimBody(null, "local", "a cloud session, quiet since 2026-10-07 07:00")).toContain("Takes over from a cloud session, quiet since 2026-10-07 07:00.");
+  });
+});
+
+describe("phase", () => {
+  test("a closed ticket is done, an open PR means babysit, the ready label means iterate", () => {
+    expect(phaseOf(ticket({ state: "done" }), [])).toBe("done");
+    expect(phaseOf(ticket({ state: "canceled" }), ["https://github.com/o/r/pull/7"])).toBe("done");
+    expect(phaseOf(ticket({ labels: [], state: "started" }), ["https://github.com/o/r/pull/7"])).toBe("babysit");
+    expect(phaseOf(ticket(), [])).toBe("iterate");
+    expect(phaseOf(ticket({ state: "started" }), [])).toBe("iterate");
+  });
+
+  test("anything else is shape, including a ticket waiting on a human", () => {
+    expect(phaseOf(ticket({ labels: ["needs-info"] }), [])).toBe("shape");
+    expect(phaseOf(ticket({ labels: ["ready-for-human"] }), [])).toBe("shape");
+    expect(phaseOf(ticket({ labels: ["ready-for-agent", "ready-for-human"] }), [])).toBe("shape");
+  });
+});
+
 describe("ticket ids", () => {
   test("the id says which tracker owns the ticket", () => {
     expect(trackerOf("ENG-12")).toBe("linear");
@@ -150,6 +201,11 @@ describe("Linear adapter", () => {
       closes: "Closes ENG-1",
     });
   });
+
+  test("the assignee says whether the ticket is the viewer's", () => {
+    expect(linearTicket(linearIssue({ assignee: { id: "u9", name: "Rita", isMe: false } })).assignees).toEqual([{ name: "Rita", me: false }]);
+    expect(linearTicket(linearIssue()).assignees).toEqual([]);
+  });
 });
 
 describe("GitHub adapter", () => {
@@ -163,6 +219,11 @@ describe("GitHub adapter", () => {
       closes: "Closes #12",
       openChildren: 0,
     });
+  });
+
+  test("assignees are marked as the viewer's by login", () => {
+    const t = githubTicket(githubIssue({ assignees: [{ login: "andrezzoid" }, { login: "rita" }] }), "o/r", [], "andrezzoid");
+    expect(t.assignees).toEqual([{ name: "andrezzoid", me: true }, { name: "rita", me: false }]);
   });
 
   test("in-progress means started; closed means done unless not planned", () => {

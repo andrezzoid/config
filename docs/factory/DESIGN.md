@@ -63,7 +63,7 @@ sequenceDiagram
   F->>T: labelled, queued, blockers done, not a parent
   R->>I: one session per ready ticket: /implement ID
   I->>F: factory ticket claim ID
-  F->>T: assign, start, comment, read back: oldest claim wins
+  F->>T: claim comment, read back: oldest claim wins; then start it, assigning only if nobody is
   I->>I: build test-first, gates, live proof, fresh reviewers
   I->>GH: push branch, open PR ending in the Closes line
   I->>F: factory pr verdict PR --sha HEAD --result pass
@@ -81,7 +81,8 @@ sequenceDiagram
 | Whether to start | André | `ready-for-agent` label |
 | Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the repo profile |
 | Which ticket is next | CLI | `factory tickets next` |
-| Who works it | CLI | `factory ticket claim`: first write, oldest claim in a 15-minute window wins |
+| Who works it | CLI | `factory ticket claim`: a lease kept as a comment; the oldest claim in a 15-minute race wins, and a claim lapses after 3 hours without a push or a comment |
+| Whose ticket it is | André, or the colleague assigned | the assignee, which the factory fills only when empty; dispatch takes only unassigned tickets or its own account's |
 | Whether it works | agent, then fresh agents | gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the app started through `/run`, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |

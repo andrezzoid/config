@@ -2,7 +2,7 @@
 // this CLI computes ticket readiness, claims, PR merge-readiness and the merge
 // gate, so every session, local or cloud, reaches the same answer the same way.
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -425,4 +425,6 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await main(process.argv.slice(2));
+// Compare real paths: Node resolves symlinks for import.meta.url but not for
+// argv[1], and stow installs every skill behind a symlink.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) process.exitCode = await main(process.argv.slice(2));

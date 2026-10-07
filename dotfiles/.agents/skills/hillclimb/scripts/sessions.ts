@@ -10,15 +10,20 @@
 // <file>:<line> names one event for good: search prints it, show and cut take
 // it.
 
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type Event = {
   type?: string;
+  uuid?: string;
+  parentUuid?: string | null;
   isMeta?: boolean;
   isCompactSummary?: boolean;
+  isSidechain?: boolean;
+  origin?: { kind?: string };
+  turnOrigin?: string;
   timestamp?: string;
   cwd?: string;
   gitBranch?: string;
@@ -51,12 +56,33 @@ function flatten(c: string | Block[] | undefined): string {
   return typeof c === "string" ? c : (c ?? []).map((b) => b.text ?? "").join("\n");
 }
 
-// A prompt is a turn the human typed: the only place a replay can resume,
-// because the eval sends its own prompt as the next user turn.
-export function isPrompt(e: Event): boolean {
-  if (e.type !== "user" || e.isMeta || e.isCompactSummary) return false;
+function typedText(e: Event): string {
   const c = e.message?.content;
-  return typeof c === "string" || (Array.isArray(c) && c.some((b) => b.type === "text") && !c.some((b) => b.type === "tool_result"));
+  return typeof c === "string" ? c : (c ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
+}
+
+// A prompt is a turn André typed in the main conversation: the only place a
+// replay can resume, because the eval sends its own prompt as the next user
+// turn. Task notifications, interrupt markers and the briefs that start a
+// subagent are user events too, but nobody typed them. Interactive sessions
+// mark typed turns with origin "human"; cloud and `claude -p` sessions leave
+// origin out and set turnOrigin "sdk".
+export function isPrompt(e: Event): boolean {
+  if (e.type !== "user" || e.isMeta || e.isCompactSummary || e.isSidechain) return false;
+  if (e.origin?.kind && e.origin.kind !== "human") return false;
+  if (e.turnOrigin && !["human", "sdk"].includes(e.turnOrigin)) return false;
+  const c = e.message?.content;
+  if (Array.isArray(c) && (c.some((b) => b.type === "tool_result") || !c.some((b) => b.type === "text"))) return false;
+  const text = typedText(e);
+  return !text.startsWith("[Request interrupted by user") && !text.includes("<task-notification>");
+}
+
+// A slash command is stored expanded into tags; the replay needs it as typed.
+function asTyped(text: string): string {
+  const name = /<command-name>([^<]*)<\/command-name>/.exec(text)?.[1];
+  if (!name) return text;
+  const args = /<command-args>([^<]*)<\/command-args>/.exec(text)?.[1]?.trim();
+  return args ? `${name} ${args}` : name;
 }
 
 function parse(line: string): Event {
@@ -71,6 +97,8 @@ function lines(file: string): string[] {
   return readFileSync(file, "utf8").split("\n").filter((l, i, all) => l !== "" || i < all.length - 1);
 }
 
+// Main-conversation transcripts, newest first. A subagent's transcript sits in
+// <session>/subagents/ and cannot be replayed on its own.
 function transcripts(root: string, days: number, project?: string): string[] {
   const since = Date.now() - days * 86_400_000;
   let names: string[];
@@ -80,10 +108,11 @@ function transcripts(root: string, days: number, project?: string): string[] {
     return [];
   }
   return names
-    .filter((n) => n.endsWith(".jsonl") && (!project || n.toLowerCase().includes(project.toLowerCase())))
-    .map((n) => join(root, n))
-    .filter((f) => statSync(f).mtimeMs >= since)
-    .sort();
+    .filter((n) => n.endsWith(".jsonl") && !n.split(sep).includes("subagents") && (!project || n.toLowerCase().includes(project.toLowerCase())))
+    .map((n) => ({ file: join(root, n), mtime: statSync(join(root, n)).mtimeMs }))
+    .filter((t) => t.mtime >= since)
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((t) => t.file);
 }
 
 export type Hit = { file: string; line: number; timestamp: string; cwd: string; text: string };
@@ -127,27 +156,34 @@ export function show(file: string, line: number, before = 3, after = 3): string 
 
 export type Cut = { prompt: string; cwd: string; gitBranch: string; timestamp: string; sessionId: string; events: number };
 
-// Keeps every event before the prompt at <line>, the turn that led to the
-// mistake. The eval replays that history and sends the prompt again as the
-// next user turn, so the agent faces the same moment.
+// Writes the conversation as the agent had it when the prompt at <line>
+// arrived: the prompt's ancestors, following parentUuid from the event before
+// it to the first event. A file also holds branches the agent never saw then,
+// such as a prompt that was interrupted and asked again, and bookkeeping lines
+// with no uuid; both stay out. The eval replays this history and sends the
+// prompt as the next user turn, so the agent faces the same moment.
 export function cut(file: string, line: number, out: string): Cut {
   const all = lines(file);
-  const e = parse(all[line - 1] ?? "");
+  const events = all.map(parse);
+  const e = events[line - 1] ?? {};
   if (!isPrompt(e)) {
     let p = line - 1;
-    while (p > 0 && !isPrompt(parse(all[p - 1]))) p--;
+    while (p > 0 && !isPrompt(events[p - 1])) p--;
     throw new Error(`line ${line} is not a prompt the human typed; the prompt before it is line ${p || "none"}`);
   }
+  const index = new Map(events.slice(0, line - 1).flatMap((ev, i) => (ev.uuid ? [[ev.uuid, i] as const] : [])));
+  const chain: number[] = [];
+  for (let id = e.parentUuid; id && index.has(id); id = events[index.get(id)!].parentUuid) chain.push(index.get(id)!);
+  chain.sort((a, b) => a - b);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, all.slice(0, line - 1).join("\n") + "\n");
-  const c = e.message?.content;
+  writeFileSync(out, chain.map((i) => all[i]).join("\n") + "\n");
   return {
-    prompt: typeof c === "string" ? c : (c ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n"),
+    prompt: asTyped(typedText(e)),
     cwd: e.cwd ?? "",
     gitBranch: e.gitBranch ?? "",
     timestamp: e.timestamp ?? "",
     sessionId: e.sessionId ?? "",
-    events: line - 1,
+    events: chain.length,
   };
 }
 
@@ -167,13 +203,12 @@ export function main(args: string[]): number {
   const [cmd, a, b] = args;
   try {
     if (cmd === "search" && a) {
-      const hits = search(root, new RegExp(a, "i"), {
-        days: Number(flag(args, "days") ?? 90),
-        project: flag(args, "project"),
-        limit: Number(flag(args, "limit") ?? 50),
-      });
+      const limit = Number(flag(args, "limit") ?? 50);
+      const hits = search(root, new RegExp(a, "i"), { days: Number(flag(args, "days") ?? 90), project: flag(args, "project"), limit });
       for (const h of hits) console.log(`${h.file}:${h.line}  ${h.timestamp.slice(0, 10)}  ${h.cwd}\n    ${h.text}`);
-      console.log(`${hits.length} hit(s) in ${root}`);
+      console.log(hits.length >= limit
+        ? `limit of ${limit} reached: older hits were not read. Narrow the pattern, or raise --limit.`
+        : `${hits.length} hit(s) in ${root}`);
       return 0;
     }
     if (cmd === "show" && a) {
@@ -192,4 +227,6 @@ export function main(args: string[]): number {
   return 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) process.exitCode = main(process.argv.slice(2));
+// Compare real paths: Node resolves symlinks for import.meta.url but not for
+// argv[1], and stow installs every skill behind a symlink.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) process.exitCode = main(process.argv.slice(2));

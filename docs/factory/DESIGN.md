@@ -97,17 +97,21 @@ belong to Upkeep: André or a routine starts them, never a ticket.
 
 | | Finds | Fixes |
 |---|---|---|
-| One session | `retro` (Matt Pocock's): candidates ranked by severity, in seven kinds: navigation pointers, automated checks, reviewer rules, AGENTS.md trims, tool economy, no-op instructions, information access | `hillclimb`: a wording change to a skill or AGENTS.md, kept only when it improves both the cases it was tuned on and held-out ones |
+| One session | `retro` (Matt Pocock's): candidates ranked by severity, in seven kinds: navigation pointers, automated checks, reviewer rules, AGENTS.md trims, tool economy, no-op instructions, information access | `hillclimb`: an edit to a skill's instructions, kept only when it improves both the cases it was tuned on and held-out ones |
 | Repo history | `/factory garden`: classes of mistake that happened at least twice in two weeks of PRs, reverts and hand-backs | `correct`: makes one class impossible, trying architecture, then types, then a lint, then a test, and docs last |
 
 A candidate whose fix is a check, a test or a `CODING_STANDARDS.md` rule gets
-written directly: a check proves itself. Only wording changes go to
-`hillclimb`, because only an eval shows that wording changed what agents do.
-`hillclimb` first searches past sessions for other occurrences of the failure,
-and each one, cut at the turn before the mistake, becomes an eval case. Fewer
-than two occurrences means it is not a failure mode yet. Past sessions exist
-only on the Mac, in `~/.claude/projects`, kept for ten years; cloud sessions
-keep none, so `hillclimb` runs locally.
+written directly: a check proves itself. Wording changes to a skill's
+instructions go to `hillclimb`, because only an eval shows that wording changed
+what agents do. `hillclimb` first searches past sessions for other occurrences
+of the failure, and each one, cut at the prompt before the mistake, becomes an
+eval case that replays that moment. Fewer than two occurrences means it is not
+a failure mode yet. A replay carries the `AGENTS.md` text and the skill
+descriptions recorded in the transcript, so edits to those cannot be measured
+this way: descriptions are measured with `bin/triggers` in newsroom-evals, and
+`AGENTS.md` has no measured path yet. Past sessions exist only on the Mac, in
+`~/.claude/projects`, kept for ten years; cloud sessions keep none, so
+`hillclimb` runs locally.
 
 ## Pieces
 

@@ -1,7 +1,7 @@
 // End to end: the real CLI as a subprocess, a fake `gh`, and a mock Linear.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -155,6 +155,15 @@ beforeEach(() => {
   issueComments = [];
   linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "autonomy:merge"] })];
   routes();
+});
+
+// Stow installs the skill behind symlinks; bin/factory resolves them, but
+// anything that starts cli.ts directly must not silently do nothing.
+test("cli.ts runs when started through a symlink", () => {
+  const link = join(mkdtempSync(join(tmpdir(), "factory-link-")), "cli.ts");
+  symlinkSync(CLI, link);
+  const r = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", link, "--help"], { encoding: "utf8" });
+  expect(r.stdout).toContain("factory:");
 });
 
 describe("pr status", () => {

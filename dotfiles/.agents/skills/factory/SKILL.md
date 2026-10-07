@@ -1,6 +1,6 @@
 ---
 name: factory
-description: "Move a ticket through the factory, or run one of its routines. /factory <ticket> takes one ticket (Linear or GitHub Issues) from its current phase until it has to wait; /factory alone shows what needs you; --brief, --dispatch and --garden are what the routines run. Usage: /factory [<ticket> | --brief | --dispatch | --garden] [--repo owner/name] [--max N]."
+description: "Move a ticket through the factory, or run one of its routines. /factory <ticket> takes one ticket (Linear or GitHub Issues) from its current phase until it has to wait; /factory alone shows what needs you; --brief, --dispatch and --garden are what the routines run. Usage: /factory [<ticket> [--take-over] | --brief | --dispatch | --garden] [--repo owner/name] [--max N]."
 disable-model-invocation: true
 ---
 
@@ -25,7 +25,8 @@ from its labels, its state and its open pull requests (`openPrs`):
 | babysit | a pull request for it is open | call the Skill tool with "babysit-pr", passing the pull request |
 | done | merged or closed | stop |
 
-1. Read the phase and run its skill.
+1. Read the phase and run its skill. With `--take-over`, tell `implement` that
+   André asked to take the ticket over from the session that claimed it.
 2. When the skill returns, read the phase again. While it changed, go on with
    the new one. When it did not, the ticket waits on something: a reviewer,
    CI, or André. The skill's brief says which.

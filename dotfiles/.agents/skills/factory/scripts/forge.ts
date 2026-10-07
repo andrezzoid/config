@@ -185,16 +185,6 @@ export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts
   };
 }
 
-// When the branch's head commit was made, or null when there is no branch: a
-// session's pushes are progress on its claim.
-export function branchPushedAt(repo: string, branch: string): string | null {
-  try {
-    return api<any>(`repos/${repo}/branches/${branch}`)?.commit?.commit?.committer?.date ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // A ticket's open pull requests: those from its branch, plus the ones its
 // tracker links while they stay open.
 export function openPrs(repo: string, branch: string, linked: string[]): string[] {

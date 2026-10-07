@@ -91,25 +91,25 @@ export function contract(t: Pick<Ticket, "body">, comments: TicketComment[]): { 
   return latest ? { source: "brief", text: latest.body } : { source: "body", text: t.body };
 }
 
-// A claim is a lease between agent sessions, never ownership: the assignee
-// stays the human's. It lives while its session shows progress, a comment on
-// the ticket or a push to its branch, and lapses after LEASE_MS without any,
-// the same quiet spell the brief calls stalled. Any later comment counts, a
-// human's too: that only keeps a lease longer, never ends it early.
-export const LEASE_MS = 3 * 3600_000;
-export type Lease = { claim: TicketComment; lastProgress: string; live: boolean };
+// A claim marks which agent session works a ticket, never who owns it: the
+// assignee stays the human's. It holds until the ticket is handed back or
+// another session takes it over on purpose (`claim --take-over`). No timer
+// ends it: a slow session and a dead one look alike from outside, and only the
+// person who reads the claim's session link can tell which it is.
+export type HeldClaim = { claim: TicketComment; lastActivity: string };
 
-export function currentLease(comments: TicketComment[], lastPush: string | null, now = Date.now()): Lease | null {
+export function currentClaim(comments: TicketComment[]): HeldClaim | null {
   const claims = comments.filter(isClaim).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const newest = claims.at(-1);
   if (!newest) return null;
   const claim = claims.find((c) => c.id === claimWinner(comments, newest.id))!;
   const since = Date.parse(claim.createdAt);
-  const progress = [claim.createdAt, ...comments.filter((c) => !isClaim(c)).map((c) => c.createdAt), ...(lastPush ? [lastPush] : [])]
+  const lastActivity = comments
+    .map((c) => c.createdAt)
     .filter((at) => Date.parse(at) >= since)
-    .sort((a, b) => Date.parse(a) - Date.parse(b));
-  const lastProgress = progress.at(-1)!;
-  return { claim, lastProgress, live: now - Date.parse(lastProgress) < LEASE_MS };
+    .sort((a, b) => Date.parse(a) - Date.parse(b))
+    .at(-1)!;
+  return { claim, lastActivity };
 }
 
 // Where a ticket is in the factory: the stage that acts on it next. Shape is

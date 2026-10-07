@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import * as forge from "./forge.ts";
 import { decide, EXIT, fingerprint, isRunSkill, mergeGate, renderMarker, REPO_SKILLS, type Status } from "./pr.ts";
 import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
-import { autonomy, claimant, claimBody, claimWinner, contract, currentLease, HUMAN_LABEL, isClaim, nextTickets, phaseOf, READY_LABEL, ticketsOfPr } from "./tickets.ts";
+import { autonomy, claimant, claimBody, claimWinner, contract, currentClaim, HUMAN_LABEL, isClaim, nextTickets, phaseOf, READY_LABEL, ticketsOfPr } from "./tickets.ts";
 import type { GithubTracker } from "./trackers/github.ts";
 import { enabledTrackers, normalizeId, trackerFor } from "./trackers/index.ts";
 import type { Ticket } from "./trackers/types.ts";
@@ -255,15 +255,15 @@ async function ticketClaim(a: Args) {
   // The claim comment is the lock, not the tracker's state: a human may have
   // started the ticket before handing it to an agent.
   const where = str(a.flags.session) ?? sessionUrl();
-  const lease = currentLease(comments, ticket.repo ? forge.branchPushedAt(ticket.repo, ticket.branchName) : null);
-  if (lease?.live) {
-    if (where && lease.claim.body.includes(where)) {
-      print(Boolean(a.flags.json), summary(ticket), () => `${id} is already claimed by this session`);
-      return 0;
-    }
-    throw new Exit(3, `${id} is claimed by ${claimant(lease.claim)}, last active ${lease.lastProgress}`);
+  const held = currentClaim(comments);
+  if (held && where && held.claim.body.includes(where)) {
+    print(Boolean(a.flags.json), summary(ticket), () => `${id} is already claimed by this session`);
+    return 0;
   }
-  const replaces = lease ? `${claimant(lease.claim)}, quiet since ${lease.lastProgress.slice(0, 16).replace("T", " ")}` : undefined;
+  if (held && a.flags["take-over"] !== true) {
+    throw new Exit(3, `${id} is claimed by ${claimant(held.claim)}, last active ${held.lastActivity}. If that session is gone, rerun with --take-over.`);
+  }
+  const replaces = held ? `${claimant(held.claim)}, quiet since ${held.lastActivity.slice(0, 16).replace("T", " ")}` : undefined;
   const mine = await tracker.comment(id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`, replaces));
   const winner = claimWinner((await tracker.get(id)).comments, mine);
   if (winner && winner !== mine) {
@@ -391,7 +391,7 @@ Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a c
   factory tickets next [--repo o/r|--here] [--json]
                                               tickets labelled ${READY_LABEL} whose blockers are done
   factory ticket show <ID> [--json]           normalized ticket: repo, autonomy, blockers, branch
-  factory ticket claim <ID> [--session URL]   assign, start and comment; exit 3 if someone has it
+  factory ticket claim <ID> [--take-over]     claim it for this session; exit 3 if another session holds it
   factory ticket handback <ID> --brief-file F comment the brief, swap to ${HUMAN_LABEL}, back to the queue
   factory pr status [PR] [--repo o/r] [--json]
                                               merge-readiness verdict; exit code encodes it

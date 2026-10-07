@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseProfile } from "../scripts/profile.ts";
-import { autonomy, byPriority, claimBody, claimWinner, contract, currentLease, nextTickets, phaseOf, readiness, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
+import { autonomy, byPriority, claimBody, claimWinner, contract, currentClaim, nextTickets, phaseOf, readiness, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
 import { blockedByRefs, closedIssue, toTicket as githubTicket } from "../scripts/trackers/github.ts";
 import { normalizeId, trackerOf } from "../scripts/trackers/index.ts";
 import { repoOf, toTicket as linearTicket } from "../scripts/trackers/linear.ts";
@@ -102,29 +102,24 @@ describe("ordering and claims", () => {
   });
 });
 
-describe("leases", () => {
+describe("claims", () => {
   const now = Date.parse("2026-10-07T12:00:00Z");
   const ago = (hours: number) => new Date(now - hours * 3600_000).toISOString();
   const claim = (id: string, hours: number) => ({ id, body: claimBody(null, "cloud"), createdAt: ago(hours) });
 
-  test("no claim, no lease", () => {
-    expect(currentLease([], null, now)).toBe(null);
+  test("no claim, nobody holds the ticket", () => {
+    expect(currentClaim([])).toBe(null);
   });
 
-  test("a claim lives while its session shows progress: a comment or a push", () => {
-    expect(currentLease([claim("c", 1)], null, now)?.live).toBe(true);
-    expect(currentLease([claim("c", 5)], null, now)?.live).toBe(false);
-    expect(currentLease([claim("c", 5), { id: "x", body: "Deviation", createdAt: ago(1) }], null, now)?.live).toBe(true);
-    expect(currentLease([claim("c", 5)], ago(2), now)?.live).toBe(true);
-  });
-
-  test("a push from before the claim is not its progress", () => {
-    expect(currentLease([claim("c", 5)], ago(6), now)?.live).toBe(false);
+  test("a claim holds however old it is, and reports its last activity", () => {
+    expect(currentClaim([claim("c", 50)])?.claim.id).toBe("c");
+    expect(currentClaim([claim("c", 50)])?.lastActivity).toBe(ago(50));
+    expect(currentClaim([claim("c", 5), { id: "x", body: "Deviation", createdAt: ago(1) }, { id: "y", body: "older", createdAt: ago(9) }])?.lastActivity).toBe(ago(1));
   });
 
   test("the winner of the newest race holds the ticket", () => {
-    expect(currentLease([claim("old", 9), claim("new", 1)], null, now)?.claim.id).toBe("new");
-    expect(currentLease([claim("first", 1), { ...claim("second", 1), createdAt: new Date(now - 3600_000 + 60_000).toISOString() }], null, now)?.claim.id).toBe("first");
+    expect(currentClaim([claim("old", 9), claim("new", 1)])?.claim.id).toBe("new");
+    expect(currentClaim([claim("first", 1), { ...claim("second", 1), createdAt: new Date(now - 3600_000 + 60_000).toISOString() }])?.claim.id).toBe("first");
   });
 
   test("a takeover names the claim it replaces", () => {

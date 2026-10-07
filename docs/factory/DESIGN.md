@@ -81,7 +81,7 @@ sequenceDiagram
 | Whether to start | André | `ready-for-agent` label |
 | Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the repo profile |
 | Which ticket is next | CLI | `factory tickets next` |
-| Who works it | CLI | `factory ticket claim`: a lease kept as a comment; the oldest claim in a 15-minute race wins, and a claim lapses after 3 hours without a push or a comment |
+| Who works it | CLI | `factory ticket claim`: a comment; the oldest claim in a 15-minute race wins, and it holds until a hand-back or a deliberate `--take-over` |
 | Whose ticket it is | André, or the colleague assigned | the assignee, which the factory fills only when empty; dispatch takes only unassigned tickets or its own account's |
 | Whether it works | agent, then fresh agents | gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the app started through `/run`, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |

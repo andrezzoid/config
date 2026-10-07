@@ -391,9 +391,12 @@ describe("Linear tickets", () => {
     expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
   });
 
-  test("a lapsed claim is taken over, and the new claim names it", async () => {
+  test("an old claim still holds; --take-over replaces it and names it", async () => {
     issueComments.push({ id: "stale", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z", user: null });
-    expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
+    const refused = await run(["ticket", "claim", "ENG-1"]);
+    expect(refused.code).toBe(3);
+    expect(refused.err).toContain("--take-over");
+    expect((await run(["ticket", "claim", "ENG-1", "--take-over"])).code).toBe(0);
     expect(issueComments.at(-1).body).toContain("Takes over from a cloud session, quiet since 2026-09-01");
   });
 
@@ -543,17 +546,6 @@ describe("GitHub Issues tickets", () => {
     expect((await run(["ticket", "claim", "o/r#12"], gh)).code).toBe(0);
     expect(sent("POST", "repos/o/r/issues/12/assignees")).toEqual([]);
     expect(sent("POST", "repos/o/r/issues/12/labels")).toEqual([{ labels: ["in-progress"] }]);
-  });
-
-  test("a push to the ticket's branch keeps an old claim alive", async () => {
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/issues/12/comments": [{ id: 1, body: claimBody(null, "cloud"), created_at: new Date(Date.now() - 5 * 3600_000).toISOString() }],
-      "GET repos/o/r/branches/issue-12-app-do-the-thing": { commit: { commit: { committer: { date: new Date(Date.now() - 3600_000).toISOString() } } } },
-    });
-    const r = await run(["ticket", "claim", "o/r#12"], gh);
-    expect(r.code).toBe(3);
-    expect(sent("POST", "repos/o/r/issues/12/comments")).toEqual([]);
   });
 
   test("ticket show is in babysit while a PR from its branch is open", async () => {

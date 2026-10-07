@@ -69,7 +69,7 @@ A path whose changes a revert cannot undo, so they never merge without André.
 _Avoid_: Protected path
 
 **Claim**:
-A lease one agent session holds on a ticket, kept as a comment: it lapses after three hours without progress, a push or a comment, and never changes who the ticket belongs to.
+The comment that marks which agent session works a ticket. It holds until the ticket is handed back or another session takes it over on purpose, and never changes who the ticket belongs to.
 _Avoid_: Assignment, lock
 
 **Verdict**:

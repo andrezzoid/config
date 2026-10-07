@@ -22,8 +22,9 @@ different definition, that is the human's to reshape.
   ticket too when there is one.
 - **Claim it, as your first write:** `factory ticket claim <ID>`. Exit 3 means
   another session has it, or it is not labelled `ready-for-agent`: stop and say
-  so in one line. Skip the claim when the human handed you the ticket in this
-  conversation and it is already yours.
+  so in one line, with the claiming session's link. Add `--take-over` only when
+  the human asked you to take the ticket over. Skip the claim when the human
+  handed you the ticket in this conversation and it is already yours.
 - **Repo profile:** `.agents/factory.md` names the tracker, the gates and the
   one-way doors. Without it, tell the human to run `/setup-factory` and
   continue with the defaults: autonomy `pr`, gates from the README or CI.
@@ -66,9 +67,7 @@ Agents copy what they see, so leave nothing you would not want copied:
   artifact.
 
 Push the branch after every verifiable unit. Work that exists only on one
-machine when it dies was never done, and a push is what keeps the claim alive:
-three hours without a push or a comment and the next session takes the ticket
-over.
+machine when it dies was never done.
 
 If the work needs something that belongs to another ticket, stop, name it and
 brief. It is not yours to build.

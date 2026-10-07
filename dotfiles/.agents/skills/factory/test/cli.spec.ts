@@ -556,7 +556,7 @@ describe("brief", () => {
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const needsYou = r.out.split("## Running")[0];
-    expect(needsYou).toContain("ENG-3 Bounced: handed back");
+    expect(needsYou).toContain("ENG-3 Bounced: waiting on your decision");
     expect(needsYou).toContain("ENG-2 Stuck: stalled");
     expect(r.out).toContain("## Queued (1 ready");
     expect(r.out).toContain("## Landed this week (1)");

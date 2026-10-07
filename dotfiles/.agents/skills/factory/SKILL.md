@@ -19,7 +19,8 @@ re-deriving them: `factory --help` lists the commands.
 The standing brief covers the whole portfolio and asks for nothing. Run
 `factory brief --json` and write at most fifteen lines, in this order:
 
-1. **Needs you:** handed-back tickets, stalled tickets, PRs waiting on their
+1. **Needs you:** tickets labelled `ready-for-human` (triaged for you, or handed
+   back by an agent), stalled tickets, PRs waiting on their
    merge or review. Each with one clause on what is needed. Empty means say
    "nothing needs you".
 2. **Running:** one line per ticket with its PR state.

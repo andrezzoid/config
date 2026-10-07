@@ -43,7 +43,7 @@ Matt Pocock's `triage` roles under their own names, plus the factory's.
 | Needs André to evaluate it | `needs-triage` |
 | Waiting on the reporter for more information | `needs-info` |
 | Fully specified, ready for an agent | `ready-for-agent` |
-| Needs André: to build it, or handed back by the factory | `ready-for-human` |
+| A decision or work only André can do: from triage, or handed back by an agent | `ready-for-human` |
 | Will not be actioned | `wontfix` |
 | May merge itself once verified | `autonomy:merge` |
 

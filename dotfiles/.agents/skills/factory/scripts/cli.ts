@@ -286,8 +286,10 @@ async function brief(a: Args) {
       return null;
     }
   };
-  const handedBack = tickets.filter((t) => t.labels.includes(HUMAN_LABEL) && (t.state === "queued" || t.state === "started"));
-  const running = tickets.filter((t) => t.state === "started" && !handedBack.includes(t));
+  // ready-for-human: a decision only André can make, whether triage put it
+  // there or an agent handed the ticket back. The ticket's comments say which.
+  const needsHuman = tickets.filter((t) => t.labels.includes(HUMAN_LABEL) && (t.state === "queued" || t.state === "started"));
+  const running = tickets.filter((t) => t.state === "started" && !needsHuman.includes(t));
   // pstack's audit rule: progress is a side effect. Started, no PR and no
   // update for hours means the session died after claiming.
   const stalled = running.filter((t) => t.prs.length === 0 && Date.now() - Date.parse(t.updatedAt) > STALL_MS);
@@ -295,10 +297,10 @@ async function brief(a: Args) {
   const landed = tickets.filter((t) => t.completedAt && Date.parse(t.completedAt) > weekAgo);
   const runningWithPrs: (ReturnType<typeof summary> & { prs: { url: string; status: Status | null }[] })[] = [];
   for (const t of running) runningWithPrs.push({ ...summary(t), prs: await Promise.all(t.prs.map(async (u) => ({ url: u, status: await prStatus(u) }))) });
-  const data = { handedBack: handedBack.map(summary), stalled: stalled.map(summary), running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
+  const data = { needsHuman: needsHuman.map(summary), stalled: stalled.map(summary), running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
   print(Boolean(a.flags.json), data, () => {
     const out: string[] = ["## Needs you"];
-    out.push(...handedBack.map((t) => `- ${t.id} ${t.title}: handed back`));
+    out.push(...needsHuman.map((t) => `- ${t.id} ${t.title}: waiting on your decision`));
     out.push(...stalled.map((t) => `- ${t.id} ${t.title}: stalled, started with no PR and quiet for over 3h`));
     for (const r of runningWithPrs) {
       for (const p of r.prs) {

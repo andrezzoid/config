@@ -16,7 +16,7 @@ const all = readdirSync(SKILLS).filter((n) => existsSync(join(SKILLS, n, "SKILL.
 const vendored = Object.keys(JSON.parse(readFileSync(join(AGENTS, ".skill-lock.json"), "utf8")).skills);
 // Pinned upstream so an update can be diffed, but edited here: they get the
 // same checks as my own skills.
-const FORKS = ["to-spec", "to-tickets"];
+const FORKS = ["to-spec", "to-tickets", "triage"];
 // Bundled with Claude Code, so every session has them without a folder here.
 const BUILTINS = ["run"];
 const own = all.filter((n) => !vendored.includes(n) || FORKS.includes(n));
@@ -124,7 +124,7 @@ for (const name of own) {
 
 test("skills that other skills chain are model-invocable; human entry points are not", () => {
   for (const chained of ["implement", "babysit-pr", "poke-holes", "complexity-red-flags"]) assert.ok(modelInvocable(chained), chained);
-  for (const entry of ["to-spec", "to-tickets", "factory", "setup-factory"]) assert.ok(!modelInvocable(entry), entry);
+  for (const entry of ["to-spec", "to-tickets", "triage", "factory", "setup-factory"]) assert.ok(!modelInvocable(entry), entry);
 });
 
 describe("layout", () => {

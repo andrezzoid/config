@@ -181,11 +181,12 @@ describe("GitHub adapter", () => {
     expect(blockedByRefs("## Blocked by\n\n- https://github.com/O/R/issues/12\n- https://github.com/o/api/issues/3", "o/r")).toEqual(["o/r#12", "o/api#3"]);
   });
 
-  test("the Blocked by section of the to-tickets issue template names blockers", () => {
-    const skill = readFileSync(join(import.meta.dirname, "../../to-tickets/SKILL.md"), "utf8");
-    const template = /<issue-template>([\s\S]*?)<\/issue-template>/.exec(skill)?.[1] ?? "";
+  test("the Blocked by section of the shared ticket template names blockers", () => {
+    const template = readFileSync(join(import.meta.dirname, "../../to-tickets/references/ticket-template.md"), "utf8");
     expect(template).toContain("## Blocked by");
-    const body = template.replace(/(## Blocked by\n\n)[^\n]*/, "$1- #12\n- o/api#3").replace(/(## Acceptance criteria\n\n)[^\n]*/, "$1- [ ] see #99");
+    const body = template.replace(/(## Blocked by\n\n)[^\n]*/, "$1- #12\n- o/api#3")
+      .replace(/(## Acceptance criteria\n\n)[^\n]*/, "$1- [ ] see #99")
+      .replace(/(## Out of scope\n\n)[^\n]*/, "$1- Changing #7");
     expect(blockedByRefs(body, "o/r")).toEqual(["o/r#12", "o/api#3"]);
   });
 

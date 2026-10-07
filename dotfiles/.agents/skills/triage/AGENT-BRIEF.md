@@ -38,34 +38,9 @@ State what is out of scope. This prevents the agent from gold-plating or making 
 
 ## Template
 
-```markdown
-## Agent Brief
+Post the brief as a comment whose first line is `## Agent Brief`, followed by the sections of [the ticket template](references/ticket-template.md): the same template `to-tickets` writes into ticket bodies, so `implement` reads one shape whichever skill wrote it. Write the acceptance criteria by [the acceptance criteria rules](references/acceptance-criteria.md). The category goes on the issue as a label, not into the brief.
 
-**Category:** bug / enhancement
-**Summary:** one-line description of what needs to happen
-
-**Current behavior:**
-Describe what happens now. For bugs, this is the broken behavior.
-For enhancements, this is the status quo the feature builds on.
-
-**Desired behavior:**
-Describe what should happen after the agent's work is complete.
-Be specific about edge cases and error conditions.
-
-**Key interfaces:**
-- `TypeName`: what needs to change and why
-- `functionName()` return type: what it currently returns vs what it should return
-- Config shape: any new configuration options needed
-
-**Acceptance criteria:**
-- [ ] Specific, testable criterion 1
-- [ ] Specific, testable criterion 2
-- [ ] Specific, testable criterion 3
-
-**Out of scope:**
-- Thing that should NOT be changed or addressed in this issue
-- Adjacent feature that might seem related but is separate
-```
+The factory reads blockers from the issue body and from the tracker's own relations, never from comments. When the brief names a blocker, also add it as an issue dependency, or as a "blocked by" relation in Linear.
 
 ## Examples
 
@@ -74,33 +49,39 @@ Be specific about edge cases and error conditions.
 ```markdown
 ## Agent Brief
 
-**Category:** bug
-**Summary:** Skill description truncation drops mid-word, producing broken output
+## Problem Statement
 
-**Current behavior:**
-When a skill description exceeds 1024 characters, it is truncated at exactly
-1024 characters regardless of word boundaries. This produces descriptions
-that end mid-word (e.g. "Use when the user wants to confi").
+When a skill description exceeds 1024 characters, it is cut at exactly 1024
+characters regardless of word boundaries. Descriptions then end mid-word
+(e.g. "Use when the user wants to confi").
 
-**Desired behavior:**
-Truncation should break at the last word boundary before 1024 characters
-and append "..." to indicate truncation.
+## What to build
 
-**Key interfaces:**
-- The `SkillMetadata` type's `description` field: no type change needed,
-  but the validation/processing logic that populates it needs to respect
-  word boundaries
-- Any function that reads SKILL.md frontmatter and extracts the description
+Truncation breaks at the last word boundary before 1024 characters and appends
+"..." to show that the text was cut.
 
-**Acceptance criteria:**
-- [ ] Descriptions under 1024 chars are unchanged
-- [ ] Descriptions over 1024 chars are truncated at the last word boundary
-      before 1024 chars
-- [ ] Truncated descriptions end with "..."
-- [ ] The total length including "..." does not exceed 1024 chars
+## Implementation Decisions
 
-**Out of scope:**
-- Changing the 1024 char limit itself
+- **Keep `SkillMetadata.description` a plain string**: forced by every reader
+  treating it as display text. Not a separate `truncated` flag, because no
+  reader needs to know.
+- **Truncate where SKILL.md frontmatter is parsed**: forced by that being the
+  one place descriptions enter the system. Not at each display site, because
+  they would drift apart.
+
+## Testing
+
+The frontmatter parser's unit tests, next to the existing description tests.
+
+## Acceptance criteria
+
+- [ ] Given a description under 1024 characters, when its skill loads, then the description is unchanged.
+- [ ] Given a description over 1024 characters, when its skill loads, then it ends at the last word boundary before character 1024, followed by "...".
+- [ ] Given a truncated description, when its skill loads, then its length including "..." is at most 1024 characters.
+
+## Out of scope
+
+- Changing the 1024 character limit itself
 - Multi-line description support
 ```
 
@@ -109,75 +90,86 @@ and append "..." to indicate truncation.
 ```markdown
 ## Agent Brief
 
-**Category:** enhancement
-**Summary:** Add `.out-of-scope/` directory support for tracking rejected feature requests
+## Problem Statement
 
-**Current behavior:**
 When a feature request is rejected, the issue is closed with a `wontfix` label
-and a comment. There is no persistent record of the decision or reasoning.
-Future similar requests require the maintainer to recall or search for the
-prior discussion.
+and a comment. Nothing records the decision or its reasoning, so a later
+request for the same feature needs the maintainer to recall or search for the
+earlier discussion.
 
-**Desired behavior:**
-Rejected feature requests should be documented in `.out-of-scope/<concept>.md`
-files that capture the decision, reasoning, and links to all issues that
-requested the feature. When triaging new issues, these files should be
-checked for matches.
+## What to build
 
-**Key interfaces:**
-- Markdown file format in `.out-of-scope/`: each file should have a
-  `# Concept Name` heading, a `**Decision:**` line, a `**Reason:**` line,
-  and a `**Prior requests:**` list with issue links
-- The triage workflow should read all `.out-of-scope/*.md` files early
-  and match incoming issues against them by concept similarity
+Each rejected feature request is recorded in `.out-of-scope/<concept>.md`, with
+the decision, the reasoning and links to every issue that asked for it. Triage
+checks these files and surfaces a match when a new issue asks for the same
+concept.
 
-**Acceptance criteria:**
-- [ ] Closing a feature as wontfix creates/updates a file in `.out-of-scope/`
-- [ ] The file includes the decision, reasoning, and link to the closed issue
-- [ ] If a matching `.out-of-scope/` file already exists, the new issue is
-      appended to its "Prior requests" list rather than creating a duplicate
-- [ ] During triage, existing `.out-of-scope/` files are checked and surfaced
-      when a new issue matches a prior rejection
+## Implementation Decisions
 
-**Out of scope:**
-- Automated matching (human confirms the match)
+- **One file per concept, not per issue**: forced by repeat requests being the
+  problem. Not one file per rejected issue, because matching would then need
+  every file read and compared.
+- **File shape**: a `# Concept Name` heading, a `**Decision:**` line, a
+  `**Reason:**` line and a `**Prior requests:**` list of issue links.
+
+## Testing
+
+A triage run on a scratch repo with one existing `.out-of-scope/` file.
+
+## Acceptance criteria
+
+- [ ] Given a feature closed as wontfix, when triage closes it, then a file in `.out-of-scope/` holds the decision, the reasoning and a link to the issue.
+- [ ] Given an existing `.out-of-scope/` file for the same concept, when triage closes another request for it, then the new issue is appended to that file's "Prior requests" list and no second file is created.
+- [ ] Given a new issue that matches an `.out-of-scope/` file, when triage starts on it, then it shows the matching file to the maintainer.
+
+## Out of scope
+
+- Automated matching (the maintainer confirms the match)
 - Reopening previously rejected features
 - Bug reports (only enhancement rejections go to `.out-of-scope/`)
 ```
 
 ### Good agent brief (PR)
 
-For a PR, "Current behavior" describes the state of the diff, and the brief asks the agent to finish or fix it rather than build from scratch.
+For a PR, the Problem Statement describes the state of the diff, and What to build asks the agent to finish or fix it rather than build from scratch.
 
 ```markdown
 ## Agent Brief
 
-**Category:** enhancement
-**Summary:** Finish the contributor's `--json` output flag for `triage list`
+## Problem Statement
 
-**Current behavior:**
 The PR adds a `--json` flag that serializes the issue list to JSON. The happy
 path works and the diff matches the project's command structure. Two gaps
-remain: errors are still printed as human text (not JSON), and the new flag has
-no test coverage.
+remain: errors still print as human text, not JSON, and the new flag has no
+test coverage.
 
-**Desired behavior:**
-With `--json`, all output (including errors) is well-formed JSON on stdout,
-and the command's exit codes are unchanged. The existing human-readable output
-is untouched when the flag is absent.
+## What to build
 
-**Key interfaces:**
-- The command's error path should emit `{ "error": string }` under `--json`
-  instead of the plain-text error
-- Reuse the existing serializer the PR already added; don't introduce a second
+With `--json`, all output, errors included, is well-formed JSON on stdout, and
+the command's exit codes are unchanged. Without the flag, the human-readable
+output is untouched.
 
-**Acceptance criteria:**
-- [ ] `triage list --json` emits valid JSON for both success and error cases
-- [ ] Exit codes match the non-JSON command
-- [ ] A test covers the `--json` success output and one error case
-- [ ] Default (non-JSON) output is byte-for-byte unchanged
+## Implementation Decisions
 
-**Out of scope:**
+- **Errors under `--json` are `{ "error": string }`**: forced by callers
+  parsing stdout as JSON. Not plain text on stderr, because a script would then
+  need two parsers.
+- **Reuse the serializer the PR already added**: forced by the PR's success
+  path depending on it. Not a second serializer, because the two would drift.
+
+## Testing
+
+The command's existing CLI tests.
+
+## Acceptance criteria
+
+- [ ] Given `triage list --json`, when the list loads, then stdout is valid JSON.
+- [ ] Given `triage list --json`, when the command fails, then stdout is valid JSON with an `error` field.
+- [ ] Given the same failure, when run with and without `--json`, then the exit codes match.
+- [ ] Given no `--json` flag, when the command runs, then its output is byte-for-byte the same as before the PR.
+
+## Out of scope
+
 - Adding `--json` to any other command
 - Changing the JSON shape of the success payload the PR already defined
 ```
@@ -199,9 +191,9 @@ The function around line 150 has the issue.
 ```
 
 This is bad because:
-- No category
+- It doesn't follow the ticket template
 - Vague description ("the triage thing is broken")
 - References file paths and line numbers that will go stale
 - No acceptance criteria
 - No scope boundaries
-- No description of current vs desired behavior
+- No problem statement and no behaviour to build

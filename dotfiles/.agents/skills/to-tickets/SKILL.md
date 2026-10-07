@@ -99,7 +99,7 @@ Iterate until the user approves the breakdown. Ask the shape question first, bec
 
 Publish the approved tickets in dependency order, blockers first, so each ticket's blocking edges can name real ids. The tracker is the one `.agents/factory.md` names. The tickets are the same everywhere; only how the edges are stored changes:
 
-- **Linear** → call the Skill tool with "linear-cli". Create each issue in the profile's team with the body from the issue template, which starts with the `Repo:` line. Store each edge natively with `linear issue relation add`, and a parent as the issue's parent.
+- **Linear** → call the Skill tool with "linear-cli". Create each issue in the profile's team with the body from `references/ticket-template.md`, which starts with the `Repo:` line. Store each edge natively with `linear issue relation add`, and a parent as the issue's parent.
 - **GitHub Issues** → `gh issue create --repo <owner/name> --title <title> --body-file <file>` in the repo the ticket ships in; leave out the `Repo:` line, since the issue's repository says it. Write each edge in the body's Blocked by section as `#12`, or `owner/name#12` for an issue in another repo: the factory reads that section on every repo. Where the repo has issue dependencies, also add each edge natively, which needs the blocker's numeric `id`, not its number: `gh api repos/<o>/<r>/issues/<n>/dependencies/blocked_by -X POST -F issue_id=<id>`. Attach children to a parent with `gh api repos/<o>/<r>/issues/<parent>/sub_issues -X POST -F sub_issue_id=<id>`.
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order. Each file's "Blocked by" lists the numbers and titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
 
@@ -127,39 +127,6 @@ Do NOT close or modify any parent issue.
 
 </local-ticket-template>
 
-<issue-template>
-
-Repo: <owner/name, the GitHub repository this ticket ships in; Linear only>
-
-## Parent
-
-A reference to the parent issue on the tracker (if the source was an existing issue, otherwise omit this section).
-
-## Problem Statement
-
-The problem that the user is facing, from the user's perspective. Omit this section when a parent carries it.
-
-## What to build
-
-The end-to-end behaviour this ticket makes work, from the user's perspective, not layer-by-layer implementation.
-
-## Implementation Decisions
-
-One entry for each decision someone could get wrong, each with the fact that forced it and the rejected alternative. Omit this section when a parent carries them.
-
-## Testing
-
-The seam this slice tests at, and the nearest similar test in the codebase. One line.
-
-## Acceptance criteria
-
-- [ ] Given <state>, when <trigger>, then <single observable outcome>.
-
-## Blocked by
-
-One line per blocking ticket: its id (`ENG-12` in Linear, `#12` or `owner/name#12` in GitHub Issues). Omit this section when there are none, rather than writing "none".
-
-</issue-template>
 
 In either form, avoid specific file paths or code snippets: they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
 

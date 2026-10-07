@@ -69,7 +69,7 @@ Ask in one round, each with your recommendation:
    <Linear team `<KEY>` | GitHub Issues>, PRs on GitHub. See `.agents/factory.md`.
 
    ### Triage labels
-   `ready-for-agent`, `ready-for-human`, `autonomy:merge`. See `.agents/factory.md`.
+   Matt Pocock's triage roles under their own names, plus `autonomy:merge`. See `.agents/factory.md`.
 
    ### Domain docs
    <single-context or multi-context>. See `.agents/factory.md`.
@@ -80,8 +80,8 @@ Ask in one round, each with your recommendation:
 ### 4. Close the gaps
 
 - Missing labels: offer to create them. Linear: with the linear CLI.
-  GitHub: `gh label create <name> --repo <o>/<r> --color <hex>` for
-  `ready-for-agent`, `ready-for-human`, `autonomy:merge` and `in-progress`.
+  GitHub: `gh label create <name> --repo <o>/<r> --color <hex>` for each label
+  in the profile's table.
 - A GitHub Issues repo: tell André to add it to `FACTORY_GITHUB_REPOS` on the
   cloud environment (see `cloud`), so the hourly dispatch sees its tickets.
 - No run skill: tell André to run `/run-skill-generator` in the repo and

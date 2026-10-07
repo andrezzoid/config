@@ -1,7 +1,8 @@
 # Acceptance criteria
 
-Shared by `to-spec` and `to-tickets`. The real file lives here;
-`to-tickets/references/acceptance-criteria.md` is a symlink to it.
+Shared by `to-spec`, `to-tickets` and `triage`. The real file lives here;
+`to-tickets/references/acceptance-criteria.md` and
+`triage/references/acceptance-criteria.md` are symlinks to it.
 
 Acceptance criteria are the most important part of a spec or a ticket. Everything
 downstream tests against these lines. `to-tickets` distributes them across the

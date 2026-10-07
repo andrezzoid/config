@@ -15,9 +15,11 @@ different definition, that is the human's to reshape.
 
 ## 1. Load the work
 
-- **Ticket:** `factory ticket show <ID> --json` gives the body, repo, autonomy,
-  blockers, branch name and the `closes` line, whichever tracker holds it.
-  Read the parent ticket too when there is one.
+- **Ticket:** `factory ticket show <ID> --json` gives the body, comments, repo,
+  autonomy, blockers, branch name and the `closes` line, whichever tracker
+  holds it. When a comment starts with `## Agent Brief`, the latest one is the
+  contract, written by triage, and the body is context. Read the parent ticket
+  too when there is one.
 - **Claim it, as your first write:** `factory ticket claim <ID>`. Exit 3 means
   another session has it, or it is not labelled `ready-for-agent`: stop and say
   so in one line. Skip the claim when the human handed you the ticket in this

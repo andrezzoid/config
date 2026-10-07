@@ -78,13 +78,13 @@ style guide, which only humans enforce. [T 15:00–18:00, 36:00]
 pstack's `correct` is this ladder as a skill. Matt's `retro` says a mechanical
 rule "gets a deterministic check, full stop".
 **Here:** `AGENTS.md` gained "When I correct you"; `correct` and `retro` are
-installed; `/factory garden` ranks fixes in the same order.
+installed; `/factory --garden` ranks fixes in the same order.
 
 **8. Watch how agents fail; turn each repeated failure into a lint rule.**
 "How do I turn this into a lint rule? How do I make it so that the code base
 makes this impossible?" [I 31:00] Matt: the agent "stumbles into the rules and
 bounces off them" instead of carrying them in context. [I 32:30]
-**Here:** `/factory garden` collects repeated mistakes; `/correct` fixes them.
+**Here:** `/factory --garden` collects repeated mistakes; `/correct` fixes them.
 
 **9. The codebase is the agent's memory, and anti-patterns spread like a
 virus.** "One small workaround ... in a matter of a few days ... has spread

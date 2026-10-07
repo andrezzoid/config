@@ -121,10 +121,10 @@ CLI.
 
    | Routine | Trigger | Repositories | Prompt |
    |---|---|---|---|
-   | Factory dispatch | Schedule, hourly | every repo the factory serves | `/factory dispatch` |
-   | Factory brief | Schedule, weekdays at 08:52, notifications on | any one | `/factory brief` |
+   | Factory dispatch | Schedule, hourly | every repo the factory serves | `/factory --dispatch` |
+   | Factory brief | Schedule, weekdays at 08:52, notifications on | any one | `/factory --brief` |
    | Factory babysit | GitHub event: pull request, action `labeled`; filters: labels include `factory`, is draft `false` | that repo | see below |
-   | Factory garden | Schedule, weekly, one routine per repo | that repo | `/factory garden` |
+   | Factory garden | Schedule, weekly, one routine per repo | that repo | `/factory --garden` |
 
    The babysit prompt: "Babysit the pull request this GitHub event is about:
    `/babysit-pr <its URL>`. If the run names no pull request, list the repo's

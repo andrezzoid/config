@@ -141,8 +141,9 @@ Never carry them away in your head.
    briefed them); the file says what they checked and what the live proof
    showed. The CLI refuses when the PR's head is no longer that commit, and a
    later push that changes the patch voids the verdict.
-4. Call the Skill tool with "babysit-pr". It takes the PR to merge-ready, and
-   merges only when the ticket's autonomy and the gate allow it.
+4. Stop here: the ticket is now in Babysit. `/factory <ID>` hands the PR to
+   `babysit-pr`, which takes it to merge-ready and merges only when the
+   ticket's autonomy and the gate allow it.
 
 Without a ticket, the conservative reading applies: commit as you go, and never
 push, merge or deploy without being told.

@@ -136,6 +136,6 @@ Every Linear ticket starts with its `Repo: owner/name` line. The dispatcher read
 
 Tell the user, in one short list, what queues the work, because nothing starts until they act:
 
-- Label a ticket `ready-for-agent` to queue it. The hourly dispatch routine, or `/factory dispatch`, starts one `implement` session per ready ticket whose blockers are done.
+- Label a ticket `ready-for-agent` to queue it. The hourly dispatch routine, or `/factory --dispatch`, starts one `/factory <ID>` session per ready ticket whose blockers are done.
 - Add `autonomy:merge` only to two-way-door tickets in a repo with a run skill (`.claude/skills/run-*`). Without it, the PR stops at ready and waits for their merge.
 - Name the tickets you recommend keeping for themselves, and why.

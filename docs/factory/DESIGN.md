@@ -55,19 +55,19 @@ sequenceDiagram
   actor A as André
   participant T as Tracker
   participant R as Dispatch routine
-  participant I as implement session
+  participant I as ticket session
   participant F as factory CLI
   participant GH as GitHub
   A->>T: label ready-for-agent (and autonomy:merge)
   R->>F: factory tickets next
   F->>T: labelled, queued, blockers done, not a parent
-  R->>I: one session per ready ticket: /implement ID
+  R->>I: one session per ready ticket: /factory ID
   I->>F: factory ticket claim ID
   F->>T: claim comment, read back: oldest claim wins; then start it, assigning only if nobody is
-  I->>I: build test-first, gates, live proof, fresh reviewers
+  I->>I: phase iterate: implement builds test-first, gates, code review, poke-holes
   I->>GH: push branch, open PR ending in the Closes line
   I->>F: factory pr verdict PR --sha HEAD --result pass
-  I->>F: babysit: factory pr status, fix, sleep until the next event
+  I->>F: phase babysit: babysit-pr runs factory pr status, fixes, sleeps until the next event
   I->>F: factory pr merge PR
   F->>GH: merge pinned to the head SHA, only if the gate allows
   GH->>T: Closes line closes the ticket
@@ -86,7 +86,8 @@ sequenceDiagram
 | Whether it works | agent, then fresh agents | gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the app started through `/run`, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
-| What André must look at | CLI, then agent | `factory brief`, written up by `/factory brief` |
+| Which phase a ticket is in | CLI | `factory ticket show`: shape, iterate, babysit or done, from its labels, state and open PRs; `/factory <ID>` runs the phase's skill until it stops changing |
+| What André must look at | CLI, then agent | `factory brief`, written up by `/factory` (what needs him) or `/factory --brief` (everything) |
 
 Skills hold judgment. Everything with one right answer lives in the `factory`
 CLI, so every session reaches it the same way.
@@ -99,7 +100,7 @@ belong to Upkeep: André or a routine starts them, never a ticket.
 | | Finds | Fixes |
 |---|---|---|
 | One session | `retro` (Matt Pocock's): candidates ranked by severity, in seven kinds: navigation pointers, automated checks, reviewer rules, AGENTS.md trims, tool economy, no-op instructions, information access | `hillclimb`: an edit to a skill's instructions, kept only when it improves both the cases it was tuned on and held-out ones |
-| Repo history | `/factory garden`: classes of mistake that happened at least twice in two weeks of PRs, reverts and hand-backs | `correct`: makes one class impossible, trying architecture, then types, then a lint, then a test, and docs last |
+| Repo history | `/factory --garden`: classes of mistake that happened at least twice in two weeks of PRs, reverts and hand-backs | `correct`: makes one class impossible, trying architecture, then types, then a lint, then a test, and docs last |
 
 A candidate whose fix is a check, a test or a `CODING_STANDARDS.md` rule gets
 written directly: a check proves itself. Wording changes to a skill's
@@ -194,11 +195,11 @@ send none of its own.
 
 | Event | Cloud | Mac |
 |---|---|---|
-| Ticket queued | hourly dispatch routine | `/factory dispatch --here` |
+| Ticket queued | hourly dispatch routine | `/factory --dispatch --here` |
 | Activity on a PR opened in the cloud | `subscribe_pr_activity` wakes the session that owns it | n/a |
 | Activity on a PR opened on the Mac | label it `factory`: a GitHub-event routine babysits it | Monitor on `factory pr watch` |
 | Morning | brief routine, weekdays | `/factory` |
-| Weekly | garden routine per repo | `/factory garden` |
+| Weekly | garden routine per repo | `/factory --garden` |
 
 Neither Linear nor GitHub issue events can start a routine, so dispatch polls
 hourly. `/setup-factory cloud` gives each routine's exact trigger, repositories
@@ -242,7 +243,7 @@ protection.
 - Whether a GitHub-event routine's session receives the PR is not documented;
   the babysit prompt falls back to the repo's open PRs labelled `factory`.
 - Whether routine sessions can call `create_session` is not documented. When
-  they cannot, `/factory dispatch` lists the commands instead of launching.
+  they cannot, `/factory --dispatch` lists the commands instead of launching.
 - `claude --bg -w` dispatches locally only after the repo's workspace is
   trusted: run `claude` once interactively in each repo first.
 - The Linear queries are validated against Linear's schema, a mock server and

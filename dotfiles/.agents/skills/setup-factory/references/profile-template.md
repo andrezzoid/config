@@ -11,7 +11,7 @@ so a pull request cannot raise its own autonomy. Written by `/setup-factory`.
 
 ## One-way doors
 
-A revert cannot undo a change here, so it never merges without André.
+A revert cannot undo a change here, so it never merges without a human.
 
 - `db/migrations/**`: schema changes
 - `infra/**`: production infrastructure
@@ -40,10 +40,10 @@ Matt Pocock's `triage` roles under their own names, plus the factory's.
 |---|---|
 | Something is broken | `bug` |
 | New feature or improvement | `enhancement` |
-| Needs André to evaluate it | `needs-triage` |
-| Waiting on the reporter for more information | `needs-info` |
-| Fully specified, ready for an agent | `ready-for-agent` |
-| A decision or work only André can do: from triage, or handed back by an agent | `ready-for-human` |
+| Maintainer needs to evaluate | `needs-triage` |
+| Waiting on reporter for more information | `needs-info` |
+| Fully specified, ready for an AFK agent | `ready-for-agent` |
+| Needs a human, from triage or handed back by an agent | `ready-for-human` |
 | Will not be actioned | `wontfix` |
 | May merge itself once verified | `autonomy:merge` |
 

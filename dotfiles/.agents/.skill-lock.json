@@ -19,15 +19,6 @@
       "installedAt": "2026-02-23T15:22:13.776Z",
       "updatedAt": "2026-07-27T11:58:32.475Z"
     },
-    "test-driven-development": {
-      "source": "addyosmani/agent-skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/addyosmani/agent-skills.git",
-      "skillPath": "skills/test-driven-development/SKILL.md",
-      "skillFolderHash": "76329a278f51360e7ee20c7a37db46cc8142b7fe",
-      "installedAt": "2026-04-05T10:31:13.257Z",
-      "updatedAt": "2026-07-27T11:58:34.048Z"
-    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
@@ -257,6 +248,17 @@
       "pluginName": "mattpocock-skills",
       "installedAt": "2026-10-07T08:48:59.870Z",
       "updatedAt": "2026-10-07T08:48:59.870Z"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/mattpocock/skills.git",
+      "ref": "24fe0ef7737efae15c87225755e9f6f5965e4888",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "skillFolderHash": "9ce12c4a1e209e557fcf9d02086ade3d7ffdb976186018fc1b063b4164246004",
+      "pluginName": "mattpocock-skills",
+      "installedAt": "2026-10-08T06:51:15.000Z",
+      "updatedAt": "2026-10-08T06:51:15.000Z"
     }
   },
   "lastSelectedAgents": [

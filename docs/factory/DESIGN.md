@@ -37,7 +37,7 @@ flowchart LR
 | Stage | Driven by | Skills | Produces |
 |---|---|---|---|
 | Shape | André, interviewed | grilling, grill-with-docs, triage, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
-| Iterate | an agent per ticket | implement, test-driven-development, code-review, complexity-red-flags, poke-holes | a PR with live evidence and a recorded verdict |
+| Iterate | an agent per ticket | implement, tdd, code-review, complexity-red-flags, poke-holes | a PR with live evidence and a recorded verdict |
 | Babysit | an agent per PR | babysit-pr | a merged PR, or a brief saying what André must do |
 | Upkeep | routines, or André | factory (dispatch, brief, garden), retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
 

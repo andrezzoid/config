@@ -48,9 +48,9 @@ different definition, that is the human's to reshape.
 
 ## 3. Build test-first
 
-Call the Skill tool with "test-driven-development". Red before green, at the
-seams the ticket or its spec names. When none are named, use the highest
-existing seam and record it in the notes.
+Call the Skill tool with "tdd". Red before green, at the seams the ticket or
+its spec names: those are the seams the human confirmed. When none are named,
+use the highest existing seam and record it in the notes.
 
 Call the Skill tool for "deep-module-design", "define-errors-away" or
 "comments-as-design" when the change shapes an interface, an error surface or

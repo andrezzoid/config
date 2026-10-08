@@ -1,52 +1,105 @@
 ---
 name: poke-holes
-description: Spawn fresh adversarial agents to find what confident work got wrong — attack a plan's assumptions against the real codebase and docs, attack a finished change against its stated theory, or cold-read a landed change to check its knowledge survived. Use once a plan or artifact exists — before a human agrees to a plan, before anything merges, when work feels suspiciously smooth, or when a claim rests on an untested assumption.
+description: Spawn fresh adversarial agents to check a plan, and later its solution, against the real code, docs and running app. Use before a human approves a plan, before a solution merges, or when a decision rests on an untested assumption.
 ---
 
 # Poke Holes
 
-The enemy isn't dishonesty — it's confident gap-filling. An author's context cannot see its own fills: every unknown it met got silently papered with a plausible guess, and the result *reads* right to everyone downstream of the same guesses. The only reliable detector is fresh context grounded in the territory: agents who didn't make the guesses, checking claims against what's actually there.
+Fresh reviewers check the work against the territory: the code, docs, tests
+and running app. They did not write it, so they can see the guesses its author
+filled in without noticing. Each reviewer takes one lens. Their results, with
+what you decide about each, go in one table: the ledger.
 
-Any claim-bearing artifact is a target — a ticket's spec, a PRD, plan-mode output, a design doc, a PR and its diff.
+## The plan
 
-## Three targets
+The plan is what the work answers: a spec, a ticket or an instruction, passed
+to every reviewer verbatim. Poke holes in it before the human approves it,
+with four lenses:
 
-### The theory — before the human agrees to a plan
+- Territory lists the assumptions the plan rests on and checks each against
+  the code, docs, tests and sources. Cited evidence can be stale or misread, so
+  it checks the cited ones too.
+- Simplicity looks for a materially smaller design that meets the same intent:
+  one that drops a module, an interface or a step, or reuses what the codebase
+  already has.
+- Failure asks how the plan breaks: edge cases, partial failure, migrations,
+  rollback, the path nobody drew.
+- Cold gets the plan's Problem Statement and never the plan. From the territory
+  alone, it states what any solution must respect and the design it would
+  expect, and replies with that picture in place of ledger rows. An
+  instruction has no separate Problem Statement, so it gets no Cold reviewer.
 
-Spawn fresh subagents, on the smartest family of models your harness provides, one lens each — a single agent asked for everything regresses to a book report:
+## The solution
 
-- **Territory** — briefed with the plan: verify every assumption's evidence against the actual code, docs, tests, and sources. Attack the ones tagged `guess` first; then spot-check the tagged ones — evidence can be stale or misread. When the plan never tagged its assumptions, extracting that list is this lens's first job.
-- **Simplicity** — briefed with the plan: is there a materially simpler approach it skipped? Not a style opinion — a genuinely smaller design that meets the same intent.
-- **Failure** — briefed with the plan: how does this break? Edge cases, migrations, rollback, partial failure, the path nobody drew. Call the Skill tool with "complexity-red-flags" for this lens.
-- **Cold** — briefed with the *intent only*, never the plan: from the territory, it states what any solution must respect and the shape it would expect. Where its picture and the plan disagree, one of them is anchored on the wrong thing — find out which. This is the only lens the plan's framing cannot contaminate.
+The solution is the change that answers the plan. Poke holes in it before it
+merges, against the same plan, verbatim, with two lenses:
 
-### The artifact — before anything merges
+- Territory takes each acceptance criterion in turn, or each outcome an
+  instruction asks for. It finds the test that claims the criterion, checks
+  the test asserts what the criterion says through the interface the
+  criterion names, and runs it: a criterion about new behaviour must fail on
+  the base and pass on the commit. A criterion with no such test gets driven
+  through the running app the way a user would. Then Territory reads the whole
+  diff against the plan, both ways: what landed that the plan never asked for,
+  and what the plan asked for that never landed.
+- Failure tries to break the running app: edge cases, partial failure, bad
+  input, the path nobody drew. It runs each break on the base too, so the
+  ledger tells a new failure from an old one.
 
-Fresh subagent(s), briefed with the theory (the ticket, its parent, the spec) plus the diff, never with the PR body or the author's summary:
+## Run a review
 
-- **Run the acceptance checks.** Their run is the evidence; the author's run was only the gate.
-- **Prove it live.** When the repo has a run skill (`.claude/skills/run-*`), start the app with `/run` and drive each acceptance line through the running app the way a user would, and keep the evidence. This lane is the floor: a verdict without it is a code review, and must say so.
-- **Keep the ledger.** Report every acceptance line, each either PASS with its evidence or a finding (it failed, or you could not reach a state that shows it). PASS lines go into the PR's evidence; findings get dispositions like any other. The artifact review is not done until every line is accounted for.
-- **Check the base still works.** Run the same load-bearing scenario on the base branch too. If the base lacks the feature, say so and check the end state the user waits for instead.
-- **Attempt refutation.** Actively try to break it — don't confirm it passes.
-- **Audit the diff against the theory.** What landed that the theory never said; what the theory said that never landed. Both directions.
+1. Spawn one reviewer per lens with the Agent tool, all in one message, each
+   with this brief:
 
-When the findings are dispositioned and no fix-now finding is open, the caller records the verdict for the SHA the reviewers checked with `factory pr verdict <PR> --sha <SHA> --result pass`. A new head with a changed patch needs a fresh verdict.
+       You are the <lens> reviewer for poke-holes. Follow "Reviewing", and
+       <lens> under "The <plan or solution>", in <this skill's folder>/SKILL.md.
+       Repo: <its path> at <commit>, base <commit>
+       The plan, verbatim:
+       <the spec, the ticket's contract or the instruction, exactly as written>
 
-### The harvest — after knowledge moves to its long-term homes
+   Cold's brief carries the Problem Statement in place of the plan. Nothing
+   else goes in any brief. Your summary and your suspicions carry the guesses
+   you made without noticing, and a reviewer who reads them takes those
+   guesses on as facts.
 
-One fresh agent, briefed with only the repo — never the plan, the ticket, or the conversation. From the code, comments, tests, and docs of the changed area alone, it states what must remain true and why. Lay its reconstruction beside the plan: gaps are knowledge that exists only in the plan or conversation, which is about to be lost — move it into the repo, then re-run. This is the only check on whether the change's *why* survives once the conversation is gone.
+   A small solution can take Territory alone. When the work touches a one-way
+   door, run Territory on a different model from yours. Without the Agent
+   tool, report that no review ran, and stop.
 
-## Rules
+   Done when every reviewer has replied.
 
-1. **A finding cites evidence** — file:line, command output, doc link — or it isn't a finding. "This seems risky" is a vibe.
-2. **Reviewers return findings; they never fix.** A reviewer who fixes becomes an author whose work now needs fresh eyes.
-3. **Read-only on the shared tree.** A reviewer that must build or run gets its own copy — spawn it with worktree isolation, or have it `git worktree add` a scratch checkout it removes when done.
-4. **Decorrelate when stakes are high.** Same-model reviewers share the author's priors, so they can share its blind spots — use a different model for the territory lens on anything expensive to unwind.
-5. **A reviewer you didn't spawn produced no findings.** If you can't spawn, say so plainly — a narrated review is worse than none, because it looks like one.
-6. **Scale to the work, out loud.** A small change earns a single territory-lens agent; that reduction is fine when it's on the record (in the working notes, or stated to the human) — and a silent skip never is.
-7. **Await what you spawn.** A session that ends while a reviewer is still running loses the findings yet looks like a completed check — wait for it, or record the reduction.
+2. Fill the ledger with the replies. Above the table, name the target, the
+   commit the reviewers checked, the lenses that ran and whether they ran the
+   app. Give each assumption or acceptance criterion a row, then each other
+   finding. A row holds only when no reviewer broke it. On a plan, every place
+   where Cold's picture contradicts the plan, or holds a constraint the plan
+   misses, is a finding.
 
-## Findings triage
+       | # | Item | Result | Evidence | Disposition |
+       |---|---|---|---|---|
+       | 1 | "<the assumption or criterion>" | holds | <file:line, or a command and what it showed> | |
+       | 2 | "<…>" | fails | <…> | fix now |
+       | F1 | <the finding> (<lens>) | finding | <…> | followup |
 
-Follow `references/dispositions.md`.
+   Done when every assumption or criterion has a row.
+
+3. Give every row that fails, and every finding, a disposition per
+   `references/dispositions.md`. Done when none of them has an empty
+   Disposition.
+
+## Reviewing
+
+You are one fresh reviewer. Read the work only from your brief and the repo.
+
+- Every result cites evidence a reader can open or rerun, in one line:
+  file:line, a command with the output line that decides it, a link, a
+  screenshot path. An item you could not show holding fails, and its row says
+  what you tried.
+- To start the app, call the Skill tool with "run" when the repo has a run
+  skill (`.claude/skills/run-*`). Without one, say so in your first line.
+- Build and run in worktrees of your own, one per commit, in a scratch
+  directory outside the repo (`git worktree add --detach <scratch dir>
+  <commit>`), and remove them when you finish.
+- Leave the code, the tracker and the pull request as you found them: your
+  reply is your whole output.
+- Reply with ledger rows, and leave Disposition empty.

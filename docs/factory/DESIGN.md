@@ -13,7 +13,7 @@ live in [andrezzoid/newsroom-evals](https://github.com/andrezzoid/newsroom-evals
 flowchart LR
   subgraph Shape["Shape · André drives"]
     direction TB
-    G[grill-with-docs] --> S[to-spec] --> P1[poke-holes on the theory] --> T[to-tickets]
+    G[grill-with-docs] --> S[to-spec] --> P1[poke-holes on the plan] --> T[to-tickets]
   end
   subgraph Iterate["Iterate · per ticket, autonomous"]
     direction TB
@@ -37,7 +37,7 @@ flowchart LR
 | Stage | Driven by | Skills | Produces |
 |---|---|---|---|
 | Shape | André, interviewed | grilling, grill-with-docs, triage, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
-| Iterate | an agent per ticket | implement, tdd, code-review, complexity-red-flags, poke-holes | a PR with live evidence and a recorded verdict |
+| Iterate | an agent per ticket | implement, tdd, code-review, complexity-red-flags, poke-holes | a PR with executable acceptance and a recorded verdict |
 | Babysit | an agent per PR | babysit-pr | a merged PR, or a brief saying what André must do |
 | Upkeep | routines, or André | factory (dispatch, brief, garden), retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
 
@@ -83,7 +83,7 @@ sequenceDiagram
 | Which ticket is next | CLI | `factory tickets next` |
 | Who works it | CLI | `factory ticket claim`: a comment; the oldest claim in a 15-minute race wins, and it holds until a hand-back or a deliberate `--take-over` |
 | Whose ticket it is | André, or the colleague assigned | the assignee, which the factory fills only when empty; dispatch takes only unassigned tickets or its own account's |
-| Whether it works | agent, then fresh agents | gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the app started through `/run`, `factory pr verdict` |
+| Whether it works | agent, then fresh agents | acceptance tests, gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the solution, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
 | Which phase a ticket is in | CLI | `factory ticket show`: shape, iterate, babysit or done, from its labels, state and open PRs; `/factory <ID>` runs the phase's skill until it stops changing |

@@ -48,9 +48,18 @@ different definition, that is the human's to reshape.
 
 ## 3. Build test-first
 
-Call the Skill tool with "tdd". Red before green, at the seams the ticket or
-its spec names: those are the seams the human confirmed. When none are named,
-use the highest existing seam and record it in the notes.
+Call the Skill tool with "tdd" once, then take the acceptance lines one at a
+time:
+
+1. Write the line's acceptance test at the seam the ticket or its spec names:
+   those are the seams the human confirmed. When none is named, use the highest
+   existing seam and record it in the notes. Name the test after the line, and
+   assert the observation you named for it in step 2.
+2. Run it and watch it fail for the reason the line describes. A line that
+   keeps existing behaviour passes from the start: note that instead. Any other
+   test that passes before the code exists checks nothing.
+3. Build inward, red before green, until the acceptance test passes. Then take
+   the next line.
 
 Call the Skill tool for "deep-module-design", "define-errors-away" or
 "comments-as-design" when the change shapes an interface, an error surface or
@@ -78,11 +87,13 @@ All four layers, in order. A green test run is a gate, not proof.
 
 1. **Gates.** Run every gate the profile lists. If the same check fails three
    times running, stop and brief: grinding at a red check burns the afternoon.
-2. **Live proof.** Call the Skill tool with "run" to start the app from the
-   repo's recipe (`.claude/skills/run-*`), then drive each acceptance line
-   through it the way a user would, and keep the evidence: the command, its
-   output, the screenshot path. When the repo has no run skill, say so in the
-   PR's Evidence and in the brief: without one the PR cannot self-merge.
+2. **Live proof.** For each acceptance line whose test stops short of the
+   app's own interface (a command, a request, a page), call the Skill tool with
+   "run" to start the app from the repo's recipe (`.claude/skills/run-*`) and
+   drive the line through it the way a user would. Keep the evidence: the
+   command, its output, the screenshot path. When the repo has no run skill,
+   say so in the PR's Evidence and in the brief: without one the PR cannot
+   self-merge.
 3. **Code review.** Call the Skill tool with "code-review" and
    "complexity-red-flags", each on the diff against the base branch. Both run
    in their own context, so neither shares your reasoning: `code-review` hunts
@@ -90,7 +101,7 @@ All four layers, in order. A green test run is a gate, not proof.
    and the repo's `CODING_STANDARDS.md`. Give every finding a disposition per
    `references/dispositions.md`, fix the fix-now ones, and rerun the gates.
 4. **Independent verdict.** Once the code has settled, call the Skill tool with
-   "poke-holes" at the artifact target, on the commit you will record. Its
+   "poke-holes" on the solution, at the commit you will record. Its
    reviewers start fresh and did not write the code. The verdict pins that
    commit, so any later change to the code needs a fresh one: review before you
    prove. Give every finding a disposition. Scale the reviewers to the diff,
@@ -101,6 +112,10 @@ All four layers, in order. A green test run is a gate, not proof.
 ## 5. Triage deviations
 
 Deviating is often right. The only failure is an unreported deviation.
+
+Acceptance holds while every acceptance test passes and still asserts the
+observation its line names. Weakening an acceptance test to make it pass
+changes acceptance.
 
 - Acceptance still holds: record it and keep going, as a ticket comment, or a
   line in the brief when there is no ticket.
@@ -137,9 +152,9 @@ Never carry them away in your head.
 3. Record the verdict once poke-holes came back with no open fix-now finding:
    `factory pr verdict <PR> --sha <SHA> --result pass --summary-file <file>`.
    `<SHA>` is the commit the reviewers checked (`git rev-parse HEAD` when you
-   briefed them); the file says what they checked and what the live proof
-   showed. The CLI refuses when the PR's head is no longer that commit, and a
-   later push that changes the patch voids the verdict.
+   briefed them); the file holds poke-holes' ledger. The CLI refuses when the
+   PR's head is no longer that commit, and a later push that changes the patch
+   voids the verdict.
 4. Stop here: the ticket is now in Babysit. `/factory <ID>` hands the PR to
    `babysit-pr`, which takes it to merge-ready and merges only when the
    ticket's autonomy and the gate allow it.

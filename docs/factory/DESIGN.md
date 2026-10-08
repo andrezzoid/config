@@ -1,11 +1,11 @@
 # Factory
 
 The factory turns an approved ticket into a merged pull request with nobody
-watching, and stops at the exact point where only André can move it. It runs
-the same on the Mac and in Claude Code cloud sessions, and reads tickets from
-Linear or GitHub Issues. The ideas behind it, and where each came from, are in
-[INSIGHTS.md](INSIGHTS.md). Evals for its skills, and experiments still to run,
-live in [andrezzoid/newsroom-evals](https://github.com/andrezzoid/newsroom-evals).
+watching, and stops where only André can move it. It runs the same on the Mac
+and in Claude Code cloud sessions, and reads tickets from Linear or GitHub
+Issues. [INSIGHTS.md](INSIGHTS.md) lists the ideas behind it and where each came
+from. Evals for its skills, and experiments still to run, live in
+[andrezzoid/newsroom-evals](https://github.com/andrezzoid/newsroom-evals).
 
 ## Stages
 
@@ -14,10 +14,11 @@ flowchart LR
   subgraph Shape["Shape · André drives"]
     direction TB
     G[grill-with-docs] --> S[to-spec] --> P1[poke-holes on the plan] --> T[to-tickets]
+    TR[triage, for tickets from elsewhere]
   end
   subgraph Iterate["Iterate · per ticket, autonomous"]
     direction TB
-    I[implement] --> V[gates · code review · poke-holes] --> D{acceptance holds?}
+    I[implement: a test, then code, per acceptance line] --> V[gates · code review · live proof · poke-holes on the solution] --> D{acceptance holds?}
     D -- yes --> PR[open PR + verdict]
   end
   subgraph Babysit["Babysit · human on the loop"]
@@ -36,17 +37,42 @@ flowchart LR
 
 | Stage | Driven by | Skills | Produces |
 |---|---|---|---|
-| Shape | André, interviewed | grilling, grill-with-docs, triage, to-spec, poke-holes, to-tickets | approved tickets with blocking edges |
-| Iterate | an agent per ticket | implement, tdd, code-review, complexity-red-flags, poke-holes | a PR with executable acceptance and a recorded verdict |
-| Babysit | an agent per PR | babysit-pr | a merged PR, or a brief saying what André must do |
-| Upkeep | routines, or André | factory (dispatch, brief, garden), retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
+| Shape | André, interviewed | grilling, grill-with-docs, to-spec, poke-holes, to-tickets, triage | approved tickets with acceptance criteria and blocking edges |
+| Iterate | an agent per ticket | implement, tdd, code-review, complexity-red-flags, run, poke-holes, pr | a pull request whose acceptance runs as tests, with a recorded verdict |
+| Babysit | an agent per pull request | babysit-pr, poke-holes | a merged pull request, or a brief saying what André must do |
+| Upkeep | routines, or André | factory, retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
 
 Shape is the only stage that changes what a ticket means. When Iterate finds
 that acceptance cannot hold, it hands the ticket back instead of absorbing the
-change, and the definition is reshaped on André's command. Tickets that arrive
-without a grilling session, from André's notes or from other people, go
-through Matt Pocock's `triage`, whose agent brief uses the same ticket template
-as `to-tickets`.
+change, and André reshapes it. Tickets that arrive without a grilling session,
+from André's notes or from other people, go through Matt Pocock's `triage`,
+whose agent brief uses the same ticket template as `to-tickets`.
+
+Deploying and monitoring are not stages: one deploy carries several merged
+tickets, so they belong to Upkeep, per repo, once the repo has a recipe for
+them.
+
+## Acceptance
+
+A ticket's acceptance criteria are the contract between Shape and everything
+after it:
+
+- Shape writes them by one set of rules, `to-spec/references/acceptance-criteria.md`,
+  shared with `to-tickets` and `triage`: Given, When, Then, one assertion each,
+  stating what the change's consumer observes.
+- `implement` turns each line into a test before writing its code, one `tdd`
+  slice per line, and commits the failing test on its own.
+- `poke-holes` on the solution checks that each criterion has a test that
+  asserts it, fails on the base, passes on the head, and failed at the commit
+  that added it.
+- A deviation that leaves every acceptance test passing, and still asserting
+  its line, becomes a ticket comment and the work goes on. A deviation that
+  breaks acceptance stops the run: `factory ticket handback` posts the brief and
+  labels the ticket `ready-for-human`.
+
+So a ticket's body never changes outside Shape. That holds only while
+acceptance is precise: a vague criterion lets a change of outcome pass as a
+deviation, which makes `to-spec` the skill everything else rests on.
 
 ## A ticket's life
 
@@ -63,8 +89,8 @@ sequenceDiagram
   F->>T: labelled, queued, blockers done, not a parent
   R->>I: one session per ready ticket: /factory ID
   I->>F: factory ticket claim ID
-  F->>T: claim comment, read back: oldest claim wins; then start it, assigning only if nobody is
-  I->>I: phase iterate: implement builds test-first, gates, code review, poke-holes
+  F->>T: claim comment, read back: oldest claim wins. Then start it, assigning only if nobody is
+  I->>I: phase iterate: implement writes a test, then code, per acceptance line. Then gates, code review, live proof, poke-holes
   I->>GH: push branch, open PR ending in the Closes line
   I->>F: factory pr verdict PR --sha HEAD --result pass
   I->>F: phase babysit: babysit-pr runs factory pr status, fixes, sleeps until the next event
@@ -86,7 +112,7 @@ sequenceDiagram
 | Whether it works | agent, then fresh agents | acceptance tests, gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the solution, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
-| Which phase a ticket is in | CLI | `factory ticket show`: shape, iterate, babysit or done, from its labels, state and open PRs; `/factory <ID>` runs the phase's skill until it stops changing |
+| Which phase a ticket is in | CLI | `factory ticket show`: shape, iterate, babysit or done, from its labels, state and open PRs; `/factory <ID>` runs the phase's skill until the phase stops changing |
 | What André must look at | CLI, then agent | `factory brief`, written up by `/factory` (what needs him) or `/factory --brief` (everything) |
 
 Skills hold judgment. Everything with one right answer lives in the `factory`
@@ -94,8 +120,9 @@ CLI, so every session reaches it the same way.
 
 ## Learning
 
-Four skills change the harness, or a repo's guards, from what went wrong. They
-belong to Upkeep: André or a routine starts them, never a ticket.
+Three skills and one factory mode change the harness, or a repo's guards, from
+what went wrong. They belong to Upkeep: André or a routine starts them, never a
+ticket.
 
 | | Finds | Fixes |
 |---|---|---|
@@ -105,15 +132,13 @@ belong to Upkeep: André or a routine starts them, never a ticket.
 A candidate whose fix is a check, a test or a `CODING_STANDARDS.md` rule gets
 written directly: a check proves itself. Wording changes to a skill's
 instructions go to `hillclimb`, because only an eval shows that wording changed
-what agents do. `hillclimb` first searches past sessions for other occurrences
-of the failure, and each one, cut at the prompt before the mistake, becomes an
-eval case that replays that moment. Fewer than two occurrences means it is not
-a failure mode yet. A replay carries the `AGENTS.md` text and the skill
-descriptions recorded in the transcript, so edits to those cannot be measured
-this way: descriptions are measured with `bin/triggers` in newsroom-evals, and
+what agents do. `hillclimb` searches past sessions for other occurrences of the
+failure and replays each one from the prompt before the mistake; fewer than two
+occurrences is not a failure mode yet. A replay carries the skill descriptions
+and the `AGENTS.md` recorded in its transcript, so it cannot measure edits to
+them: descriptions are measured with `bin/triggers` in newsroom-evals, and
 `AGENTS.md` has no measured path yet. Past sessions exist only on the Mac, in
-`~/.claude/projects`, kept for ten years; cloud sessions keep none, so
-`hillclimb` runs locally.
+`~/.claude/projects`, kept for ten years, so `hillclimb` runs there.
 
 ## Pieces
 
@@ -141,40 +166,34 @@ flowchart TB
   Cloud --> repo
 ```
 
-- **Skills** live once, in `dotfiles/.agents/skills`. `dotfiles/.claude/skills`
-  links to them, so Claude Code and every harness that reads `~/.agents` load
-  the same files. Third-party skills are vendored and pinned, so they can be
-  tuned and still diffed against upstream.
+- **Skills** live once, in `dotfiles/.agents/skills`, and
+  `dotfiles/.claude/skills` links to them, so Claude Code and every harness that
+  reads `~/.agents` load the same files. Third-party skills are vendored and
+  pinned, so they can be tuned and still diffed against upstream. Only
+  `to-spec`, `to-tickets` and `triage` are edited, each where the factory needs
+  it.
 - **The `factory` CLI** is zero-dependency TypeScript run by Node 22.18+ type
   stripping. `bin/factory` is the entry point.
 - **The factory mod.** The factory skill folder is also a Claude Code mod,
   loaded from `~/.claude/skills/factory` with nothing in `settings.json`. At
-  session start it puts `bin/` on PATH; in the cloud it re-runs
+  session start it puts `bin/` on PATH, and in the cloud it re-runs
   `cloud-setup.sh`, which pulls the latest harness. On every tool call it denies
   a raw merge (`gh pr merge`, the merge API, the GitHub MCP merge tools) and a
-  plain force push. It applies inside subagents too.
+  plain force push, inside subagents too.
 - **The repo profile**, `.agents/factory.md`, written by `/setup-factory`:
-  tracker, max autonomy, merge method, gates and one-way doors.
-  The CLI reads it from the base branch, so a branch cannot raise its own
-  autonomy.
+  tracker, max autonomy, merge method, gates and one-way doors. The CLI reads it
+  from the base branch, so a branch cannot raise its own autonomy.
 - **The run skill**, `.claude/skills/run-<name>/`, recorded by Claude Code's
-  built-in `/run-skill-generator`, which only André can start, so
-  `/setup-factory` asks him to. Agents start the app through the built-in
-  `/run`, which loads it. Without one a repo stays at autonomy `pr`. The
-  built-in `/verify`, also André's to start, uses a `run-*` skill as its
-  handle; it records `.claude/skills/verify/` only after working out the
-  steps with no run skill, so in a factory repo the run skill is the one
-  recipe both use. No setting lets an agent start the bundled `/verify`:
-  `skillOverrides` only hides skills. A root `.claude/skills/verify/` replaces
-  the bundled one for André and agents alike, and agents can call it. The same shape fits any repo-specific procedure: one global
-  entry skill that loads the repo's `<verb>-<name>` recipe, written the first
-  time it is needed.
+  built-in `/run-skill-generator`. Agents start the app through the built-in
+  `/run`, which loads it. Only André can start `/run-skill-generator` and the
+  built-in `/verify`, and no setting changes that, so `/setup-factory` asks him
+  to record the run skill. Without one, a repo stays at autonomy `pr`.
 
 ## Trackers
 
-Ticket policy works on one normalized ticket; each tracker is an adapter
-behind the same interface (`scripts/trackers/types.ts`). Adding Todoist means
-adding one adapter.
+Ticket policy works on one normalized ticket, and each tracker is an adapter
+behind the same interface (`scripts/trackers/types.ts`), so adding Todoist
+means adding one adapter.
 
 | | Linear | GitHub Issues |
 |---|---|---|
@@ -226,13 +245,20 @@ the head SHA it checked:
     The profile itself is always a door, so no PR can loosen the rules for the
     PRs after it. Door globs match dotfiles: `infra/**` covers `infra/.env`.
 
-The mod stops an agent drifting onto the short path; it does not stop one set
-on getting through, since a script can still call the API. The wall is the
-forge: a repo whose profile allows `merge` requires its CI checks in branch
-protection.
+The mod stops an agent drifting onto the short path, not one set on getting
+through, since a script can still call the API. The wall is the forge: a repo
+whose profile allows `merge` requires its CI checks in branch protection.
 
 ## Known gaps
 
+- A cloud environment whose setup script does not run `cloud-setup.sh` gives
+  its sessions no harness: no skills, no `factory` CLI, no mod. Dispatched
+  sessions and routines in it fail. Step 1 of `/setup-factory cloud` is what
+  installs it.
+- `factory brief` lists a pull request under "Needs you" only when it waits on
+  a review, or is ready on a ticket without `autonomy:merge`. A ticket with
+  `autonomy:merge` whose pull request the gate refuses, for a one-way door or a
+  missing verdict, shows only as running.
 - The cloud review-thread route (`ccr/review_threads`) returned an empty list
   in every probe, so its non-empty shape is a guess. The parser returns
   "unreadable" for a shape it does not know, which blocks the merge.
@@ -246,7 +272,7 @@ protection.
   they cannot, `/factory --dispatch` lists the commands instead of launching.
 - `claude --bg -w` dispatches locally only after the repo's workspace is
   trusted: run `claude` once interactively in each repo first.
-- The Linear queries are validated against Linear's schema, a mock server and
-  a live authentication check, but have never run against a real workspace.
-  The GitHub adapter ran against a real repository with no labelled issues.
-  The first `factory doctor` on real data is the first full live run.
+- The GitHub adapter has run end to end on andrezzoid/strata: claim, take-over,
+  pull request, verdict. The Linear queries are validated against Linear's
+  schema, a mock server and a live authentication check, but have never run
+  against a real workspace.

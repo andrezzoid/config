@@ -7,7 +7,10 @@ a merged pull request, on the Mac and in Claude Code cloud sessions.
 
 **Stage**:
 One of four logical groups of factory work: Shape, Iterate, Babysit and Upkeep. A grouping, not a command; each holds several skills.
-_Avoid_: Phase, step
+_Avoid_: Step
+
+**Phase**:
+Where one ticket stands: the stage that acts on it next (shape, iterate or babysit), or done. `factory ticket show` works it out from the ticket's labels, its state and its open pull requests.
 
 **Shape**:
 The stage where André decides what to build, ending in approved tickets. The only stage that changes what a ticket means.
@@ -28,7 +31,7 @@ A folder an agent loads to follow a procedure, such as `implement` or `babysit-p
 _Avoid_: Workflow, playbook
 
 **Principle**:
-One rule of taste with a trigger, read through the principles index rather than run as a skill.
+A rule of taste that holds in every repo, kept in a skill such as `deep-module-design` or `complexity-red-flags`.
 _Avoid_: Guideline, best practice
 
 **Protocol**:
@@ -54,6 +57,13 @@ One moment in one session where a failure mode happened, pinned to the turn befo
 One unit of approved work in the tracker, sized for one agent session, with testable acceptance.
 _Avoid_: Issue (except as GitHub's feature name), task, story
 
+**Contract**:
+What a ticket asks for: triage's latest agent brief when there is one, otherwise the ticket's body. Agents build against it and never edit it.
+_Avoid_: Spec (the document `to-spec` writes)
+
+**Deviation**:
+Something an agent did that the contract did not cover. A ticket comment while acceptance holds, and a hand-back when it breaks.
+
 **Tracker**:
 Where tickets live: Linear or GitHub Issues, named in the repo's profile.
 
@@ -75,6 +85,9 @@ _Avoid_: Assignment, lock
 **Verdict**:
 A pass or fail recorded for one commit by reviewers who did not write it.
 _Avoid_: Approval, sign-off
+
+**Ledger**:
+The table a poke-holes review produces: one row per assumption or acceptance criterion, then one per finding, each with its evidence and disposition. Recorded on the pull request with the verdict.
 
 **Hand-back**:
 Returning a ticket to André with a brief, because its acceptance cannot hold as written.

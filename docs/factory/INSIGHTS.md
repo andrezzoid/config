@@ -31,9 +31,11 @@ the verification part." [I 17:00] Without it, poteto was "the meat proxy between
 my agent and Chrome DevTools". [I 05:00]
 pstack: `create-verification-skill`, `prove-it-works`, the live lane that "is the
 floor". Matt: `diagnosing-bugs` refuses to theorise before a red-capable loop.
-**Here:** `implement` verifies in three layers (gates, live proof, independent
-verdict); `poke-holes` gained a live lane and a base-branch lane; a repo without
-a verification skill cannot self-merge.
+**Here:** `implement` turns each acceptance line into a failing test before its
+code, then verifies in four layers: gates, code review, live proof and an
+independent verdict. `poke-holes` runs each acceptance test on the base and the
+head, and drives an untested criterion through the running app. A repo without
+a run skill cannot self-merge.
 
 **3. A verification skill is a CLI inside the skill plus a feature map.**
 Without the CLI, "the agent would basically rebuild the world each time and then
@@ -42,15 +44,17 @@ materialized memory", kept current by an automation. [T 10:30–11:00]
 pstack's `create-verification-skill` generates exactly this (Launch, Doctor,
 Drive, Evidence, Cleanup, plus `features/`), and `maintain-verification-skill`
 keeps it honest.
-**Here:** both installed from pstack via `npx skills add`; `/setup-factory`
-points at them and redirects the output from `.cursor/skills` to
-`.claude/skills`.
+**Here:** the CLI half is Claude Code's built-in `/run-skill-generator`, which
+records the repo's `.claude/skills/run-<name>/`, loaded by the built-in `/run`.
+André kept the built-ins for now, after comparing both on strata and omnia, so pstack's
+two skills are vendored but unused, and nothing keeps a feature map yet.
 
 **4. Correctness and quality are separate layers.** Verification answers "does
 the checkout button actually check out"; engineering skills answer whether the
 code is any good. [T 12:30–14:00]
-**Here:** `implement` runs both: live proof for correctness, and
-`complexity-red-flags`, `deep-module-design`, `define-errors-away` for quality.
+**Here:** `implement` runs both: acceptance tests and live proof for
+correctness, and `complexity-red-flags`, `deep-module-design`,
+`define-errors-away` for quality.
 
 **5. Autonomy is bounded by verifiability: one-way and two-way doors.** Matt
 asks about one-way doors; poteto: "for domains where the work is verifiable ...
@@ -107,16 +111,16 @@ a workaround"), because André keeps Ousterhout-style interface comments
 
 **12. The gardener: delete debt, keep one paved path, lint before cleanup.**
 [T 24:30–26:00] Much of the 2,500 PRs was gardening. [I 46:00]
-**Here:** a weekly `factory garden` routine per repo.
+**Here:** a weekly `/factory --garden` routine per repo.
 
 **13. Buffer findings before fixing them.** "I don't actually tell it to fix the
 issue first. I tell it to append it to a document ... these are all the same
 thing." [I 47:30]
-**Here:** garden appends to one Linear issue per repo and fixes nothing.
+**Here:** garden appends to one issue per repo, its garden log, and fixes nothing.
 
 **14. The engineer's new job is the environment.** [I 26:00]
 **Here:** `/setup-factory` makes the environment a per-repo artifact: profile,
-gates, doors, verification skill.
+gates, doors, run skill.
 
 ## The loops
 
@@ -160,8 +164,9 @@ and a revert is the undo for everything else.
 ... the process materialized". [I 1:00:30–1:03:00]
 pstack's `recall` and `reflect` read Cursor's transcript paths; Matt's `retro`
 reads the session's own logs.
-**Here:** `retro` installed; pstack's two left out because they depend on
-Cursor's paths.
+**Here:** `retro` installed, and `hillclimb` searches past sessions for other
+occurrences of a failure before it tunes a skill; pstack's two left out because
+they depend on Cursor's paths.
 
 **22. Skills get smaller: encode the workflow, not the commands.** [I 1:03:30]
 **Here:** `implement` and `babysit-pr` were rewritten around workflow; the
@@ -194,8 +199,9 @@ the `GLOSSARY.md` rename is handled in the forks rather than silently split.
 - **Completion is explicit** (Matt's implement docs admit it never closes
   tickets): `Closes <ID>` plus a check after merge.
 - **Invocation discipline** (Matt's `.agents/invocation.md`): skills an agent
-  must chain (`implement`, `babysit-pr`) are model-invocable; human entry points
-  (`to-spec`, `to-tickets`, `factory`, `setup-factory`) are not.
+  must chain (`implement`, `babysit-pr`, `poke-holes`, `complexity-red-flags`)
+  are model-invocable; human entry points (`to-spec`, `to-tickets`, `triage`,
+  `factory`, `setup-factory`, `hillclimb`) are not, and a test holds both.
 - **Tiered PR state** (pstack's watch-pr): conflicts, then threads, then CI.
 - **Liveness by side effects** (pstack's audit tick): the brief flags a ticket
   started three hours ago with no PR and no update as stalled.

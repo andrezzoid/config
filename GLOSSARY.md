@@ -87,7 +87,7 @@ A pass or fail recorded for one commit by reviewers who did not write it.
 _Avoid_: Approval, sign-off
 
 **Ledger**:
-The table a poke-holes review produces: one row per assumption or acceptance criterion, then one per finding, each with its evidence and disposition. Recorded on the pull request with the verdict.
+The table a poke-holes review produces: one row per assumption or acceptance criterion, then one per finding, each with its evidence and disposition. A ledger on a solution is recorded on its pull request with the verdict.
 
 **Hand-back**:
 Returning a ticket to André with a brief, because its acceptance cannot hold as written.

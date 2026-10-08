@@ -44,7 +44,9 @@ flowchart LR
 
 Shape is the only stage that changes what a ticket means. When Iterate finds
 that acceptance cannot hold, it hands the ticket back instead of absorbing the
-change, and André reshapes it. Tickets that arrive without a grilling session,
+change, and André reshapes it. Shape is André's to drive, so he runs poke-holes
+on a spec's draft himself before approving it: `to-spec` stops at his approval
+and calls nothing. Tickets that arrive without a grilling session,
 from André's notes or from other people, go through Matt Pocock's `triage`,
 whose agent brief uses the same ticket template as `to-tickets`.
 
@@ -61,10 +63,12 @@ after it:
   shared with `to-tickets` and `triage`: Given, When, Then, one assertion each,
   stating what the change's consumer observes.
 - `implement` turns each line into a test before writing its code, one `tdd`
-  slice per line, and commits the failing test on its own.
+  slice per line, and commits the failing test on its own. When a test cannot
+  fail on its own commit, its commit message records the run that showed it
+  failing.
 - `poke-holes` on the solution checks that each criterion has a test that
-  asserts it, fails on the base, passes on the head, and failed at the commit
-  that added it.
+  asserts it, fails on the base, passes on the head, and failed when it was
+  committed.
 - A deviation that leaves every acceptance test passing, and still asserting
   its line, becomes a ticket comment and the work goes on. A deviation that
   breaks acceptance stops the run: `factory ticket handback` posts the brief and
@@ -109,7 +113,7 @@ sequenceDiagram
 | Which ticket is next | CLI | `factory tickets next` |
 | Who works it | CLI | `factory ticket claim`: a comment; the oldest claim in a 15-minute race wins, and it holds until a hand-back or a deliberate `--take-over` |
 | Whose ticket it is | André, or the colleague assigned | the assignee, which the factory fills only when empty; dispatch takes only unassigned tickets or its own account's |
-| Whether it works | agent, then fresh agents | acceptance tests, gates, `code-review` and `complexity-red-flags` in their own contexts, poke-holes on the solution, `factory pr verdict` |
+| Whether it works | agent, then fresh agents | acceptance tests, gates, `code-review`, `complexity-red-flags` in a forked context, poke-holes on the solution, `factory pr verdict` |
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
 | Which phase a ticket is in | CLI | `factory ticket show`: shape, iterate, babysit or done, from its labels, state and open PRs; `/factory <ID>` runs the phase's skill until the phase stops changing |
@@ -129,8 +133,10 @@ ticket.
 | One session | `retro` (Matt Pocock's): candidates ranked by severity, in seven kinds: navigation pointers, automated checks, reviewer rules, AGENTS.md trims, tool economy, no-op instructions, information access | `hillclimb`: an edit to a skill's instructions, kept only when it improves both the cases it was tuned on and held-out ones |
 | Repo history | `/factory --garden`: classes of mistake that happened at least twice in two weeks of PRs, reverts and hand-backs | `correct`: makes one class impossible, trying architecture, then types, then a lint, then a test, and docs last |
 
-A candidate whose fix is a check, a test or a `CODING_STANDARDS.md` rule gets
-written directly: a check proves itself. Wording changes to a skill's
+A candidate whose fix is a check, a lint or a test gets built directly: a check
+proves itself. A reviewer rule in a repo's `CODING_STANDARDS.md` is wording
+too. `retro` writes it directly, and nothing measures it yet, since a replay
+carries a skill's body and not the repo's standards. Wording changes to a skill's
 instructions go to `hillclimb`, because only an eval shows that wording changed
 what agents do. `hillclimb` searches past sessions for other occurrences of the
 failure and replays each one from the prompt before the mistake; fewer than two
@@ -184,10 +190,12 @@ flowchart TB
   tracker, max autonomy, merge method, gates and one-way doors. The CLI reads it
   from the base branch, so a branch cannot raise its own autonomy.
 - **The run skill**, `.claude/skills/run-<name>/`, recorded by Claude Code's
-  built-in `/run-skill-generator`. Agents start the app through the built-in
-  `/run`, which loads it. Only André can start `/run-skill-generator` and the
-  built-in `/verify`, and no setting changes that, so `/setup-factory` asks him
-  to record the run skill. Without one, a repo stays at autonomy `pr`.
+  built-in `/run-skill-generator`, which only André can start, so
+  `/setup-factory` asks him to. Agents start the app through the built-in
+  `/run`, which loads it. Without one, a repo stays at autonomy `pr`. The
+  bundled `/verify` is André's to start too, and no setting lets an agent start
+  it, but a repo's own `.claude/skills/verify/` replaces the bundled one for
+  André and agents alike, and agents can call it.
 
 ## Trackers
 
@@ -255,6 +263,10 @@ whose profile allows `merge` requires its CI checks in branch protection.
   its sessions no harness: no skills, no `factory` CLI, no mod. Dispatched
   sessions and routines in it fail. Step 1 of `/setup-factory cloud` is what
   installs it.
+- On Linear, a ticket that came through triage carries its `Repo:` line in the
+  agent brief, a comment, and the dispatcher reads it only from the
+  description, so the ticket never leaves the queue until someone adds the line
+  there.
 - `factory brief` lists a pull request under "Needs you" only when it waits on
   a review, or is ready on a ticket without `autonomy:merge`. A ticket with
   `autonomy:merge` whose pull request the gate refuses, for a one-way door or a

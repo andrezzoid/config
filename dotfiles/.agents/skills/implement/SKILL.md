@@ -48,18 +48,23 @@ different definition, that is the human's to reshape.
 
 ## 3. Build test-first
 
-Call the Skill tool with "tdd" once, then take the acceptance lines one at a
-time:
+Call the Skill tool with "tdd". The acceptance lines are its test list, and
+the seams the ticket or its spec names are its agreed seams. When none is
+named, use the highest existing seam and record it in the notes. Each line is
+one vertical slice:
 
-1. Write the line's acceptance test at the seam the ticket or its spec names:
-   those are the seams the human confirmed. When none is named, use the highest
-   existing seam and record it in the notes. Name the test after the line, and
-   assert the observation you named for it in step 2.
-2. Run it and watch it fail for the reason the line describes. A line that
-   keeps existing behaviour passes from the start: note that instead. Any other
-   test that passes before the code exists checks nothing.
-3. Build inward, red before green, until the acceptance test passes. Then take
-   the next line.
+1. Write the line's test, named after the line, asserting the observation you
+   named for it in step 2. A line that keeps existing behaviour gets a
+   characterization test, with the base's output as its expected value.
+2. Run it, watch it fail for the reason the line describes, and commit the
+   test on its own. A characterization test passes from the start, and so does
+   a line an earlier slice already made true: break the code once to see that
+   one fail, and say so in the notes.
+3. Write only enough code to make it pass, commit, and take the next line.
+
+When the repo's hooks refuse a commit holding a failing test, keep the test
+and its code in one commit and put the failing run, command and output line,
+in the PR's Evidence.
 
 Call the Skill tool for "deep-module-design", "define-errors-away" or
 "comments-as-design" when the change shapes an interface, an error surface or
@@ -75,8 +80,9 @@ Agents copy what they see, so leave nothing you would not want copied:
   gets a script or codemod, not a hand edit. The script is the reviewable
   artifact.
 
-Push the branch after every verifiable unit. Work that exists only on one
-machine when it dies was never done.
+Push the branch after every slice that passes, never with a failing test on
+top, so CI never runs on a failing test. Work that exists only on one machine
+when it dies was never done.
 
 If the work needs something that belongs to another ticket, stop, name it and
 brief. It is not yours to build.

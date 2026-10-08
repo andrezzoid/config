@@ -38,7 +38,9 @@ merges, against the same plan, verbatim, with two lenses:
   instruction asks for. It finds the test that claims the criterion, checks
   the test asserts what the criterion says through the interface the
   criterion names, and runs it: a criterion about new behaviour must fail on
-  the base and pass on the commit. A criterion with no such test gets driven
+  the base and pass on the commit. It also runs the test at the commit that
+  added it: a test for new behaviour that passes there was written after its
+  code, which is a finding. A criterion with no such test gets driven
   through the running app the way a user would. Then Territory reads the whole
   diff against the plan, both ways: what landed that the plan never asked for,
   and what the plan asked for that never landed.

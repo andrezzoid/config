@@ -2,12 +2,11 @@
 
 Shared by `to-tickets`, for a ticket's body, and `triage`, for its agent brief.
 The real file lives here; `triage/references/ticket-template.md` is a symlink to
-it. Keep the section names: `implement` builds from them, and the `factory` CLI
-parses Blocked by.
+it. Keep the section names, since `implement` builds from them.
 
 <issue-template>
 
-Repo: <owner/name, the GitHub repository the ticket ships in. Linear only: the dispatcher reads this line, and a Linear ticket without it never leaves the queue.>
+Repo: <owner/name, the GitHub repository the ticket ships in. Linear only, in the ticket's description: the dispatcher reads it nowhere else, and a Linear ticket without it never leaves the queue.>
 
 ## Parent
 
@@ -39,6 +38,6 @@ The adjacent changes this ticket must not make. Omit this section when a parent 
 
 ## Blocked by
 
-One line per blocking ticket: `ENG-12` in Linear, `#12` or `owner/name#12` in GitHub Issues. Omit this section when there are none, rather than writing "none".
+One line per blocking ticket: `ENG-12` in Linear, `#12` or `owner/name#12` in GitHub Issues. The factory reads this section only from a GitHub issue's body; on Linear, and for a triage brief, add each blocker as a relation too. Omit this section when there are none, rather than writing "none".
 
 </issue-template>

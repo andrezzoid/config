@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Route work and report on it. The skills you call write the code.
 
-The deterministic half lives in the `factory` CLI: use its answers rather than
+The deterministic half lives in the `factory` CLI. Use its answers rather than
 re-deriving them, and `factory --help` lists its commands. Every mode starts
 with `factory doctor`. If a line reads `fail`, report it and stop.
 
@@ -56,7 +56,7 @@ is the notification, so the first line says whether anything needs the human.
 ## --dispatch
 
 Start one session per ready ticket. Each session claims its ticket as its first
-write, so dispatch keeps no state: a session that dies before claiming leaves
+write, so dispatch keeps no state. A session that dies before claiming leaves
 its ticket queued for the next run, and one that dies after claiming shows in
 the brief as stalled.
 
@@ -71,7 +71,12 @@ the brief as stalled.
    - Locally, from the repo's clone: `claude --bg -n <ID> -w <slug>
      --permission-mode auto "/factory <ID>"`, so each ticket gets its own
      worktree. `<slug>` is the id lowercased, with every character outside
-     `a-z0-9` turned into `-` (`eng-123`, `o-r-12`).
+     `a-z0-9` turned into `-` (`eng-123`, `o-r-12`). Inside herdr
+     (`HERDR_ENV=1`), give it a workspace of its own instead, so it shows in
+     herdr's agent panel: `herdr workspace create --cwd <clone> --label <ID>
+     --no-focus` prints the root pane as `.result.root_pane.pane_id`, then
+     `herdr agent start <slug> --kind claude --pane <pane> -- -w <slug>
+     --permission-mode auto "/factory <ID>"`.
    - With neither, list the tickets and the exact commands, and stop.
 4. Report one line per launched ticket with its session link or name, and how
    many tickets wait and why.
@@ -82,8 +87,8 @@ coding loses sight of the queue.
 ## --garden
 
 Find the mistakes agents keep repeating in one repo, and buffer them instead of
-fixing them: the buffer shows which ten findings are one problem before anyone
-spends a pull request on each.
+fixing them, because the buffer shows which ten findings are one problem before
+anyone spends a pull request on each.
 
 1. Read the repo's last two weeks: merged pull requests and their review
    threads (`gh api repos/<o>/<r>/pulls?state=closed`), reverts (`git log

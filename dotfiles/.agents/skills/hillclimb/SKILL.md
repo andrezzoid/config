@@ -33,9 +33,10 @@ events as `<file>:<line>`.
 One sentence: what the agent did, what it should have done, and the skill
 whose instructions should have steered it.
 
-When the right fix is a check, a lint, a test or a `CODING_STANDARDS.md` rule,
-build that instead and stop: a check proves itself, and hillclimbing is for
-wording.
+When the right fix is a check, a lint or a test, build that instead and stop:
+a check proves itself. When it is a reviewer rule in `CODING_STANDARDS.md`,
+write it the way `retro` does and stop, since a replay carries a skill's body
+and not the repo's standards.
 
 Done when the human confirms the sentence.
 

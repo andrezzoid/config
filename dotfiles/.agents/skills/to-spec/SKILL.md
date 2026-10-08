@@ -31,7 +31,7 @@ Write in ASD-STE100 Simplified Technical English with the ubiquitous language fr
 - One idea per sentence. Active voice. Present tense.
 - State each fact once. A fact in Problem does not appear again in Solution or in a decision. Repeated facts drift apart: one spec named the same incident in five places and gave it two different dates.
 - Leave out what a competent engineer works out unaided. Advice about testing or design applies to every repo and tells the reader nothing about this one.
-- Write an ordered algorithm as numbered steps. Write conditions and their outcomes as a table. Follow the `show-me` conventions.
+- Write an ordered algorithm as numbered steps. Write conditions and their outcomes as a table. Follow the forms in the `pr` skill's Summary section.
 - Titles name the change. Write "Runner: time out unanswered client tool calls". Do not write "Runner: stop stalling on client tool calls nobody will answer".
 - Gloss every term, product and service the first time it appears, or link its entry in the glossary. A reader who has never seen this codebase cannot tell whether a name is a product, a service or a person.
 
@@ -70,10 +70,7 @@ can reconstruct these entries from the code.
 Do NOT include specific file paths or code snippets. They may end up being
 outdated very quickly. Name modules and components so the work can be found.
 
-Exception: if a prototype produced a snippet that encodes a decision more
-precisely than prose can (state machine, reducer, schema, type shape), inline it
-within the relevant decision and note briefly that it came from a prototype. Trim
-to the decision-rich parts, not a working demo, just the important bits.
+Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it within the relevant decision and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
 
 ## Acceptance Criteria
 

@@ -35,11 +35,12 @@ The agent needs to know when it's done. Every agent brief must have concrete, te
 ### Explicit scope boundaries
 
 State what is out of scope. This prevents the agent from gold-plating or making assumptions about adjacent features.
+
 ## Template
 
 Post the brief as a comment whose first line is `## Agent Brief`, followed by the sections of [the ticket template](references/ticket-template.md), the template `to-tickets` writes ticket bodies from. Write the acceptance criteria by [the acceptance criteria rules](references/acceptance-criteria.md). The category goes on the issue as a label.
 
-The factory reads blockers from the issue body and the tracker's relations, never from comments: add each blocker the brief names as a relation too.
+The factory reads blockers from the tracker's relations, and on GitHub also from the issue body, never from comments. Add each blocker the brief names as a relation.
 
 ## Examples
 

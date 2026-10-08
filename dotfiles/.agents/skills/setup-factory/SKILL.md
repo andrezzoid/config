@@ -44,7 +44,7 @@ Ask in one round, each with your recommendation:
 - What max autonomy? Recommend `pr` until a run skill exists and has been seen
   working. `merge` lets a ticket labelled `autonomy:merge` merge itself after
   an independent verdict, and `factory pr merge` allows it only while a run
-  skill exists on the default branch. Before agreeing to `merge`, require the
+  skill exists on the pull request's base branch. Before agreeing to `merge`, require the
   CI checks in the default branch's protection: the factory mod stops an agent
   drifting onto a raw merge, and only the forge stops a determined one.
 - Which gates? Propose what CI runs.

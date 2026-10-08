@@ -28,6 +28,15 @@ Write three.
 **Name the observation.** "Device check result recorded" gives the reader nothing
 to look at. Name the call, the value or the row that a person or a test can read.
 
+**Write what the consumer observes.** The consumer is whoever uses the change: a
+user for a feature, a developer or a calling module for an internal one. State
+what they observe at the seam the ticket tests at, which for an internal change
+is a module's interface, not the whole app. "Scan core and SARIF output contain
+no detector ids (check with grep)" describes how the code is arranged. The
+outcome it stands for is "Given a new detector registered with its definition
+and docs page, when strata scans, then the text report, the SARIF output and
+`--touched-since` cover it with no edit elsewhere."
+
 **Bound the negative.** You cannot assert the absence of everything, so "nothing
 else happens" cannot be tested. Say what must not happen: no retry, no exception
 escapes, no error reaches the user.
@@ -36,8 +45,11 @@ escapes, no error reaches the user.
 "render" has no definition. "At most one call per message id per present
 transition" can.
 
-**A test location is not a criterion.** "Tests at the existing provider seam" is
-satisfied by any test at all. Put it in the implementation decisions.
+**A check is not a criterion.** "Tests at the existing provider seam" names where
+to test and "a test asserts every flag is registered" names a test, and any test
+at all satisfies either. Write the outcome the test would observe, and put the
+seam in the implementation decisions. Leave out the gates and the changelog:
+every change runs the gates, and the repo's own rules ask for its changelog.
 
 **Assert every rule an implementer could get wrong.** A rule that appears once in
 prose and never in a criterion is the rule that gets missed.

@@ -6,9 +6,9 @@ Shared by `to-spec`, `to-tickets` and `triage`. The real file lives here;
 
 Acceptance criteria are the most important part of a spec or a ticket. Everything
 downstream tests against these lines. `to-tickets` distributes them across the
-tickets it cuts. Implementation quotes them before it writes code. Deviation
-triage asks whether they still hold. If a criterion cannot fail, nothing
-downstream can test it.
+tickets it cuts. Implementation turns each one into a test before it writes
+code. Deviation triage asks whether they still hold. If a criterion cannot fail,
+nothing downstream can test it.
 
 Write them Given, When, Then, in the domain's language, one assertion each.
 
@@ -28,14 +28,12 @@ Write three.
 **Name the observation.** "Device check result recorded" gives the reader nothing
 to look at. Name the call, the value or the row that a person or a test can read.
 
-**Write what the consumer observes.** The consumer is whoever uses the change: a
-user for a feature, a developer or a calling module for an internal one. State
-what they observe at the seam the ticket tests at, which for an internal change
-is a module's interface, not the whole app. "Scan core and SARIF output contain
-no detector ids (check with grep)" describes how the code is arranged. The
-outcome it stands for is "Given a new detector registered with its definition
-and docs page, when strata scans, then the text report, the SARIF output and
-`--touched-since` cover it with no edit elsewhere."
+**Write what the consumer observes.** The consumer is a user for a feature, and a
+developer or a calling module for an internal change, who observes it at the
+module's interface rather than the whole app. "Scan core contains no detector
+ids" describes how the code is arranged. "Given a new detector registered with
+its definition, when strata scans, then the text report and the SARIF output
+cover it with no edit elsewhere" describes what its consumer sees.
 
 **Bound the negative.** You cannot assert the absence of everything, so "nothing
 else happens" cannot be tested. Say what must not happen: no retry, no exception
@@ -45,11 +43,10 @@ escapes, no error reaches the user.
 "render" has no definition. "At most one call per message id per present
 transition" can.
 
-**A check is not a criterion.** "Tests at the existing provider seam" names where
-to test and "a test asserts every flag is registered" names a test, and any test
-at all satisfies either. Write the outcome the test would observe, and put the
-seam in the implementation decisions. Leave out the gates and the changelog:
-every change runs the gates, and the repo's own rules ask for its changelog.
+**A test location is not a criterion.** "Tests at the existing provider seam" is
+satisfied by any test at all. Put it in the implementation decisions. Neither is
+a named test ("a test asserts every flag is registered"), the gates or the
+changelog. Write the outcome the test would observe.
 
 **Assert every rule an implementer could get wrong.** A rule that appears once in
 prose and never in a criterion is the rule that gets missed.

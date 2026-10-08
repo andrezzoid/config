@@ -35,12 +35,11 @@ The agent needs to know when it's done. Every agent brief must have concrete, te
 ### Explicit scope boundaries
 
 State what is out of scope. This prevents the agent from gold-plating or making assumptions about adjacent features.
-
 ## Template
 
-Post the brief as a comment whose first line is `## Agent Brief`, followed by the sections of [the ticket template](references/ticket-template.md): the same template `to-tickets` writes into ticket bodies, so `implement` reads one shape whichever skill wrote it. Write the acceptance criteria by [the acceptance criteria rules](references/acceptance-criteria.md). The category goes on the issue as a label, not into the brief.
+Post the brief as a comment whose first line is `## Agent Brief`, followed by the sections of [the ticket template](references/ticket-template.md), the template `to-tickets` writes ticket bodies from. Write the acceptance criteria by [the acceptance criteria rules](references/acceptance-criteria.md). The category goes on the issue as a label.
 
-The factory reads blockers from the issue body and from the tracker's own relations, never from comments. When the brief names a blocker, also add it as an issue dependency, or as a "blocked by" relation in Linear.
+The factory reads blockers from the issue body and the tracker's relations, never from comments: add each blocker the brief names as a relation too.
 
 ## Examples
 
@@ -51,18 +50,18 @@ The factory reads blockers from the issue body and from the tracker's own relati
 
 ## Problem Statement
 
-When a skill description exceeds 1024 characters, it is cut at exactly 1024
-characters regardless of word boundaries. Descriptions then end mid-word
-(e.g. "Use when the user wants to confi").
+When a skill description exceeds 1024 characters, it is truncated at exactly
+1024 characters regardless of word boundaries. This produces descriptions
+that end mid-word (e.g. "Use when the user wants to confi").
 
 ## What to build
 
-Truncation breaks at the last word boundary before 1024 characters and appends
-"..." to show that the text was cut.
+Truncation should break at the last word boundary before 1024 characters
+and append "..." to indicate truncation.
 
 ## Implementation Decisions
 
-- **Keep `SkillMetadata.description` a plain string**: forced by every reader
+- **No type change to `SkillMetadata.description`**: forced by every reader
   treating it as display text. Not a separate `truncated` flag, because no
   reader needs to know.
 - **Truncate where SKILL.md frontmatter is parsed**: forced by that being the
@@ -75,13 +74,14 @@ The frontmatter parser's unit tests, next to the existing description tests.
 
 ## Acceptance criteria
 
-- [ ] Given a description under 1024 characters, when its skill loads, then the description is unchanged.
-- [ ] Given a description over 1024 characters, when its skill loads, then it ends at the last word boundary before character 1024, followed by "...".
-- [ ] Given a truncated description, when its skill loads, then its length including "..." is at most 1024 characters.
+- [ ] Given a description under 1024 chars, when its skill loads, then the description is unchanged.
+- [ ] Given a description over 1024 chars, when its skill loads, then it is truncated at the last word boundary before 1024 chars.
+- [ ] Given a truncated description, when its skill loads, then it ends with "...".
+- [ ] Given a truncated description, when its skill loads, then its total length including "..." does not exceed 1024 chars.
 
 ## Out of scope
 
-- Changing the 1024 character limit itself
+- Changing the 1024 char limit itself
 - Multi-line description support
 ```
 
@@ -93,24 +93,27 @@ The frontmatter parser's unit tests, next to the existing description tests.
 ## Problem Statement
 
 When a feature request is rejected, the issue is closed with a `wontfix` label
-and a comment. Nothing records the decision or its reasoning, so a later
-request for the same feature needs the maintainer to recall or search for the
-earlier discussion.
+and a comment. There is no persistent record of the decision or reasoning.
+Future similar requests require the maintainer to recall or search for the
+prior discussion.
 
 ## What to build
 
-Each rejected feature request is recorded in `.out-of-scope/<concept>.md`, with
-the decision, the reasoning and links to every issue that asked for it. Triage
-checks these files and surfaces a match when a new issue asks for the same
-concept.
+Rejected feature requests should be documented in `.out-of-scope/<concept>.md`
+files that capture the decision, reasoning, and links to all issues that
+requested the feature. When triaging new issues, these files should be
+checked for matches.
 
 ## Implementation Decisions
 
-- **One file per concept, not per issue**: forced by repeat requests being the
-  problem. Not one file per rejected issue, because matching would then need
-  every file read and compared.
-- **File shape**: a `# Concept Name` heading, a `**Decision:**` line, a
-  `**Reason:**` line and a `**Prior requests:**` list of issue links.
+- **Each file has a `# Concept Name` heading, a `**Decision:**` line, a
+  `**Reason:**` line and a `**Prior requests:**` list with issue links**:
+  forced by triage matching new issues against these files. Not free-form
+  notes, because a match needs the decision and the prior requests in known
+  places.
+- **Match by concept similarity, reading every `.out-of-scope/*.md` file
+  early**: forced by a repeat request rarely using the first one's words. Not
+  title matching, because the same feature gets asked for in different words.
 
 ## Testing
 
@@ -118,20 +121,21 @@ A triage run on a scratch repo with one existing `.out-of-scope/` file.
 
 ## Acceptance criteria
 
-- [ ] Given a feature closed as wontfix, when triage closes it, then a file in `.out-of-scope/` holds the decision, the reasoning and a link to the issue.
-- [ ] Given an existing `.out-of-scope/` file for the same concept, when triage closes another request for it, then the new issue is appended to that file's "Prior requests" list and no second file is created.
-- [ ] Given a new issue that matches an `.out-of-scope/` file, when triage starts on it, then it shows the matching file to the maintainer.
+- [ ] Given a feature request closed as wontfix, when triage closes it, then a file in `.out-of-scope/` exists for its concept.
+- [ ] Given a feature request closed as wontfix, when triage closes it, then its `.out-of-scope/` file includes the decision, the reasoning and a link to the closed issue.
+- [ ] Given an existing `.out-of-scope/` file for the same concept, when triage closes another request for it, then the new issue is appended to that file's "Prior requests" list rather than a duplicate file being created.
+- [ ] Given a new issue that matches a prior rejection, when triage starts on it, then the matching `.out-of-scope/` file is surfaced.
 
 ## Out of scope
 
-- Automated matching (the maintainer confirms the match)
+- Automated matching (human confirms the match)
 - Reopening previously rejected features
 - Bug reports (only enhancement rejections go to `.out-of-scope/`)
 ```
 
 ### Good agent brief (PR)
 
-For a PR, the Problem Statement describes the state of the diff, and What to build asks the agent to finish or fix it rather than build from scratch.
+For a PR, the Problem Statement describes the state of the diff, and the brief asks the agent to finish or fix it rather than build from scratch.
 
 ```markdown
 ## Agent Brief
@@ -140,22 +144,22 @@ For a PR, the Problem Statement describes the state of the diff, and What to bui
 
 The PR adds a `--json` flag that serializes the issue list to JSON. The happy
 path works and the diff matches the project's command structure. Two gaps
-remain: errors still print as human text, not JSON, and the new flag has no
-test coverage.
+remain: errors are still printed as human text (not JSON), and the new flag has
+no test coverage.
 
 ## What to build
 
-With `--json`, all output, errors included, is well-formed JSON on stdout, and
-the command's exit codes are unchanged. Without the flag, the human-readable
-output is untouched.
+With `--json`, all output (including errors) is well-formed JSON on stdout,
+and the command's exit codes are unchanged. The existing human-readable output
+is untouched when the flag is absent.
 
 ## Implementation Decisions
 
-- **Errors under `--json` are `{ "error": string }`**: forced by callers
-  parsing stdout as JSON. Not plain text on stderr, because a script would then
-  need two parsers.
-- **Reuse the serializer the PR already added**: forced by the PR's success
-  path depending on it. Not a second serializer, because the two would drift.
+- **The error path emits `{ "error": string }` under `--json`**: forced by
+  callers parsing stdout as JSON. Not plain text on stderr, because a script
+  would then need two parsers.
+- **Reuse the serializer the PR already added**: forced by the success path
+  depending on it. Not a second serializer, because the two would drift.
 
 ## Testing
 
@@ -164,9 +168,9 @@ The command's existing CLI tests.
 ## Acceptance criteria
 
 - [ ] Given `triage list --json`, when the list loads, then stdout is valid JSON.
-- [ ] Given `triage list --json`, when the command fails, then stdout is valid JSON with an `error` field.
-- [ ] Given the same failure, when run with and without `--json`, then the exit codes match.
-- [ ] Given no `--json` flag, when the command runs, then its output is byte-for-byte the same as before the PR.
+- [ ] Given `triage list --json`, when the command fails, then stdout is valid JSON.
+- [ ] Given a failure, when the command runs with and without `--json`, then the exit codes match.
+- [ ] Given no `--json` flag, when the command runs, then its output is byte-for-byte unchanged.
 
 ## Out of scope
 
@@ -191,9 +195,9 @@ The function around line 150 has the issue.
 ```
 
 This is bad because:
-- It doesn't follow the ticket template
+- Doesn't follow the ticket template
 - Vague description ("the triage thing is broken")
 - References file paths and line numbers that will go stale
 - No acceptance criteria
 - No scope boundaries
-- No problem statement and no behaviour to build
+- No problem statement and no behavior to build

@@ -1,8 +1,13 @@
 # Ticket template
 
-The body of every ticket `to-tickets` publishes to a tracker, and of every agent brief `triage` posts. `implement` builds from it and the `factory` CLI reads its Blocked by section, so keep the section names. Leave out a section the notes below say to omit.
+Shared by `to-tickets`, for a ticket's body, and `triage`, for its agent brief.
+The real file lives here; `triage/references/ticket-template.md` is a symlink to
+it. Keep the section names: `implement` builds from them, and the `factory` CLI
+parses Blocked by.
 
-Repo: <owner/name, the GitHub repository this ticket ships in; Linear only>
+<issue-template>
+
+Repo: <owner/name, the GitHub repository the ticket ships in. Linear only: the dispatcher reads this line, and a Linear ticket without it never leaves the queue.>
 
 ## Parent
 
@@ -30,8 +35,10 @@ The seam this slice tests at, and the nearest similar test in the codebase. One 
 
 ## Out of scope
 
-The adjacent changes this ticket must not make, so the agent does not gold-plate. Omit this section when a parent carries them.
+The adjacent changes this ticket must not make. Omit this section when a parent carries them.
 
 ## Blocked by
 
-One line per blocking ticket: its id (`ENG-12` in Linear, `#12` or `owner/name#12` in GitHub Issues). Omit this section when there are none, rather than writing "none".
+One line per blocking ticket: `ENG-12` in Linear, `#12` or `owner/name#12` in GitHub Issues. Omit this section when there are none, rather than writing "none".
+
+</issue-template>

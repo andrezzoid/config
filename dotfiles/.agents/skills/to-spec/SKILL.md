@@ -4,7 +4,7 @@ description: "Turn the current conversation into a spec for the user to approve:
 disable-model-invocation: true
 ---
 
-This skill takes the current conversation context and codebase understanding and produces a spec, the factory's Shape stage turned into an artifact. Do NOT interview the user; just synthesize what you already know.
+This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
 Write a spec for every unit of work the conversation settled. Usually that is one. Where the conversation settled more than one, write each of them. Do not write a spec for a unit that is still open: it takes little time to name a unit and much longer to shape one.
 
@@ -26,12 +26,12 @@ Write the draft to `.scratch/<slug>/spec.md`. Nothing reaches the tracker before
 
 An agent builds from the spec and a human approves it. Both need each decision stated once, with the fact that forced it.
 
-Write in ASD-STE100 Simplified Technical English with the ubiquitous language from the glossary (`GLOSSARY.md`, or `CONTEXT.md` in repos set up before Matt Pocock's rename; follow `GLOSSARY-MAP.md` or `CONTEXT-MAP.md` to the right one when the repo has several). This is the register the `wait-what` skill re-pitches into, so a spec written this way needs no re-pitch.
+Write in ASD-STE100 Simplified Technical English with the ubiquitous language from `GLOSSARY.md` or `CONTEXT.md` (follow `GLOSSARY-MAP.md` or `CONTEXT-MAP.md` to the right one if the repo has more than one). This is the register the `wait-what` skill re-pitches into, so a spec written this way needs no re-pitch.
 
 - One idea per sentence. Active voice. Present tense.
 - State each fact once. A fact in Problem does not appear again in Solution or in a decision. Repeated facts drift apart: one spec named the same incident in five places and gave it two different dates.
 - Leave out what a competent engineer works out unaided. Advice about testing or design applies to every repo and tells the reader nothing about this one.
-- Write an ordered algorithm as numbered steps. Write conditions and their outcomes as a table. For structure, use the smallest view from the `pr` skill's Summary section.
+- Write an ordered algorithm as numbered steps. Write conditions and their outcomes as a table. Follow the `show-me` conventions.
 - Titles name the change. Write "Runner: time out unanswered client tool calls". Do not write "Runner: stop stalling on client tool calls nobody will answer".
 - Gloss every term, product and service the first time it appears, or link its entry in the glossary. A reader who has never seen this codebase cannot tell whether a name is a product, a service or a person.
 

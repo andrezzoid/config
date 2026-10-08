@@ -9,32 +9,28 @@ load-bearing, and writes a summary only it can read.
   goes in the first sentence.
 - They have not read the ticket, the notes or the diff. Write for that, and
   never describe the work as a change against something they have not read.
-- Never use an id they did not type. Ticket ids from the tracker are fine; ids you
-  invented in your notes are not.
+- Never use an id they did not type, except the tracker's own ticket ids.
 - Say what it means for the thing they asked for before you say how it works.
-- Where the point is a structure or a comparison, show it with the smallest
-  view that carries it: a call tree, a file tree, a table, a diff sketch. The
-  `pr` skill's Summary section lists the forms.
+- Where the point is a structure or a comparison, show it. Read the `show-me`
+  skill and follow its conventions instead of describing a shape in prose.
 - If a decision is needed: the options, a recommendation, the question.
-- Name what you could not verify and why. Evidence you did not collect is not
-  evidence.
+- Name what you could not verify, and why.
 - Keep it short. A brief that needs scrolling has buried its own question.
 
 ## Hand-back brief
 
-One ticket, needs a decision. Fires on broken acceptance, an unresolvable verify
-failure, or a review that disputes the ticket rather than the code. Post it with
-`factory ticket handback <ID> --brief-file <file>`: the ticket leaves the agent
-queue, lands in `ready-for-human`, and the brief is the first thing the human
-reads there.
+When acceptance breaks, the brief goes on the ticket with `factory ticket
+handback <ID> --brief-file <file>`, which takes the ticket out of the agent
+queue and labels it `ready-for-human`. It is the first thing the human reads
+there:
 
 ```
 **Handed back · <what broke, plain language>**
 
-<one or two sentences: what we agreed, what the territory turned out to be>
+<what we agreed, and what the territory turned out to be, in one or two sentences>
 
 **Evidence:** <command output, file:line, screenshot path>
-**Options:** <A, B, with the cost of each in one clause>
+**Options:** <A, B, each with its cost in one clause>
 **Recommendation:** <one of them, and why>
 **Question:** <the one thing only the human can answer>
 ```

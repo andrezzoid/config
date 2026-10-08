@@ -35,21 +35,13 @@ Complexity creeps in one small decision at a time — a shallow wrapper, a leake
 
 ## Input and output
 
-You run in a fresh context and see only what you were called with, never the
-conversation that called you. That is the point: a reviewer who shares the
-author's reasoning shares its blind spots. Expect a git ref to diff against, or
-paths. With neither, review the working tree's changes against the default
-branch. Return each finding with its concrete fix; the caller applies it.
+You run in a forked context and see only what you were called with, never the conversation that called you, so you do not share the author's blind spots. Expect a git ref to diff against, or paths; with neither, review the working tree's changes against the default branch. Return each finding with its concrete fix: the caller applies it.
 
 ## The Audit Workflow
 
 ### Standards first
 
-Read `CODING_STANDARDS.md` at the repo root, and any other standards file the
-repo's `CLAUDE.md` or `AGENTS.md` points to. Each rule there is a standard: it
-wins over a red flag when the two disagree, and a change that breaks one is a
-finding that quotes the rule. Skip rules a linter or type checker already
-enforces. With no such file, go on.
+Read `CODING_STANDARDS.md` at the repo root, and any standards file the repo's `CLAUDE.md` or `AGENTS.md` points to. A standard wins over a red flag when the two disagree, and a change that breaks one is a finding that quotes the rule. Skip rules a linter or type checker already enforces.
 
 ### Phase 0 — Run strata, the deterministic pre-scanner (TypeScript only)
 

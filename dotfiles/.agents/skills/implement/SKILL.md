@@ -5,128 +5,106 @@ description: "Build one unit of work end to end, from a ticket (ENG-123 in Linea
 
 # Implement
 
-The factory's Iterate stage: one ticket, from claim to an open PR. One unit per run. Dispatching several is the caller's job. Nobody may be
-around to answer questions, so anything that needs the human ends the run with
-a brief instead of a question.
+Implement the work named in the invocation: a ticket, a spec file, or what the
+conversation just settled. If nothing was named, ask. One unit per run:
+dispatching several is the caller's job, not yours. When you run unattended,
+nobody answers a question: anything that needs the human ends the run with a
+brief.
 
-A ticket's body is agreed state: never edit it. Its comments are the event log
-and the only thing you write on the ticket. If the work turns out to need a
-different definition, that is the human's to reshape.
+Read it first, and the parent for context when there is one. Read a ticket with
+`factory ticket show <ID> --json`, on either tracker. Its `contract` is what you
+build against: triage's latest agent brief when there is one, otherwise the
+body. A published ticket's body is agreed state: never edit it, and its comments
+are the event log and the only thing you write there. Where there is no ticket
+there is no comment log, so every deviation, decision and followup reaches the
+human through the brief instead. The parent carries the shape, the ticket
+carries the contract. If the work turns out to need a different definition, that
+is the human's call to shape, not yours here: hand the ticket back with `factory
+ticket handback <ID> --brief-file <brief>`, which posts the brief and labels it
+`ready-for-human`.
 
-## 1. Load the work
+Claim a ticket as your first write: `factory ticket claim <ID>`. Exit 3 means
+another session holds it, or it is not labelled `ready-for-agent`: stop and
+say so in one line. Pass `--take-over` only when the human asked you to take
+the ticket over.
 
-- **Ticket:** `factory ticket show <ID> --json` gives the `contract`, plus the
-  body, comments, repo, autonomy, blockers, branch name and the `closes` line,
-  whichever tracker holds it. The contract is what you build against: triage's
-  latest agent brief when there is one, otherwise the body. Read the parent
-  ticket too when there is one.
-- **Claim it, as your first write:** `factory ticket claim <ID>`. Exit 3 means
-  another session has it, or it is not labelled `ready-for-agent`: stop and say
-  so in one line, with the claiming session's link. Add `--take-over` only when
-  the human asked you to take the ticket over. Skip the claim when the human
-  handed you the ticket in this conversation and it is already yours.
-- **Repo profile:** `.agents/factory.md` names the tracker, the gates and the
-  one-way doors. Without it, tell the human to run `/setup-factory` and
-  continue with the defaults: autonomy `pr`, gates from the README or CI.
-- **Domain:** read the glossary (`GLOSSARY.md`, or `CONTEXT.md` in repos set up
-  before Matt Pocock's rename) and the ADRs in the area you touch. Use their
-  words.
+Before any code:
 
-## 2. Before any code
-
-1. Quote each acceptance line. For each one, name the observation that would
-   show it false. A line with no such observation is a shaping problem: hand
-   back, do not work around it.
-2. Check the blockers are done. If one is not, stop and name it.
-3. Keep working notes in `.factory/<id>.md`: what you tried, deviations,
-   decisions, open threads. Add `.factory/` to `.git/info/exclude` so the
-   notes never touch the repo's files.
+1. Quote each acceptance line you are working against, and name the
+   observation that would falsify it. If you cannot name one, hand the ticket
+   back: vague acceptance is a shaping problem, not something to work around.
+2. Check the blockers, when the work is a ticket that declares any. If one is
+   not done, stop and say which. Nothing here is worth building on an unfinished
+   blocker.
+3. Create `.factory/<id-or-slug>.md` as working notes, and add `.factory/` to
+   `.git/info/exclude`. Keep it current: what you tried, deviations, decisions,
+   open threads. It is yours, it is disposable, and it only has to survive until
+   the next writeback.
 4. Branch from the fresh base: `git fetch origin && git switch -c <branchName>
-   origin/<base>`, using the ticket's `branchName`: it names the ticket, so the
-   tracker links the PR and `factory pr merge` finds the ticket's autonomy.
-5. Install dependencies the way the README or profile says.
+   origin/<base>`. The ticket's branch name links the PR to the ticket, and
+   `factory pr merge` finds the ticket's autonomy through it.
+5. Install dependencies and get the project ready the way its README says.
+   `.agents/factory.md`, the repo profile, names the gates and the one-way
+   doors. Without it, tell the human to run `/setup-factory`, and take the
+   gates from the README or CI.
 
-## 3. Build test-first
+Build it with TDD: call the Skill tool with "tdd". The acceptance lines are its
+test list, one vertical slice each, at the seam the ticket's Testing line
+names, or the highest existing seam when it names none. For each line:
 
-Call the Skill tool with "tdd". The acceptance lines are its test list, and
-the seams the ticket or its spec names are its agreed seams. When none is
-named, use the highest existing seam and record it in the notes. Each line is
-one vertical slice:
-
-1. Write the line's test, named after the line, asserting the observation you
-   named for it in step 2. A line that keeps existing behaviour gets a
-   characterization test, with the base's output as its expected value.
-2. Run it, watch it fail for the reason the line describes, and commit the
-   test on its own. A characterization test passes from the start, and so does
-   a line an earlier slice already made true: break the code once to see that
-   one fail, and say so in the notes.
+1. Write the line's test, asserting the observation you named for it. A line
+   that keeps existing behaviour gets a characterization test, with the base's
+   output as its expected value.
+2. Run it, watch it fail for the reason the line describes, and commit the test
+   on its own. A characterization test passes from the start, and so does a
+   line an earlier slice already made true: break the code once to see it fail,
+   and say so in the notes.
 3. Write only enough code to make it pass, commit, and take the next line.
 
-When the repo's hooks refuse a commit holding a failing test, keep the test
-and its code in one commit and put the failing run, command and output line,
-in the PR's Evidence.
+On a ticket, push after every slice that passes: CI never runs a failing test,
+and the work outlives the session. When the repo's hooks refuse a commit holding
+a failing test, commit the test with its code, and put the failing run in the
+PR's Evidence.
 
-Call the Skill tool for "deep-module-design", "define-errors-away" or
-"comments-as-design" when the change shapes an interface, an error surface or
-a comment.
+Call the Skill tool for "comments-as-design", "deep-module-design" or
+"define-errors-away" when the change shapes a comment, an interface or an error
+surface.
 
-Agents copy what they see, so leave nothing you would not want copied:
+Agents copy what they see. Extend a pattern only when you would be happy to see
+it copied again: when the nearest example is a workaround, follow the paved
+path and note the bad example as a followup. Never write a comment that
+justifies a workaround: fix the cause, or file it.
 
-- Extend the patterns around you only when you would be happy to see them
-  copied again. When the nearest example is a workaround, do not copy it:
-  follow the paved path and note the bad example as a followup.
-- Never write a comment that justifies a workaround. Fix the cause, or file it.
-- Mechanical work across many files (renames, migrations, call-site updates)
-  gets a script or codemod, not a hand edit. The script is the reviewable
-  artifact.
+If the work turns out to need something that belongs to another ticket, stop,
+name it, and brief. It is not yours to build.
 
-Push the branch after every slice that passes, never with a failing test on
-top, so CI never runs on a failing test. Work that exists only on one machine
-when it dies was never done.
+Verify before you call it done, in this order:
 
-If the work needs something that belongs to another ticket, stop, name it and
-brief. It is not yours to build.
+1. Run the gates the profile lists.
+2. Call the Skill tool with "code-review" and "complexity-red-flags", each
+   on the diff against the base. Both run in their own context, so neither
+   shares your reasoning.
+3. For each acceptance line whose test stops short of the app's own interface
+   (a command, a request, a page), call the Skill tool with "run" and drive the
+   line through the running app the way a user would. Keep the command and its
+   output, or the screenshot path, for the PR's Evidence. Without a run skill,
+   say so in the Evidence and the brief: the PR cannot merge itself.
+4. Call the Skill tool with "poke-holes" on the solution, at the commit you will
+   record. Its verdict pins that commit, so this goes last.
 
-## 4. Verify
+Give every finding a disposition. Follow `references/dispositions.md`. After a
+fix, rerun the gates. If the same check fails three times running, stop and
+brief. Grinding at a red check is how a session burns an afternoon and arrives
+with nothing.
 
-All four layers, in order. A green test run is a gate, not proof.
+Then triage anything you did that departed from the ticket. Deviating is often
+right. The only failure is an unreported deviation. Acceptance holds while every
+acceptance test passes and still asserts what its line says, so weakening an
+acceptance test to make it pass breaks acceptance.
 
-1. **Gates.** Run every gate the profile lists. If the same check fails three
-   times running, stop and brief: grinding at a red check burns the afternoon.
-2. **Live proof.** For each acceptance line whose test stops short of the
-   app's own interface (a command, a request, a page), call the Skill tool with
-   "run" to start the app from the repo's recipe (`.claude/skills/run-*`) and
-   drive the line through it the way a user would. Keep the evidence: the
-   command, its output, the screenshot path. When the repo has no run skill,
-   say so in the PR's Evidence and in the brief: without one the PR cannot
-   self-merge.
-3. **Code review.** Call the Skill tool with "code-review" and
-   "complexity-red-flags", each on the diff against the base branch. Both run
-   in their own context, so neither shares your reasoning: `code-review` hunts
-   bugs and checks the CLAUDE.md rules, `complexity-red-flags` checks the design
-   and the repo's `CODING_STANDARDS.md`. Give every finding a disposition per
-   `references/dispositions.md`, fix the fix-now ones, and rerun the gates.
-4. **Independent verdict.** Once the code has settled, call the Skill tool with
-   "poke-holes" on the solution, at the commit you will record. Its
-   reviewers start fresh and did not write the code. The verdict pins that
-   commit, so any later change to the code needs a fresh one: review before you
-   prove. Give every finding a disposition. Scale the reviewers to the diff,
-   never to zero: a ten-line change still gets one fresh reviewer, because the
-   author is the one reader who cannot see its own gaps. Small diffs are where
-   this layer is cheapest, not where it is optional.
-
-## 5. Triage deviations
-
-Deviating is often right. The only failure is an unreported deviation.
-
-Acceptance holds while every acceptance test passes and still asserts the
-observation its line names. Weakening an acceptance test to make it pass
-changes acceptance.
-
-- Acceptance still holds: record it and keep going, as a ticket comment, or a
-  line in the brief when there is no ticket.
-- Acceptance breaks: stop. That one is the human's. Hand back:
-  `factory ticket handback <ID> --brief-file <brief>`.
+- Acceptance still holds, so record it and keep going: a comment on the ticket,
+  or a line in the brief when there is no ticket.
+- Acceptance breaks, so stop. That one is the human's: hand the ticket back.
 
 Comment format, for deviations the ticket did not cover:
 
@@ -142,33 +120,28 @@ Comment format, for deviations the ticket did not cover:
 
 If "Affects elsewhere" is empty it is just work. Do not post it.
 
-Out-of-scope discoveries become new tickets in triage, filed after the brief
-and the human's approval, the way the profile's Issue tracker section says.
-Never carry them away in your head.
+Out-of-scope discoveries become new tickets in triage, filed after the final
+brief and human approval, never carried away in your head. Where there is no
+tracker, raise them in the brief and leave them there.
 
-## 6. Open the PR and hand over
+A ticket carries an autonomy level, `pr` or `merge`. Either way you push and
+open the pull request, and only `babysit-pr` merges. Working without a ticket,
+take the most conservative reading: commit as you go with the end of the work
+as the checkpoint, and never push, merge or deploy without being told.
 
-1. Commit with the repo's conventions. Push.
-2. Open the PR ready for review, never as a draft. Call the Skill tool with
-   "pr" for the body: Summary, Evidence from step 4, Merge Danger with the door
-   and blast radius. End it with the ticket's `closes` line (`Closes ENG-123`
-   or `Closes #12`) so the tracker closes the ticket on merge.
-   A change that touches a profile one-way door is a one-way door, whatever it
-   looks like.
-3. Record the verdict once poke-holes came back with no open fix-now finding:
-   `factory pr verdict <PR> --sha <SHA> --result pass --summary-file <file>`.
-   `<SHA>` is the commit the reviewers checked (`git rev-parse HEAD` when you
-   briefed them); the file holds poke-holes' ledger. The CLI refuses when the
-   PR's head is no longer that commit, and a later push that changes the patch
-   voids the verdict.
-4. Stop here: the ticket is now in Babysit. `/factory <ID>` hands the PR to
-   `babysit-pr`, which takes it to merge-ready and merges only when the
-   ticket's autonomy and the gate allow it.
+When the work is done on a ticket:
 
-Without a ticket, the conservative reading applies: commit as you go, and never
-push, merge or deploy without being told.
+1. Open the pull request ready for review, never as a draft. Call the Skill tool
+   with "pr" for the body: Evidence holds the proof from verify, and Merge
+   Danger names the door. A change that touches a one-way door in the profile is
+   a one-way door. End the body with the ticket's `closes` line, so the tracker
+   closes the ticket on merge.
+2. Once poke-holes came back with no open fix-now finding, record its ledger:
+   `factory pr verdict <PR> --sha <the commit the reviewers checked> --result
+   pass --summary-file <ledger>`. The CLI refuses when the head has moved past
+   that commit.
+3. Stop. The ticket is in Babysit now, and `/factory <ID>` hands the PR to
+   `babysit-pr`.
 
-## 7. Brief
-
-When the work is done, or the moment you stop, brief the human per
+When the work is done, or the moment you stop, brief the human. Follow
 `references/briefing.md`.

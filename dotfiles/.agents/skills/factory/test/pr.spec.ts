@@ -256,6 +256,12 @@ describe("mergeGate", () => {
     expect(g.allowed).toBe(false);
   });
 
+  test("a ticket handed back to the human merges only on the human's word", () => {
+    const back = { status: decide(passing), ticketAutonomy: "merge" as const, repoMaxAutonomy: "merge" as const, runSkill: true, handedBack: true };
+    expect(mergeGate({ ...back, humanApproved: false }).reasons).toEqual(["the ticket is handed back (ready-for-human), so the human decides"]);
+    expect(mergeGate({ ...back, humanApproved: true }).allowed).toBe(true);
+  });
+
   test("a stale verdict does not authorize a new head", () => {
     const moved = facts({ headSha: "b".repeat(40), comments: passing.comments });
     const g = mergeGate({ status: decide(moved), ticketAutonomy: "merge", repoMaxAutonomy: "merge", runSkill: true, humanApproved: false });

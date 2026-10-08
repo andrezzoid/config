@@ -155,6 +155,10 @@ describe("phase", () => {
     expect(phaseOf(ticket({ labels: ["ready-for-human"] }), [])).toBe("shape");
     expect(phaseOf(ticket({ labels: ["ready-for-agent", "ready-for-human"] }), [])).toBe("shape");
   });
+
+  test("a ticket handed back with its pull request still open waits on the human", () => {
+    expect(phaseOf(ticket({ labels: ["ready-for-human", "autonomy:merge"], state: "started" }), ["https://github.com/o/r/pull/7"])).toBe("shape");
+  });
 });
 
 describe("ticket ids", () => {

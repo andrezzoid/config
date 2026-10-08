@@ -170,14 +170,17 @@ async function prMerge(a: Args) {
   const runSkill = forge.listRepoDir(ref, `${REPO_SKILLS}?ref=${base}`).filter(isRunSkill)
     .some((n) => forge.readRepoFile(ref, `${REPO_SKILLS}/${n}/SKILL.md?ref=${base}`) !== null);
   let ticketAutonomy: "merge" | "pr" | null = null;
+  let handedBack = false;
   if (ticketId) {
     try {
-      ticketAutonomy = autonomy((await trackerFor(ticketId).get(ticketId)).ticket);
+      const { ticket } = await trackerFor(ticketId).get(ticketId);
+      ticketAutonomy = autonomy(ticket);
+      handedBack = ticket.labels.includes(HUMAN_LABEL);
     } catch {
       ticketAutonomy = null;
     }
   }
-  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, runSkill, humanApproved: a.flags["human-approved"] === true });
+  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, runSkill, humanApproved: a.flags["human-approved"] === true, handedBack });
   if (!gate.allowed) {
     console.log(`refusing to merge #${status.pr}:\n${gate.reasons.map((r) => `  - ${r}`).join("\n")}`);
     return 3;

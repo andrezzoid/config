@@ -114,11 +114,13 @@ export function currentClaim(comments: TicketComment[]): HeldClaim | null {
 
 // Where a ticket is in the factory: the stage that acts on it next. Shape is
 // André's (or triage's); iterate builds it; babysit lands its pull request.
+// A ticket handed back waits on the human even while its pull request is open.
 export type Phase = "shape" | "iterate" | "babysit" | "done";
 export function phaseOf(t: Pick<Ticket, "state" | "labels">, openPrs: string[]): Phase {
   if (t.state === "done" || t.state === "canceled") return "done";
+  if (t.labels.includes(HUMAN_LABEL)) return "shape";
   if (openPrs.length > 0) return "babysit";
-  if (t.labels.includes(READY_LABEL) && !t.labels.includes(HUMAN_LABEL)) return "iterate";
+  if (t.labels.includes(READY_LABEL)) return "iterate";
   return "shape";
 }
 

@@ -300,8 +300,7 @@ export function decide(f: PrFacts): Status {
 
 // Agents see the app run through the built-in /run skill, which loads the
 // repo's recipe from .claude/skills/run-<name>/, where /run-skill-generator
-// records it. A recorded /verify skill does not count: since Claude Code
-// 2.1.215 only a human can start /verify.
+// records it. The gate counts only that recipe.
 export const REPO_SKILLS = ".claude/skills";
 export const isRunSkill = (name: string): boolean => name.startsWith("run-");
 
@@ -312,6 +311,8 @@ export type MergeGateInput = {
   // A run skill exists on the base branch.
   runSkill: boolean;
   humanApproved: boolean;
+  // The ticket carries ready-for-human: an agent handed it back for a decision.
+  handedBack?: boolean;
 };
 
 // The bright line that makes self-merge safe: the forge must be ready, and
@@ -322,6 +323,7 @@ export function mergeGate(input: MergeGateInput): { allowed: boolean; reasons: s
   if (s.verdict !== "READY") reasons.push(`forge verdict is ${s.verdict}, not READY`);
   if (s.unresolvedThreads === null) reasons.push("review threads could not be read");
   if (!input.humanApproved) {
+    if (input.handedBack) reasons.push("the ticket is handed back (ready-for-human), so the human decides");
     if (input.ticketAutonomy !== "merge") reasons.push("ticket does not carry autonomy:merge");
     if (input.repoMaxAutonomy !== "merge") reasons.push("repo profile caps autonomy at pr");
     else if (!input.runSkill) reasons.push(`no run skill (${REPO_SKILLS}/run-*) on the base branch, so no agent could see the change working`);

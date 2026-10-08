@@ -6,7 +6,7 @@ it. Keep the section names, since `implement` builds from them.
 
 <issue-template>
 
-Repo: <owner/name, the GitHub repository the ticket ships in. Linear only, in the ticket's description: the dispatcher reads it nowhere else, and a Linear ticket without it never leaves the queue.>
+Repo: <owner/name, the GitHub repository the ticket ships in. Linear only, in the ticket's description: the dispatcher reads it there, or from a GitHub link attached to the ticket, and a Linear ticket with neither never leaves the queue.>
 
 ## Parent
 

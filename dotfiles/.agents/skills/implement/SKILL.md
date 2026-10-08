@@ -34,8 +34,9 @@ Before any code:
 2. Claim the ticket as your first write: `factory ticket claim <ID>`. Exit 3
    means another session holds it, or it is not labelled `ready-for-agent`, so
    stop and say so in one line. Pass `--take-over` only when the human asked you
-   to take the ticket over. Skip the claim when the human handed you the ticket
-   in this conversation.
+   to take the ticket over. When the claim fails only because the ticket lacks
+   `ready-for-agent`, and the human asked you in this conversation to build it
+   anyway, go on without a claim.
 3. Quote each acceptance line you are working against, and name the
    observation that would falsify it. If you cannot name one, hand the ticket
    back. Vague acceptance is a shaping problem, not something to work around.

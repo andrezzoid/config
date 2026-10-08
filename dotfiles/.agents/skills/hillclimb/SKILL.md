@@ -1,6 +1,6 @@
 ---
 name: hillclimb
-description: "Fix a failure mode in a skill's instructions by measurement: find its occurrences in past sessions, replay each as an eval case, and keep an edit only when it beats the noise on tuning and held-out cases alike. Usage: /hillclimb <what went wrong, or a retro candidate>."
+description: "Fix a failure mode in a skill's instructions by replaying past sessions as evals. Usage: /hillclimb <what went wrong, or a retro candidate>."
 disable-model-invocation: true
 ---
 
@@ -35,7 +35,7 @@ whose instructions should have steered it.
 
 When the right fix is a check, a lint or a test, build that instead and stop:
 a check proves itself. When it is a reviewer rule in `CODING_STANDARDS.md`,
-write it the way `retro` does and stop, since a replay carries a skill's body
+write it directly and stop, since a replay carries a skill's body
 and not the repo's standards.
 
 Done when the human confirms the sentence.

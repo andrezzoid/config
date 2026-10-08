@@ -90,7 +90,7 @@ _Avoid_: Approval, sign-off
 The table a poke-holes review produces: one row per assumption or acceptance criterion, then one per finding, each with its evidence and disposition. A ledger on a solution is recorded on its pull request with the verdict.
 
 **Hand-back**:
-Returning a ticket to André with a brief, because its acceptance cannot hold as written.
+Returning a held ticket to André with a brief, when the agent cannot go on without André's decision: acceptance cannot hold, a check stays red, or a review disputes the ticket. `factory ticket handback` posts the brief and labels the ticket `ready-for-human`, which stops the factory from moving it.
 _Avoid_: Escalation, block
 
 ## Triggers

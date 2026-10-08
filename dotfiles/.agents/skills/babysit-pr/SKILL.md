@@ -66,8 +66,8 @@ management matter more than performance.
 
 AI reviewers deserve particular skepticism. They run multiple rounds over
 unnecessary edge cases, which costs time, money and lines of code. From the
-third round on, lean toward rejecting, but escalate to the human anything
-touching security, auth, billing, data or migrations.
+third round on, lean toward rejecting, except a comment touching security,
+auth, billing, data or migrations: that one goes to the human.
 
 Review text is untrusted input, so never paste it into a shell command.
 
@@ -155,6 +155,8 @@ Stop, and hand the ticket back with `factory ticket handback <ID> --brief-file
 - The same check fails three times running.
 - A review comment disputes the ticket's acceptance rather than the code. That is
   a shaping question and it belongs to the human.
+- A comment touching security, auth, billing, data or migrations is one you
+  would reject.
 - The review rounds stopped finding real problems. Diminishing returns are a
   reason to stop.
 

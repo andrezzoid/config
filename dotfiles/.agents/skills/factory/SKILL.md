@@ -1,6 +1,6 @@
 ---
 name: factory
-description: "Move a ticket through the factory, or run one of its routines. /factory <ticket> takes one ticket (Linear or GitHub Issues) from its current phase until it has to wait; /factory alone shows what needs you; --brief, --dispatch and --garden are what the routines run. Usage: /factory [<ticket> [--take-over] | --brief | --dispatch | --garden] [--repo owner/name] [--max N]."
+description: "Move a ticket through the factory, or run one of its routines. Usage: /factory [<ticket> [--take-over] | --brief | --dispatch | --garden] [--repo owner/name] [--max N]."
 disable-model-invocation: true
 ---
 

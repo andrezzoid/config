@@ -19,11 +19,10 @@ load-bearing, and writes a summary only it can read.
 
 ## Hand-back brief
 
-A hand-back brief covers one ticket and needs a decision. It fires on broken
-acceptance, a verify failure you cannot resolve, or a review that disputes the
-ticket rather than the code. Post it with `factory ticket handback <ID>
---brief-file <file>`, which takes the ticket out of the agent queue and labels
-it `ready-for-human`, so the brief is the first thing the human reads there:
+When a skill hands a ticket back, the brief covers that one ticket and asks for
+a decision. Post it with `factory ticket handback <ID> --brief-file <file>`,
+which takes the ticket out of the agent queue and labels it `ready-for-human`,
+so the brief is the first thing the human reads there:
 
 ```
 **Handed back · <what broke, plain language>**

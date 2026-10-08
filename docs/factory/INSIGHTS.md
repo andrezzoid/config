@@ -134,8 +134,8 @@ brain needed: "agents are really good at using tools". [T 33:00]
 **16. Ask "where am I the bottleneck?" and teach the agent to fetch it.**
 [I 37:30] Netflix's "context, not control". [I 41:30]
 **Here:** tickets carry their repo, so dispatch needs nobody; `implement` hands
-back with a brief instead of waiting on a question; the brief tells André only
-what needs him.
+back with a brief instead of waiting on a question; the brief lists only what
+needs André.
 
 **17. Coordinators delegate and see the forest.** Coordinator agents "manage and
 supervise ... and spawn sub agents"; grouping related reports reveals the real
@@ -181,8 +181,8 @@ suite of its own.
 **24. Carry your own knives.** "Every chef when they go to a different
 restaurant, they bring their knives with them." [I 1:01:30]
 **Here:** one dotfiles folder, one pinned lock file, the same harness on the
-Mac (stow) and in every cloud session (`cloud-setup.sh`), with no skill
-committed to any work repo.
+Mac (stow) and in every cloud session (`cloud-setup.sh`). A work repo
+commits only what is its own: its profile and its run skill.
 
 **25. Language is the interface.** The bottleneck is "the transfer of your
 intent" [I 08:00]; words like "tautological tests" carry intent in one token.

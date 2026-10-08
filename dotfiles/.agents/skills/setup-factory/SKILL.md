@@ -1,6 +1,6 @@
 ---
 name: setup-factory
-description: "Make a repo factory-ready, or wire the cloud side once: writes .agents/factory.md (tracker, gates, autonomy cap, one-way doors), creates the triage labels in Linear or GitHub Issues, checks the run skill, and gives the exact cloud environment and routines to create. Usage: /setup-factory [repo|cloud|check]."
+description: "Make a repo factory-ready, or wire the cloud side once. Usage: /setup-factory [repo|cloud|check]."
 disable-model-invocation: true
 ---
 
@@ -44,9 +44,10 @@ Ask in one round, each with your recommendation:
 - What max autonomy? Recommend `pr` until a run skill exists and has been seen
   working. `merge` lets a ticket labelled `autonomy:merge` merge itself after
   an independent verdict, and `factory pr merge` allows it only while a run
-  skill exists on the pull request's base branch. Before agreeing to `merge`, require the
-  CI checks in the default branch's protection: the factory mod stops an agent
-  drifting onto a raw merge, and only the forge stops a determined one.
+  skill exists on the pull request's base branch. Before agreeing to `merge`,
+  require the CI checks in the default branch's protection. The factory mod
+  blocks the merge commands an agent types, but a script can still call the
+  merge API, so only branch protection enforces the gate.
 - Which gates? Propose what CI runs.
 - Which one-way doors, as globs?
 - Which merge method, of those the repo allows?
@@ -90,7 +91,7 @@ Ask in one round, each with your recommendation:
 - No run skill: tell the human to run `/run-skill-generator` in the repo and
   commit the `.claude/skills/run-<name>/` it records. Agents start the app
   through it with `/run`, and until it exists the repo stays at autonomy `pr`.
-  `/verify` is theirs to run by hand: agents cannot start it.
+  The bundled `/verify` is theirs to run by hand: agents cannot start it.
 - Run `factory doctor` and show the result.
 
 ## cloud

@@ -38,15 +38,15 @@ flowchart LR
 | Stage | Driven by | Skills | Produces |
 |---|---|---|---|
 | Shape | André, interviewed | grilling, grill-with-docs, to-spec, poke-holes, to-tickets, triage | approved tickets with acceptance criteria and blocking edges |
-| Iterate | an agent per ticket | implement, tdd, code-review, complexity-red-flags, run, poke-holes, pr | a pull request whose acceptance runs as tests, with a recorded verdict |
+| Iterate | an agent per ticket | implement, tdd, deep-module-design, define-errors-away, comments-as-design, code-review, complexity-red-flags, run, poke-holes, pr | a pull request whose acceptance runs as tests, with a recorded verdict |
 | Babysit | an agent per pull request | babysit-pr, poke-holes | a merged pull request, or a brief saying what André must do |
 | Upkeep | routines, or André | factory, retro, hillclimb, correct | started sessions, the standing brief, a garden log, new guards |
 
 Shape is the only stage that changes what a ticket means. When Iterate finds
 that acceptance cannot hold, it hands the ticket back instead of absorbing the
-change, and André reshapes it. Shape is André's to drive, so he runs poke-holes
-on a spec's draft himself before approving it: `to-spec` stops at his approval
-and calls nothing. Tickets that arrive without a grilling session,
+change, and André reshapes it. Shape is André's to drive, so André runs
+poke-holes on a spec's draft before approving it: `to-spec` stops at the
+approval and calls nothing. Tickets that arrive without a grilling session,
 from André's notes or from other people, go through Matt Pocock's `triage`,
 whose agent brief uses the same ticket template as `to-tickets`.
 
@@ -67,8 +67,8 @@ after it:
   fail on its own commit, its commit message records the run that showed it
   failing.
 - `poke-holes` on the solution checks that each criterion has a test that
-  asserts it, fails on the base, passes on the head, and failed when it was
-  committed.
+  asserts it. A test of new behaviour must fail on the base, pass on the head,
+  and have failed when it was committed.
 - A deviation that leaves every acceptance test passing, and still asserting
   its line, becomes a ticket comment and the work goes on. A deviation that
   breaks acceptance stops the run: `factory ticket handback` posts the brief and
@@ -76,7 +76,7 @@ after it:
 
 So a ticket's body never changes outside Shape. That holds only while
 acceptance is precise: a vague criterion lets a change of outcome pass as a
-deviation, which makes `to-spec` the skill everything else rests on.
+deviation. Every later stage depends on the criteria `to-spec` writes.
 
 ## A ticket's life
 
@@ -107,7 +107,7 @@ sequenceDiagram
 
 | Decision | Owner | Mechanism |
 |---|---|---|
-| What to build | André | grilling, to-spec, to-tickets, his approval |
+| What to build | André | grilling, to-spec, to-tickets, André's approval |
 | Whether to start | André | `ready-for-agent` label |
 | Whether it may merge itself | André, then the repo | `autonomy:merge` label, capped by the repo profile |
 | Which ticket is next | CLI | `factory tickets next` |
@@ -117,10 +117,12 @@ sequenceDiagram
 | Whether GitHub would merge it | CLI | `factory pr status`: conflicts, threads, CI, reviews, in that order |
 | Whether it merges | CLI | `factory pr merge`, below |
 | Which phase a ticket is in | CLI | `factory ticket show`: shape, iterate, babysit or done, from its labels, state and open PRs; `/factory <ID>` runs the phase's skill until the phase stops changing |
-| What André must look at | CLI, then agent | `factory brief`, written up by `/factory` (what needs him) or `/factory --brief` (everything) |
+| What André must look at | CLI, then agent | `factory brief`, written up by `/factory` (what needs André) or `/factory --brief` (everything) |
 
-Skills hold judgment. Everything with one right answer lives in the `factory`
-CLI, so every session reaches it the same way.
+Skills hold judgment. The `factory` CLI holds every decision about the
+factory's state that has one right answer (readiness, claims, phases, pull
+request state, verdicts and the merge gate), so every session reaches it the
+same way.
 
 ## Learning
 
@@ -135,8 +137,9 @@ ticket.
 
 A candidate whose fix is a check, a lint or a test gets built directly: a check
 proves itself. A reviewer rule in a repo's `CODING_STANDARDS.md` is wording
-too. `retro` writes it directly, and nothing measures it yet, since a replay
-carries a skill's body and not the repo's standards. Wording changes to a skill's
+too, but it gets written directly once André picks it from `retro`'s
+candidates. Nothing measures it yet, since a replay carries a skill's body and
+not the repo's standards. Wording changes to a skill's
 instructions go to `hillclimb`, because only an eval shows that wording changed
 what agents do. `hillclimb` searches past sessions for other occurrences of the
 failure and replays each one from the prompt before the mistake; fewer than two
@@ -191,7 +194,7 @@ flowchart TB
   from the base branch, so a branch cannot raise its own autonomy.
 - **The run skill**, `.claude/skills/run-<name>/`, recorded by Claude Code's
   built-in `/run-skill-generator`, which only André can start, so
-  `/setup-factory` asks him to. Agents start the app through the built-in
+  `/setup-factory` asks André to. Agents start the app through the built-in
   `/run`, which loads it. Without one, a repo stays at autonomy `pr`. The
   bundled `/verify` is André's to start too, and no setting lets an agent start
   it, but a repo's own `.claude/skills/verify/` replaces the bundled one for
@@ -253,9 +256,9 @@ the head SHA it checked:
     The profile itself is always a door, so no PR can loosen the rules for the
     PRs after it. Door globs match dotfiles: `infra/**` covers `infra/.env`.
 
-The mod stops an agent drifting onto the short path, not one set on getting
-through, since a script can still call the API. The wall is the forge: a repo
-whose profile allows `merge` requires its CI checks in branch protection.
+The mod blocks the merge commands an agent types, but a script can still call
+the merge API, so the forge enforces the gate: a repo whose profile allows
+`merge` requires its CI checks in branch protection.
 
 ## Known gaps
 
@@ -264,9 +267,9 @@ whose profile allows `merge` requires its CI checks in branch protection.
   sessions and routines in it fail. Step 1 of `/setup-factory cloud` is what
   installs it.
 - On Linear, a ticket that came through triage carries its `Repo:` line in the
-  agent brief, a comment, and the dispatcher reads it only from the
-  description, so the ticket never leaves the queue until someone adds the line
-  there.
+  agent brief, a comment, and the dispatcher reads it only from the description
+  or from an attached GitHub link. With neither, the ticket never leaves the
+  queue until someone adds the line to the description.
 - `factory brief` lists a pull request under "Needs you" only when it waits on
   a review, or is ready on a ticket without `autonomy:merge`. A ticket with
   `autonomy:merge` whose pull request the gate refuses, for a one-way door or a

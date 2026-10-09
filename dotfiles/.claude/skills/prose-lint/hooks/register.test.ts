@@ -100,6 +100,7 @@ test('the bundled rules run when Vale finds no config of the project or user', a
 
 test("a project's .vale.ini wins, and the row names it", async ($, on) => {
   const runs: string[] = []
+  on('env.get', () => ({ value: '/home/someone' }))
   on('fs.stat', (_, e) => (e.path === '/repo/.vale.ini' ? dir : { deny: 'ENOENT' }))
   on('process.run', (_, e) => {
     runs.push(e.argv.join(' '))

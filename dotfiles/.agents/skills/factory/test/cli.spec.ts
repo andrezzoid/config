@@ -619,6 +619,23 @@ describe("brief", () => {
     expect(r.out).toContain("## Landed this week (1)");
   });
 
+  test("puts an autonomy:merge PR the merge gate refuses under Needs you, with the reasons", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent", "autonomy:merge"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
+    const why = `ready, but the merge gate refuses it: no passing verdict for head ${SHA.slice(0, 7)} (verification missing)`;
+    const r = await run(["brief"]);
+    expect(r.err).toBe("");
+    expect(r.out.split("## Running")[0]).toContain(`ENG-1 https://github.com/o/r/pull/7: ${why}`);
+    const d = JSON.parse((await run(["brief", "--json"])).out);
+    expect(d.needsHumanPrs).toEqual([{ id: "ENG-1", url: "https://github.com/o/r/pull/7", why }]);
+  });
+
+  test("leaves out an autonomy:merge PR the merge gate allows: babysit-pr merges it", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent", "autonomy:merge"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
+    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
+    const d = JSON.parse((await run(["brief", "--json"])).out);
+    expect(d.needsHumanPrs).toEqual([]);
+  });
+
   test("with no tracker configured, says how to configure one", async () => {
     const r = await run(["brief"], { LINEAR_API_KEY: "", PATH: "/nonexistent" });
     expect(r.code).toBe(1);

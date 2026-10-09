@@ -270,10 +270,6 @@ the merge API, so the forge enforces the gate: a repo whose profile allows
   agent brief, a comment, and the dispatcher reads it only from the description
   or from an attached GitHub link. With neither, the ticket never leaves the
   queue until someone adds the line to the description.
-- `factory brief` lists a pull request under "Needs you" only when it waits on
-  a review, or is ready on a ticket without `autonomy:merge`. A ticket with
-  `autonomy:merge` whose pull request the gate refuses, for a one-way door or a
-  missing verdict, shows only as running.
 - The cloud review-thread route (`ccr/review_threads`) returned an empty list
   in every probe, so its non-empty shape is a guess. The parser returns
   "unreadable" for a shape it does not know, which blocks the merge.

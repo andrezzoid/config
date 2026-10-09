@@ -36,9 +36,8 @@ its labels, its state and its open pull requests:
 ## No argument: what needs you
 
 Run `factory brief --json` and write only what needs the human, one line each
-with what is needed: tickets labelled `ready-for-human`, stalled tickets, and
-pull requests waiting on a review or a merge. With none, say "nothing needs
-you".
+with what is needed: its `needsHuman` and `stalled` tickets, and its
+`needsHumanPrs`. With none, say "nothing needs you".
 
 ## --brief
 

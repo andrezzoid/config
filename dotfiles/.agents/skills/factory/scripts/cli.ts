@@ -154,6 +154,14 @@ async function prVerdict(a: Args) {
   return 0;
 }
 
+// Whether a run skill exists on the PR's base branch: the gate's evidence that
+// an agent could see the change working.
+function hasRunSkill(ref: forge.Repo, baseRef: string): boolean {
+  const base = encodeURIComponent(baseRef);
+  return forge.listRepoDir(ref, `${REPO_SKILLS}?ref=${base}`).filter(isRunSkill)
+    .some((n) => forge.readRepoFile(ref, `${REPO_SKILLS}/${n}/SKILL.md?ref=${base}`) !== null);
+}
+
 async function prMerge(a: Args) {
   const ref = forge.resolvePr(a._[2], str(a.flags.repo));
   const { status, profile, pull } = await statusOf(ref);
@@ -166,9 +174,7 @@ async function prMerge(a: Args) {
   if (ticketId && !named.includes(ticketId)) {
     throw new Exit(3, `refusing to merge #${status.pr}: it does not name ${ticketId} in its branch or a Closes line (it names ${named.join(", ") || "nothing"})`);
   }
-  const base = encodeURIComponent(pull.base.ref);
-  const runSkill = forge.listRepoDir(ref, `${REPO_SKILLS}?ref=${base}`).filter(isRunSkill)
-    .some((n) => forge.readRepoFile(ref, `${REPO_SKILLS}/${n}/SKILL.md?ref=${base}`) !== null);
+  const runSkill = hasRunSkill(ref, pull.base.ref);
   let ticketAutonomy: "merge" | "pr" | null = null;
   let handedBack = false;
   if (ticketId) {
@@ -297,9 +303,10 @@ async function brief(a: Args) {
   if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
   const tickets = (await Promise.all(trackers.map((t) => t.portfolio()))).flat();
   const weekAgo = Date.now() - 7 * 864e5;
-  const prStatus = async (url: string) => {
+  const prState = async (url: string) => {
     try {
-      return (await statusOf(forge.resolvePr(url, undefined))).status;
+      const ref = forge.resolvePr(url, undefined);
+      return { ref, ...(await statusOf(ref)) };
     } catch {
       return null;
     }
@@ -314,19 +321,30 @@ async function brief(a: Args) {
   const { ready, skipped } = nextTickets(tickets.filter((t) => t.labels.includes(READY_LABEL) && t.state === "queued"));
   const landed = tickets.filter((t) => t.completedAt && Date.parse(t.completedAt) > weekAgo);
   const runningWithPrs: (ReturnType<typeof summary> & { prs: { url: string; status: Status | null }[] })[] = [];
-  for (const t of running) runningWithPrs.push({ ...summary(t), prs: await Promise.all(t.prs.map(async (u) => ({ url: u, status: await prStatus(u) }))) });
-  const data = { needsHuman: needsHuman.map(summary), stalled: stalled.map(summary), running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
+  // A PR needs the human when it waits on a review, or is ready and only the
+  // human may merge it: the ticket's autonomy is pr, or the gate refuses it.
+  const needsHumanPrs: { id: string; url: string; why: string }[] = [];
+  for (const t of running) {
+    const prs: { url: string; status: Status | null }[] = [];
+    for (const url of t.prs) {
+      const pr = await prState(url);
+      prs.push({ url, status: pr?.status ?? null });
+      if (!pr) continue;
+      if (pr.status.next === "human") needsHumanPrs.push({ id: t.id, url, why: "waiting on a review" });
+      else if (pr.status.verdict === "READY" && autonomy(t) === "pr") needsHumanPrs.push({ id: t.id, url, why: "ready, waiting on your merge" });
+      else if (pr.status.verdict === "READY") {
+        const gate = mergeGate({ status: pr.status, ticketAutonomy: "merge", repoMaxAutonomy: pr.profile.maxAutonomy, runSkill: hasRunSkill(pr.ref, pr.pull.base.ref), humanApproved: false });
+        if (!gate.allowed) needsHumanPrs.push({ id: t.id, url, why: `ready, but the merge gate refuses it: ${gate.reasons.join("; ")}` });
+      }
+    }
+    runningWithPrs.push({ ...summary(t), prs });
+  }
+  const data = { needsHuman: needsHuman.map(summary), stalled: stalled.map(summary), needsHumanPrs, running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
   print(Boolean(a.flags.json), data, () => {
     const out: string[] = ["## Needs you"];
     out.push(...needsHuman.map((t) => `- ${t.id} ${t.title}: waiting on your decision`));
     out.push(...stalled.map((t) => `- ${t.id} ${t.title}: stalled, started with no PR and quiet for over 3h`));
-    for (const r of runningWithPrs) {
-      for (const p of r.prs) {
-        if (p.status && (p.status.next === "human" || (p.status.verdict === "READY" && r.autonomy === "pr"))) {
-          out.push(`- ${r.id} ${p.url}: ${p.status.verdict === "READY" ? "ready, waiting on your merge" : "waiting on a review"}`);
-        }
-      }
-    }
+    out.push(...needsHumanPrs.map((p) => `- ${p.id} ${p.url}: ${p.why}`));
     out.push(`## Running (${running.length})`, ...runningWithPrs.map((r) => `- ${r.id} ${r.title}${r.prs[0]?.status ? `: PR ${r.prs[0].status.verdict}` : ": no PR yet"}`));
     out.push(`## Queued (${ready.length} ready, ${skipped.length} waiting)`, ...ready.map((t) => `- ${t.id} ${t.title}`));
     out.push(`## Landed this week (${landed.length})`, ...landed.map((t) => `- ${t.id} ${t.title}`));

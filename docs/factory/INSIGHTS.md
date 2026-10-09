@@ -170,7 +170,8 @@ they depend on Cursor's paths.
 
 **22. Skills get smaller: encode the workflow, not the commands.** [I 1:03:30]
 **Here:** `implement` and `babysit-pr` were rewritten around workflow; the
-mechanics (watch loops, check parsing, merge rules) moved into the CLI.
+mechanics (watch loops, check parsing, merge rules, review replies) moved into
+the CLI.
 
 **23. Put determinism in code, judgment in the agent.** "Extract out the
 deterministic parts and turn that into code." [I 21:00] Matt: a deterministic

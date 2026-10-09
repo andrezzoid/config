@@ -23,7 +23,7 @@ type Args = { _: string[]; flags: Record<string, string | true> };
 
 // Switches never take a value, so `pr merge --human-approved 42` keeps 42 as
 // the PR instead of swallowing it.
-const SWITCHES = new Set(["json", "here", "human-approved", "help"]);
+const SWITCHES = new Set(["json", "here", "human-approved", "help", "resolve"]);
 
 export function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: {} };
@@ -160,6 +160,35 @@ function hasRunSkill(ref: forge.Repo, baseRef: string): boolean {
   const base = encodeURIComponent(baseRef);
   return forge.listRepoDir(ref, `${REPO_SKILLS}?ref=${base}`).filter(isRunSkill)
     .some((n) => forge.readRepoFile(ref, `${REPO_SKILLS}/${n}/SKILL.md?ref=${base}`) !== null);
+}
+
+function commentArg(a: Args, usage: string): number {
+  const id = Number(str(a.flags.comment));
+  if (!Number.isInteger(id) || id <= 0) throw new Exit(64, usage);
+  return id;
+}
+
+const REPLY_USAGE = "usage: factory pr reply [PR] --comment <id> (--body <text> | --body-file <path>) [--resolve]";
+
+async function prReply(a: Args) {
+  const comment = commentArg(a, REPLY_USAGE);
+  const file = str(a.flags["body-file"]);
+  const body = (file ? readFileSync(file, "utf8") : (str(a.flags.body) ?? "")).trim();
+  if (!body) throw new Exit(64, REPLY_USAGE);
+  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
+  forge.replyTo(ref, ref.number, comment, body);
+  const resolve = a.flags.resolve === true;
+  if (resolve) forge.resolveThread(ref, ref.number, comment);
+  console.log(`replied to comment ${comment} on #${ref.number}${resolve ? " and resolved its thread" : ""}`);
+  return 0;
+}
+
+async function prResolve(a: Args) {
+  const comment = commentArg(a, "usage: factory pr resolve [PR] --comment <id>");
+  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
+  forge.resolveThread(ref, ref.number, comment);
+  console.log(`resolved the thread of comment ${comment} on #${ref.number}`);
+  return 0;
 }
 
 async function prMerge(a: Args) {
@@ -420,6 +449,10 @@ Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a c
   factory pr verdict [PR] --sha SHA --result pass|fail [--summary-file F]
                                               record an independent verdict for the SHA the reviewers
                                               checked; exit 3 if the head has moved
+  factory pr reply [PR] --comment ID (--body TEXT | --body-file F) [--resolve]
+                                              reply in a review comment's thread, with the Claude Code
+                                              footer; --resolve also resolves the thread
+  factory pr resolve [PR] --comment ID        resolve the review thread holding the comment
   factory pr merge [PR] [--ticket ID] [--human-approved]
                                               merge only if the gate allows it; exit 3 with reasons if not.
                                               The ticket must be one the PR names (branch or Closes line)
@@ -444,6 +477,8 @@ export async function main(argv: string[]): Promise<number> {
     "pr status": prStatus,
     "pr watch": prWatch,
     "pr verdict": prVerdict,
+    "pr reply": prReply,
+    "pr resolve": prResolve,
     "pr merge": prMerge,
   };
   const route = routes[`${group} ${sub}`] ?? routes[group ?? ""];

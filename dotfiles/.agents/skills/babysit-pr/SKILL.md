@@ -80,11 +80,10 @@ acted on or rejected. Give the reason and @mention the author. Where a comment i
 unclear, ask for clarification rather than guessing at it.
 
 Resolve the conversation for every comment that was addressed or rejected. Leave
-open only the threads waiting on somebody else's reply. Replies go to
-`repos/<o>/<r>/pulls/<n>/comments/<id>/replies`. Resolve a thread with GraphQL
-`resolveReviewThread` locally, and with `POST
-repos/<o>/<r>/pulls/<n>/ccr/comments/<comment_id>/resolve` in a cloud session,
-where GraphQL is blocked.
+open only the threads waiting on somebody else's reply. `factory pr reply <PR>
+--comment <id> --body-file <file> --resolve` replies in a review comment's
+thread and resolves it, locally and in the cloud; leave out `--resolve` to keep
+the thread open.
 
 ### 6. Fix CI
 

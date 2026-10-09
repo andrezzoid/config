@@ -3,7 +3,7 @@
 // resolution, which REST does not expose: cloud sessions read it from the
 // proxy's ccr route, local ones from GraphQL.
 
-import { latestMarker, patchKey, type PrFacts } from "./pr.ts";
+import { attributed, latestMarker, patchKey, type PrFacts } from "./pr.ts";
 import { git, run } from "./proc.ts";
 
 const GH = process.env.FACTORY_GH ?? "gh";
@@ -129,6 +129,41 @@ export function unresolvedThreads(r: Repo, number: number): number | null {
     }
   }
   return null;
+}
+
+const THREAD_OF_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved comments(first:100){nodes{databaseId}}}}}}}`;
+const RESOLVE_MUTATION = `mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`;
+
+// Resolves the review thread holding a comment, by the same routes
+// unresolvedThreads reads: the ccr route first in a cloud session, GraphQL
+// first locally.
+export function resolveThread(r: Repo, number: number, commentId: number): void {
+  const viaCcr = () => {
+    api(`repos/${r.owner}/${r.repo}/pulls/${number}/ccr/comments/${commentId}/resolve`, { method: "POST" });
+  };
+  const viaGraphql = () => {
+    const out = JSON.parse(gh(["api", "graphql", "-f", `query=${THREAD_OF_QUERY}`, "-f", `owner=${r.owner}`, "-f", `name=${r.repo}`, "-F", `number=${number}`]));
+    const threads: any[] = out?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+    const thread = threads.find((t) => t?.comments?.nodes?.some((c: any) => c?.databaseId === commentId));
+    if (!thread) throw new GhError("no review thread holds it");
+    if (!thread.isResolved) gh(["api", "graphql", "-f", `query=${RESOLVE_MUTATION}`, "-f", `id=${thread.id}`]);
+  };
+  const order = process.env.CLAUDE_CODE_REMOTE === "true" ? [viaCcr, viaGraphql] : [viaGraphql, viaCcr];
+  const failures: string[] = [];
+  for (const attempt of order) {
+    try {
+      attempt();
+      return;
+    } catch (e) {
+      failures.push((e as Error).message);
+    }
+  }
+  throw new GhError(`could not resolve the thread of comment ${commentId}: ${failures.join("; ")}`);
+}
+
+// Replies in the review thread of a comment, with the Claude Code footer.
+export function replyTo(r: Repo, number: number, commentId: number, body: string): void {
+  api(`repos/${r.owner}/${r.repo}/pulls/${number}/comments/${commentId}/replies`, { method: "POST", body: { body: attributed(body) } });
 }
 
 export function patchId(r: Repo, number: number): string | null {

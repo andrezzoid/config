@@ -132,7 +132,11 @@ describe("layout", () => {
   // Stow links both, and cloud-setup.sh copies the same links into a cloud
   // home, so one edit in .agents/skills reaches every harness.
   test("every skill has a relative link in .claude/skills and no link dangles", () => {
-    const links = readdirSync(join(CLAUDE, "skills"));
+    // Claude Code-only mods, such as prose-lint, live there as real folders.
+    const entries = readdirSync(join(CLAUDE, "skills"));
+    const mods = entries.filter((n) => !lstatSync(join(CLAUDE, "skills", n)).isSymbolicLink());
+    for (const m of mods) assert.ok(existsSync(join(CLAUDE, "skills", m, ".claude-plugin", "plugin.json")), `${m} is a real folder but not a mod`);
+    const links = entries.filter((n) => !mods.includes(n));
     assert.deepEqual(links.sort(), [...all].sort());
     for (const n of links) {
       const path = join(CLAUDE, "skills", n);

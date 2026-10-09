@@ -31,8 +31,11 @@ test("links every skill, every agent and CLAUDE.md into ~/.claude, and ~/.agents
   for (const s of skills) {
     const link = join(home, ".claude", "skills", s);
     assert.ok(lstatSync(link).isSymbolicLink(), s);
-    assert.equal(readlinkSync(link), realpathSync(join(clone, ".agents", "skills", s)));
-    assert.ok(existsSync(join(link, "SKILL.md")), s);
+    // A Claude Code-only mod lives in .claude/skills itself; a skill is a link
+    // there to its folder in .agents/skills.
+    const mod = !lstatSync(join(clone, ".claude", "skills", s)).isSymbolicLink();
+    assert.equal(readlinkSync(link), realpathSync(join(clone, mod ? ".claude" : ".agents", "skills", s)));
+    assert.ok(existsSync(join(link, mod ? ".claude-plugin/plugin.json" : "SKILL.md")), s);
   }
   for (const a of readdirSync(join(clone, ".claude", "agents"))) assert.ok(existsSync(join(home, ".claude", "agents", a)), a);
   assert.equal(readlinkSync(join(home, ".claude", "CLAUDE.md")), realpathSync(join(clone, ".agents", "AGENTS.md")));

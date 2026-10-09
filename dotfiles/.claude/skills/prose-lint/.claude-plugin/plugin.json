@@ -1,0 +1,6 @@
+{
+  "name": "prose-lint",
+  "version": "0.1.0",
+  "description": "Lints the prose Claude writes (Markdown, text, code comments) for AI-writing tells with Vale and hands the findings back to Claude",
+  "types": "./types/index.d.ts"
+}

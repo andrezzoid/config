@@ -31,7 +31,7 @@ Write in ASD-STE100 Simplified Technical English with the ubiquitous language fr
 - One idea per sentence. Active voice. Present tense.
 - State each fact once. A fact in Problem does not appear again in Solution or in a decision. Repeated facts drift apart: one spec named the same incident in five places and gave it two different dates.
 - Leave out what a competent engineer works out unaided. Advice about testing or design applies to every repo and tells the reader nothing about this one.
-- Write an ordered algorithm as numbered steps. Write conditions and their outcomes as a table. Follow the forms in the `pr` skill's Summary section.
+- Write an ordered algorithm as numbered steps. Write conditions and their outcomes as a table. Follow the `show-me` conventions, which the `pr` skill's Summary section reproduces.
 - Titles name the change. Write "Runner: time out unanswered client tool calls". Do not write "Runner: stop stalling on client tool calls nobody will answer".
 - Gloss every term, product and service the first time it appears, or link its entry in the glossary. A reader who has never seen this codebase cannot tell whether a name is a product, a service or a person.
 

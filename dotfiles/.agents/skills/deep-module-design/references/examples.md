@@ -1,4 +1,4 @@
-# Deep Module Design — Extended Examples
+# Deep Module Design: Extended Examples
 
 Before/after examples for the design-time principles in `SKILL.md`. For audit-time examples (pass-through methods, temporal decomposition, information leakage in existing code), see the **complexity-red-flags** skill.
 
@@ -66,7 +66,7 @@ const client = new HttpClient({
 });
 ```
 
-The interface exposes every implementation decision. Callers must understand connection pooling, SSL verification, backoff strategies — things they shouldn't need to care about to make a request.
+The interface exposes every implementation decision. Callers must understand connection pooling, SSL verification and backoff strategies, none of which they need to make a request.
 
 ### After (Complexity Pulled Down)
 
@@ -78,9 +78,9 @@ const client = new HttpClient();
 const client = new HttpClient({ timeout: 60, retries: 5 });
 ```
 
-The constructor still accepts all those options, but defaults every single one. 95% of callers write one line. The module absorbed the complexity of knowing what good defaults look like — that knowledge belongs with the people who maintain the module, not the people who use it.
+The constructor still accepts all those options, but defaults every single one. 95% of callers write one line. The module absorbed the knowledge of what good defaults look like, and that knowledge belongs with the people who maintain the module.
 
-**Counter-rule:** if a caller _legitimately_ needs to make a decision (e.g., choosing between strict and lax SSL for a specific environment), keep that knob exposed. Hide implementation choices, not outcome decisions.
+**Counter-rule:** if a caller needs to decide (for example, between strict and lax SSL for one environment), keep that knob exposed. Hide implementation choices, not outcome decisions.
 
 ---
 
@@ -105,7 +105,7 @@ export function formatDate(d: Date): string {
 }
 ```
 
-Three files, three functions, each used once. The "utility" abstraction isn't hiding information — it's just moving code to a different file. Callers must now find and understand the utility instead of seeing the logic inline.
+Three files, three functions, each used once. The "utility" abstraction hides no information: it moves code to a different file. Callers must now find and understand the utility instead of seeing the logic inline.
 
 ### After (Inline Until Reuse Is Real)
 
@@ -116,7 +116,7 @@ const uniqueTags = [...new Set(tags)];
 const dateStr = date.toISOString().split("T")[0];
 ```
 
-Three lines, no indirection. Extract into a shared utility only when you have three or more call sites, _and_ the utility provides a genuinely simpler interface than the raw operation.
+Three lines, no indirection. Extract into a shared utility only when you have three or more call sites, _and_ the utility offers a simpler interface than the raw operation.
 
 ---
 
@@ -174,7 +174,7 @@ class Users {
 }
 ```
 
-One class, deep interface. Validation rules, hashing strategy, storage mechanism, and email delivery are all internal. Switch from bcrypt to argon2 — nothing outside this module changes. Switch from SQL to a document store — nothing outside this module changes.
+One class, deep interface. Validation rules, hashing strategy, storage mechanism, and email delivery are all internal. Switch from bcrypt to argon2, and nothing outside this module changes. Switch from SQL to a document store, and nothing outside this module changes.
 
 ---
 
@@ -184,7 +184,7 @@ One class, deep interface. Validation rules, hashing strategy, storage mechanism
 | --- | --- | --- |
 | 1. Write the ideal call site | What capability does the module deliver, and what's the line of caller code I wish I could write? | Designing inside-out; interface shaped by the implementation |
 | 2. Bury implementation decisions | Would changing this decision force callers to change? | Information leakage; every internal change ripples outward |
-| 3. Make every layer earn its abstraction | Does this layer add real responsibility, or just delegate? | Pass-through layers; cognitive overhead with no benefit |
+| 3. Make every layer earn its abstraction | Does this layer add a responsibility, or only delegate? | Pass-through layers; cognitive overhead with no benefit |
 | 4. Lean general-purpose, stop at "somewhat" | Can one method replace several special-case ones without making the common case awkward? | API bloat (too special) or unusable interfaces (too general) |
 | 5. Combine closely related, resist splitting unrelated | Does each piece make sense alone? Do callers always use them together? | God-modules (over-combined) or shallow collaborators (over-split) |
 | 6. Verify depth | Call-site match? Concept ratio reasonable? Swap test passes? | Shipping a shallow module disguised as a deep one |

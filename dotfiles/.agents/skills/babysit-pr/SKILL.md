@@ -48,7 +48,7 @@ There is no need to create a separate branch for the merge.
 When the base is another branch still under review, rebase onto it instead. That
 base gets rewritten when it lands, and merging it leaves both histories tangled.
 Rebasing a pushed branch rewrites published history, so say so before you do it
-and push with `--force-with-lease`, never plain `--force`.
+and push with `--force-with-lease`.
 
 Either way, gather the context needed to understand each conflict and resolve by
 intent rather than by picking a side. Trace each side to the commit, pull
@@ -91,7 +91,7 @@ Classify a red check before you touch anything:
 
 - A failure in code the diff never touches usually means a stale base. Check
   with `git merge-base --is-ancestor origin/<base> HEAD`, and merge the base.
-- Infrastructure or a flake earns exactly one fresh run. An identical second
+- Infrastructure or a flake earns a single fresh run. An identical second
   failure was never a flake.
 - A failure in the diff's own code gets a commit. Reproduce it locally before
   fixing it, then push.

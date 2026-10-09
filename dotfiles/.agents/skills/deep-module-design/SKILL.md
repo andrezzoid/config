@@ -5,44 +5,17 @@ description: Design modules with simple interfaces and rich implementations. Use
 
 # Deep Module Design
 
-## Overview
+A **deep** module gives callers a lot of functionality through a small interface. A **shallow** one exposes nearly as much as it implements. A module has more callers than developers, so push complexity into the implementation, where one developer pays for it once.
 
-> "The best modules are those that provide powerful functionality yet have simple interfaces. I use the term _deep_ to describe such modules."
-> — John Ousterhout, _A Philosophy of Software Design_
+Skip throwaway scripts, prototypes and leaf helpers with a single caller. To audit code that already exists, use `complexity-red-flags`.
 
-A module's value is the ratio of functionality it provides to the complexity of its interface. Deep modules give callers a lot of power through a small surface; shallow modules expose almost as much complexity in their interface as they contain in their implementation. Your job is to maximize that ratio — callers outnumber developers, so push the cost onto the developer side of the boundary.
+## Steps
 
-## When to Use
-
-- Designing, extending or refactoring any module, class, service, or API
-- Adding a method, parameter, or constructor argument to an existing interface
-- Refactoring or simplifying code
-- When deciding to split a module, extract a helper, or introduce a new layer
-
-## When NOT to Use
-
-- Throwaway scripts, one-off prototypes, single-callsite leaf utilities
-- Auditing existing code for complexity — use the **complexity-red-flags** skill instead
-
-## Workflow
-
-Six steps, each applying a first principle, spanning the design cycle:
-
-- **Step 1** sets the target before you start writing.
-- **Steps 2–5** shape the draft as the interface takes form — iterate; revisit any step when a later one surfaces an issue.
-- **Step 6** is the final gate before the design lands.
-
-Don't skip — answer each before declaring done.
+Work through all six as the interface takes shape. When a later step finds a problem, go back to the step it names.
 
 ### 1. Write the ideal call site
 
-1. State the capability the module delivers in one sentence
-
-2. State the line of caller code you _wish_ you could write to invoke it.
-
-Together these are your interface ceiling — design backwards from them. If the call site doesn't match the capability sentence, one of them is wrong.
-
-> "Most modules have more users than developers, so it is better for the developers of a module to suffer than its users."
+State the capability in one sentence, then write the line of caller code you wish you could write to use it. Together they cap the interface: design backwards from them. When the call site and the sentence disagree, one of them is wrong.
 
 ```typescript
 // Capability: register a user from an email and password, returning the User.
@@ -51,184 +24,73 @@ const user = await users.register(email, password);
 
 ### 2. Bury implementation decisions; expose outcomes
 
-1. Enumerate everything the implementation must decide: data formats, retry policy, ordering, defaults, error handling, storage mechanism, validation rules, threading, caching.
+List what the implementation decides: data formats, retry policy, ordering, defaults, error handling, storage, validation, threading, caching. For each, ask: **would changing this force a caller to change?** If yes, it leaks, so pull it inside.
 
-2. For each, ask yourself: **would changing this decision force any caller to change?** If yes, it's leaking — pull it inside.
-
-3. **Counter-rule (don't over-hide):** information the caller legitimately needs to make a decision must remain visible. Hide _how_ the work is done, not _what_ outcome it produced. If the caller is reduced to parsing your error messages or inspecting side effects, you've hidden too much.
-
-> "Information leakage is one of the most important red flags in software design. It occurs when a design decision is reflected in multiple modules."
-
-**DON'T — format leaks into every caller:**
+Hide how the module does the work. Keep visible the outcome a caller needs to decide what to do next. A caller who parses your error messages to find out what happened shows you hid too much.
 
 ```typescript
-const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
-const dbUrl = config.database.connections.primary.url;
-```
-
-**DO — module owns the format:**
-
-```typescript
-// Implementation can switch JSON → YAML → env vars without touching the caller.
-const config = AppConfig.load();
-const dbUrl = config.dbUrl;
+// Leaks the format into every caller:
+const dbUrl = JSON.parse(fs.readFileSync("config.json", "utf-8")).database.connections.primary.url;
+// Owns it, so JSON can become YAML or env vars with no caller change:
+const dbUrl = AppConfig.load().dbUrl;
 ```
 
 ### 3. Make every layer earn its abstraction
 
-Every layer in the call stack must change the abstraction by adding real responsibility. Pass-throughs are interface complexity without functionality.
+Name, in one phrase, what each public method adds: validation, authorization, transformation, caching, retry, a business rule, cascading cleanup. Collapse a layer whose phrase is "calls X", "wraps X" or "forwards to X", or repeats the phrase of the layer beside it. The deeper layer keeps the work.
 
-1. List every public method in your design.
+Neither testability nor a framework convention keeps an empty layer. A layer with no logic has nothing to test on its own, so test the deep module. A framework needs a request handler, and the handler can call the deep module itself.
 
-2. For each method, name the abstraction it adds in one phrase: validation, authorization, transformation, caching, retry, business rule, cascading cleanup, etc.
-
-3. Collapse the layer if the phrase is "calls X", "wraps X", or "forwards to X" — or if two adjacent layers produce the same phrase. The deeper layer keeps the responsibility; the shallow one disappears.
-
-**DON'T — pure delegation:**
-
-```typescript
-class UserController {
-  getUser(id: string): User {
-    return this.service.getUser(id);
-  }
-  updateUser(id: string, data: object): User {
-    return this.service.updateUser(id, data);
-  }
-  deleteUser(id: string): void {
-    this.service.deleteUser(id);
-  }
-}
-```
-
-**DO — collapse the layer or give it real work:**
-
-```typescript
-class Users {
-  get(id: string): User { ... }
-  update(id: string, changes: object): User { /* validates, persists, audits */ }
-  delete(id: string): void { /* cascades cleanup */ }
-}
-```
+A helper used in one place is dead weight: inline it, and extract only when reuse is real.
 
 ### 4. Lean general-purpose; stop at "somewhat"
 
-A general interface is often _simpler_ than a special-purpose one — it replaces many specific methods with fewer flexible ones. Use Ousterhout's three questions to find the right level:
+Make the module **somewhat general-purpose**: the implementation serves the needs you have today, and the interface is general enough to serve more than one use. A general interface is often simpler than a special-purpose one, because a few flexible methods replace many specific ones.
 
-> 1. What is the simplest interface that will cover all my current needs?
-> 2. In how many situations will this method be used?
-> 3. Is this API easy to use for my current needs?
+1. List the operations callers need today, each a verb on the data: `deleteWord`, `deleteLine`, `deleteSelection`.
+2. Find the smallest set of orthogonal primitives that covers them: `delete(start, end)` covers every `delete*`.
+3. Write each common case with only the primitives. When an obvious one takes more than one call, you went too low: move the boundary or add a convenience method.
+4. Stop when a new primitive removes no special case from the list.
 
-Procedure:
-
-1. List the concrete operations callers need today (each one a verb on the data — `deleteWord`, `deleteLine`, `deleteSelection` etc.).
-
-2. Find the smallest set of orthogonal primitives that composes to all of them (`delete(start, end)` covers all six `delete*` cases).
-
-3. Express each common case using only the primitives. If something obvious takes >1 primitive call to do, you've gone too low-level — rebalance the boundary or add a convenience method.
-
-4. Stop adding primitives when a new one doesn't eliminate any special case from your list.
-
-**DON'T — build special-purpose methods that each do one thing:**
-
-```typescript
-deleteSelection();
-deleteNextChar();
-deletePrevChar();
-deleteWord();
-deleteLine();
-deleteToEndOfLine();
-insertChar(c);
-insertString(s);
-insertNewline();
-insertTab();
-```
-
-**DO — general-purpose methods that express any edit:**
-
-```typescript
-insert(position, text);
-delete(start, end);
-selection(): Range;
-moveCursor(position);
-```
+Generalize for the use cases you have. A seam with one implementation is a guess.
 
 ### 5. Combine closely related; resist splitting unrelated
 
-Code that shares knowledge belongs together; code that doesn't, doesn't. The classic failure mode is **temporal decomposition** — splitting by the order things happen, which forces the same knowledge to be encoded in every step.
+For each piece, write down the knowledge it carries (a format, an invariant, a schema, a workflow, a set of business rules) and who calls it.
 
-1. For each piece in your design, write down (a) the knowledge it carries (a format, invariant, schema, workflow, set of business rules), (b) who calls it.
+- **Combine** two pieces when they share knowledge, when callers always call them together, or when you can't understand one without the other.
+- **Separate** them only when they share neither knowledge nor callers.
 
-2. **Combine** two pieces if they share knowledge OR callers always invoke them together OR understanding one requires looking at the other.
-
-3. **Separate** two pieces only if they share neither knowledge nor callers AND can be understood independently.
-
-4. Re-read your module names. Verb-phase names (`Reader`, `Validator`, `Sender`, `Loader`) are a temporal-decomposition smell — restructure around what each module _owns_, not _when_ it runs.
-
-**DON'T — five shallow collaborators that always travel together:**
+Names in verb form (`Reader`, `Validator`, `Sender`, `Loader`) signal **temporal decomposition**: modules split by the order things happen, each one repeating the same knowledge. Restructure around what each module owns.
 
 ```typescript
-new UserRegistrationService(
-  new UserValidator(),
-  new PasswordHasher(),
-  new UserRepository(),
-  new WelcomeEmailSender(),
-).register(input);
-```
-
-**DO — one module owning the domain:**
-
-```typescript
+// Five shallow collaborators that always travel together:
+new UserRegistrationService(new UserValidator(), new PasswordHasher(), new UserRepository(), new WelcomeEmailSender()).register(input);
+// One module that owns the domain: it validates, hashes, stores and welcomes.
 users.register(email, password);
-// validates, hashes, stores, sends welcome — internal
 ```
 
 ### 6. Verify depth before finalizing
 
-Three checks, all with concrete evidence.
+Done when all three hold, each with evidence:
 
-1. **Call-site match:** does your final API match (or beat) the ideal call site you wrote in step 1? If it grew, justify each extra concept or trim it.
+- **Call-site match:** the final interface matches or beats the call site from step 1. Justify or cut each concept it added.
+- **Concept ratio:** the interface has far fewer concepts (public methods, required parameters, exposed types, thrown errors) than the implementation (decisions, branches, helpers, state).
+- **Swap test:** replacing the implementation with a different database, format or algorithm changes no caller file. Any other number means a decision still leaks: back to step 2.
 
-2. **Concept ratio:** count concepts at the interface (public methods + required params + exposed types + thrown errors) vs. in the implementation (decisions, branches, helpers, state). Close to equal → still shallow. Push more responsibility in or cut what's exposed.
+## Red flags while drafting
 
-3. **Swap test:** imagine replacing the implementation tomorrow with a completely different one (different DB, format, algorithm). How many caller files change? Zero is the target. Anything else means a design decision is still leaking — return to step 2.
+Each one sends you back to a step.
 
-## Common Rationalizations
+- A constructor with more than three required parameters: step 2.
+- A method whose name and parameters are nearly as large as its body: step 6.
+- Two methods a caller must call in a fixed order: step 5. Merge them into one method that runs the sequence inside.
+- A caller making three or more calls to the module for one logical action: step 4.
+- A parameter threaded untouched through two or more functions: step 2. Replace it with a context object or module-level access.
+- A public method that only delegates: step 3.
+- A module named after a phase instead of a concept: step 5.
+- A caller who must read the implementation to use the module: step 1, or step 2 when the module hides too much.
 
-| Rationalization                                         | Reality                                                                                               |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| "Splitting into more classes is cleaner."               | More classes = more interface surface. Cleanliness is fewer concepts at the boundary, not more files. |
-| "Each class should have one responsibility."            | SRP doesn't mean one method per class. A deep module owns one responsibility _fully_.                 |
-| "I'll need flexibility later."                          | Add the seam when you actually need it. Speculative depth is shallow today, guaranteed.               |
-| "We need the layer for testability."                    | If the layer has no logic, there's nothing meaningful to test in isolation. Test the deep module.     |
-| "The framework requires controller/service/repository." | The framework requires a request handler. Empty pass-through layers are not a framework requirement.  |
-| "It's a pure helper, splitting is harmless."            | A helper used in one place is dead weight. Inline it; extract only when reuse is real.                |
-| "I should hide everything I can."                       | Information the caller needs to decide must stay visible. Over-hiding forces callers into guesswork.  |
-| "Generalizing now will save us later."                  | Generalize when a second use case is real, not imagined. Premature generality is also shallow.        |
+## References
 
-## Red Flags (design-time)
-
-Watch for these as you draft. Each is a signal to return to a workflow step.
-
-- **Constructor with >3 required parameters** → step 2 (push to defaults / hide decisions).
-- **Method whose name + params nearly equals the implementation in size** → step 6 (concept ratio).
-- **Two methods that must be called in a specific order** → step 3 (collapse into one).
-- **Caller code orchestrating ≥3 calls of the same module to do one logical thing** → step 3.
-- **Parameter threaded through ≥2 functions untouched** → step 2 (it's leaking; use context or module-level access).
-- **Public method that's pure delegation** → step 3 (no abstraction added; remove or enrich).
-- **Module name is a verb-phase (`Reader`, `Validator`, `Sender`) rather than a concept** → step 5 (likely temporal decomposition).
-- **Caller has to read the implementation to use the module correctly** → step 1 (call site is wrong) or step 2 (over-hidden).
-
-## Verification
-
-Before declaring the design done:
-
-- [ ] Caller can use the module correctly from signature + one-line doc alone — no implementation reading required.
-- [ ] Final API is no more complex than the ideal call site from step 1.
-- [ ] Concept count at the interface is significantly smaller than at the implementation.
-- [ ] Swap test passes: a hypothetical implementation change would touch 0 caller files.
-- [ ] Information the caller legitimately needs to decide is exposed; everything else is internal.
-
-## See Also
-
-- **complexity-red-flags** — the audit-time form of the same principles. Use this skill when designing; use that one when reviewing existing code, PRs, or diffs.
-- [references/examples.md](references/examples.md) — extended before/after examples for general-purpose interfaces, defaults, and don't-over-decompose.
+[references/examples.md](references/examples.md) has longer before/after examples for general-purpose interfaces, defaults, and over-decomposition.

@@ -1,4 +1,4 @@
-# Complexity Red Flags — Extended Examples
+# Complexity Red Flags: Extended Examples
 
 ## Full Audit Example: E-Commerce Order System
 
@@ -154,9 +154,9 @@ class Order {
 
 #### 5. Conjoined Methods: `checkStock` then `reserve`
 
-In `shipOrder`, the code first checks stock for all items, then reserves all items — two loops, tightly coupled. If another order reserves stock between the check and the reserve, you get a race condition.
+In `shipOrder`, the code first checks stock for all items, then reserves them, in two loops that depend on each other. If another order reserves stock between the check and the reserve, you get a race condition.
 
-**Fix:** Make `reserve` atomic — it checks and reserves in one step, returning success or failure:
+**Fix:** Make `reserve` atomic: it checks and reserves in one step, and returns success or failure:
 
 ```typescript
 const reserved = await this.inventoryService.reserveAll(order.items);
@@ -169,7 +169,7 @@ if (!reserved.ok) {
 
 Throws `InvalidStateError` for wrong status, `InsufficientStockError` for stock issues. Every caller needs to handle these.
 
-**Fix:** Apply "define errors out of existence" — `ship()` returns a result indicating what happened:
+**Fix:** Apply "define errors out of existence": `ship()` returns a result that says what happened:
 
 ```typescript
 async ship(id: string): Promise<ShipResult> {
@@ -230,7 +230,7 @@ LLMs tend to produce certain patterns repeatedly. Here's a quick reference for t
 | What the LLM generates                                       | Red flag                              | What to do instead                             |
 | ------------------------------------------------------------ | ------------------------------------- | ---------------------------------------------- |
 | `XValidator`, `XFormatter`, `XHelper` one-method classes     | Shallow module                        | Fold into the class that uses them             |
-| Controller → Service → Repository with matching method names | Pass-through methods                  | Eliminate layers that don't add logic          |
+| Controller → Service → Repository with matching method names | Pass-through methods                  | Remove layers that add no logic                |
 | `config` or `logger` passed through 4+ function signatures   | Pass-through variables                | Use context, DI container, or module scope     |
 | `init()` → `process()` → `finalize()` method sequences       | Conjoined methods                     | Single `process()` that handles lifecycle      |
 | `Reader` + `Writer` + `Parser` for the same data             | Temporal decomposition + info leakage | One `DataStore` module                         |

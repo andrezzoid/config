@@ -80,8 +80,8 @@ the brief as stalled.
 4. Report one line per launched ticket with its session link or name, and how
    many tickets wait and why.
 
-Never move a ticket on in the dispatching session. A coordinator that starts
-coding loses sight of the queue.
+The dispatching session only dispatches: a coordinator that starts coding loses
+sight of the queue.
 
 ## --garden
 

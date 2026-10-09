@@ -16,16 +16,16 @@ The plan is what the work answers: a spec, a ticket, plan-mode output or an inst
 Spawn fresh subagents, one lens each. A single agent asked for everything regresses to a book report.
 
 - **Territory**: verify every assumption's evidence against the actual code, docs, tests and sources. Extracting the list of assumptions is this lens's first job. Check the cited ones too, since evidence can be stale or misread.
-- **Simplicity**: is there a materially simpler approach the plan skipped? Not a style opinion, but a smaller design that meets the same intent.
+- **Simplicity**: find a smaller design that meets the same intent, which the plan skipped. Each finding names the design it replaces and what it removes.
 - **Failure**: how does this break? Edge cases, migrations, rollback, partial failure, the path nobody drew.
-- **Cold**: briefed with the plan's Problem Statement only, never the plan. From the territory, it states what any solution must respect and the shape it would expect, and replies with that picture instead of ledger rows. This is the only lens the plan's framing cannot contaminate. An instruction has no separate Problem Statement, so it runs without this lens.
+- **Cold**: briefed with the plan's Problem Statement and nothing else. From the territory, it states what any solution must respect and the shape it would expect, and replies with that picture instead of ledger rows. This is the only lens the plan's framing cannot contaminate. An instruction has no separate Problem Statement, so it runs without this lens.
 
 ### The solution: before it merges
 
 Fresh subagents, briefed with the same plan:
 
 - **Territory**: run the acceptance checks. Their run is the evidence; the author's run was only the gate. For each acceptance criterion, or each outcome an instruction asks for, find the test that claims it and check that it asserts what the criterion says, through the interface the criterion names. A test of new behaviour fails on the base and passes on the solution. It also fails at the commit that added it, unless that commit's message records its failing run; a test that never failed was written after its code. Drive a criterion with no such test through the running app. Then audit the diff against the plan, both directions: what landed that the plan never asked for, and what the plan asked for that never landed.
-- **Failure**: attempt refutation. Try to break the running app with edge cases, bad input and partial failure, rather than confirm it works. Run each break on the base too, so a new failure can be told from an old one.
+- **Failure**: attempt refutation. Try to break the running app with edge cases, bad input and partial failure, rather than confirm it works. Run each break on the base too, to tell a new failure from an old one.
 
 ## Run a review
 

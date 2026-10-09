@@ -1,4 +1,4 @@
-# Define Errors Out of Existence — Extended Examples
+# Define Errors Out of Existence: Extended Examples
 
 ## Example 1: HTTP Request Handler
 
@@ -179,7 +179,7 @@ class RecordProcessor {
 }
 ```
 
-The file loader defines away all file-related errors by handling them internally and returning a result type. The record processor defines away individual record failures by treating them as skipped records — not exceptions. The caller has two clear paths: file failed to load, or here are your results (with skip details included).
+The file loader defines away all file-related errors by handling them internally and returning a result type. The record processor defines away individual record failures by treating them as skipped records instead of exceptions. The caller has two clear paths: file failed to load, or here are your results (with skip details included).
 
 ---
 
@@ -268,7 +268,7 @@ async function getUserProfile(userId: string): Promise<UserProfile> {
 }
 ```
 
-The cache masks all of its own errors. Connection failures, corruption, serialization bugs — all handled internally. The caller's code went from 15 lines with 5 exception handlers to 1 line with zero.
+The cache masks all of its own errors: it handles connection failures, corruption and serialization bugs inside. The caller's code went from 15 lines with 5 exception handlers to 1 line with zero.
 
 ---
 
@@ -319,4 +319,4 @@ class Order {
 }
 ```
 
-"Ship an already-shipped order" isn't an error — it's a no-op. "Cancel a shipped order" isn't an error — it's a request that can't be fulfilled. The caller gets a boolean signal and decides what to do with it, no exception handling required.
+"Ship an already-shipped order" is a no-op. "Cancel a shipped order" is a request the order can't fulfil. Neither is an error: the caller gets a boolean and decides what to do with it, with no exception handling.

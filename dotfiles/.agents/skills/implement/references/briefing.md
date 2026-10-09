@@ -7,13 +7,14 @@ load-bearing, and writes a summary only it can read.
 
 - Lead with what happened. If the work is blocked, broken or unfinished, that
   goes in the first sentence.
-- They have not read the ticket, the notes or the diff. Write for that, and
-  never describe the work as a change against something they have not read.
-- Never use an id they did not type, except the tracker's own ticket ids.
+- They have not read the ticket, the notes or the diff. Describe what the work
+  does in terms they already know.
+- Use only the ids they typed, plus the tracker's own ticket ids.
 - Say what it means for the thing they asked for before you say how it works.
 - Where the point is a structure or a comparison, show it, using the forms in
   the `pr` skill's Summary section, instead of describing a shape in prose.
-- If a decision is needed: the options, a recommendation, the question.
+- When the human must decide, give the options, a recommendation and the
+  question.
 - Name what you could not verify, and why.
 - Keep it short. A brief that needs scrolling has buried its own question.
 

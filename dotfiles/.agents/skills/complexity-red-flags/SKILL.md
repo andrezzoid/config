@@ -1,7 +1,7 @@
 ---
 name: complexity-red-flags
 description: |
-  Detect and fix complexity creep — shallow modules, information leakage,
+  Detect and fix complexity creep: shallow modules, information leakage,
   pass-through methods/variables, temporal decomposition, conjoined methods,
   overexposure, special-general mixture. Use after implementing any feature
   before declaring it done, when reviewing PRs or diffs, when refactoring,
@@ -12,360 +12,108 @@ context: fork
 
 # Complexity Red Flags
 
-## Overview
+Complexity creeps in one small decision at a time: a shallow wrapper, a leaked format, a pass-through method. Each looks harmless, and together they make a system hard to understand and change. Audit code for the eight red flags below, from John Ousterhout's _A Philosophy of Software Design_, and report each finding with its file:line and a concrete fix.
 
-> "Complexity is anything related to the structure of a software system that makes it hard to understand and modify the system."
-> — John Ousterhout, _A Philosophy of Software Design_
-
-Complexity creeps in one small decision at a time — a shallow wrapper, a leaked format, a pass-through method. Each looks harmless; together they make a system incomprehensible. This skill is a diagnostic checklist with an audit workflow: detect specific patterns, cite file:line, propose concrete fixes.
-
-## When to Use
-
-- After implementing a feature, before calling it done
-- Reviewing a pull request or code diff
-- The user asks to review, audit, or simplify code
-- Refactoring and you need to decide what to change
-- Code "feels complex" but you can't articulate why
-
-## When NOT to Use
-
-- Single-line fixes or typo corrections
-- Throwaway scripts and one-off prototypes
-- Generated code (fix the generator, not the output)
+Skip one-line fixes, throwaway scripts and generated code: audit the generator instead.
 
 ## Input and output
 
-You run in a forked context and see only what you were called with, never the conversation that called you, so you do not share the author's blind spots. Expect a git ref to diff against, or paths; with neither, review the working tree's changes against the default branch. Return each finding with its concrete fix: the caller applies it.
+You run in a forked context and see only what the caller passed, so you do not share the author's blind spots. Expect a git ref to diff against, or paths. With neither, review the working tree's changes against the default branch. Return each finding with its concrete fix: the caller applies it.
 
-## The Audit Workflow
+## Audit
 
-### Standards first
+### 1. Read the standards
 
 Read `CODING_STANDARDS.md` at the repo root, and any standards file the repo's `CLAUDE.md` or `AGENTS.md` points to. A standard wins over a red flag when the two disagree, and a change that breaks one is a finding that quotes the rule. Skip rules a linter or type checker already enforces.
 
-### Phase 0 — Run strata, the deterministic pre-scanner (TypeScript only)
+### 2. Run strata (TypeScript only)
 
-For TypeScript projects, run `strata` first. It surfaces high-recall candidates for most of the 8 flags so you can spend judgment on the candidates instead of grep-walking the tree. Each finding is `severity: "candidate"` — never a verdict. You apply the per-flag test below to decide.
-
-Use an installed `strata` when available:
+`strata` is a deterministic pre-scanner that finds candidates for some of the eight flags, so your judgment goes to the candidates instead of to walking the tree. Every finding is `severity: "candidate"`: the flag's test below decides.
 
 ```bash
-# Whole project
-strata <project-path> --format json > /tmp/strata.json
+# Candidates introduced since a git ref: the default for a PR review
+strata <project-path> --new-since <git-ref> --format json > /tmp/strata.json
 
-# Files touched since a git ref; analysis still uses the full project graph
+# Files touched since a git ref, analysed against the whole project graph
 strata <project-path> --touched-since <git-ref> --format json > /tmp/strata.json
 
-# Candidate identities introduced since a git ref; best default for PR review
-strata <project-path> --new-since <git-ref> --format json > /tmp/strata.json
+# The whole project
+strata <project-path> --format json > /tmp/strata.json
 ```
 
-If `strata` is not on `PATH`, run the published package directly:
+Without `strata` on `PATH`, run `bunx @andrezzoid/strata` with the same arguments. Start at the files in `summary.topFiles[]`, the densest first. Each entry in `findings[]` has a `flag`, a `file:line` and a `message` that says what it saw.
 
-```bash
-bunx @andrezzoid/strata <project-path> --format json > /tmp/strata.json
-```
+For other languages, skip this step.
 
-The scanner covers: `shallowModule`, `wideModule`, `wideSignature`, `passThroughMethod`, `passThroughVariable`, `genericNaming`, `tsEscapeHatch`, `emptyCatch`, `catchRethrow`, `duplicateSymbol` (cross-file, agent-recreation pattern), `uniqueImplementation` (cross-file, speculative abstraction), `orphanFile` (cross-file, dead code). Read `/tmp/strata.json`'s `findings[]` and `summary.topFiles[]` — start the audit at the highest-density files.
+### 3. Check each flag
 
-The scanner does **not** cover (you must scan manually for these):
+For each of the eight flags, in order: run its find and read its strata findings, confirm or reject each candidate with its test, and write the fix. strata covers part of the eight, so run every find. The same code often raises more than one flag.
 
-- Type-aware leakage (internal types exposed in public APIs) — needs a type checker
-- Multi-representation duplication within one file (TS type + JSON schema + runtime parser encoding the same shape) — different AST shapes
-- Temporal decomposition (verb-phase module names)
-- Conjoined methods (implicit ordering between calls)
-- Special-general mixture (string-equality switches in generic code)
+Cite file:line and the concrete edit: "inline `OrderValidator.validate` into `Order.create` (validators/order-validator.ts:18)", not "simplify the validators".
 
-For non-TypeScript projects, skip Phase 0 — the rest of the workflow still applies.
+Reject a candidate only when the code fails the flag's test. A framework convention, a plan for later or testability is no evidence: a framework needs a request handler, a seam with one implementation is a guess, and a layer with no logic has nothing to test on its own.
 
-### Phase 1 — Audit each flag
+Done when you checked all eight flags and grouped the findings by flag, each with its file:line and a concrete fix.
 
-For each of the eight flags below, in order:
+## The eight flags
 
-1. **Read the Signal.** Know the shape you're looking for.
-2. **Run the Find.** Either consume the corresponding `flag` from `/tmp/strata.json`, or run the flag's manual detector (`grep`, signature listing, parameter trace) for flags strata doesn't cover.
-3. **Apply the Test.** Confirm each candidate; reject false positives.
-4. **Write the Fix** using the DON'T → DO pattern. Cite file:line and the concrete edit — "inline `OrderValidator.validate` into `Order.create` (validators/order-validator.ts:18)", not "simplify validators".
+### 1. Shallow module
 
-Don't stop at the first hit — the same code often violates multiple flags. Report findings grouped by flag.
+- **Signal:** an interface nearly as complex as the body behind it. Files of boilerplate, many classes with one or two methods.
+- **Find:** public classes or modules with two public methods or fewer. Files where imports, types and ceremony fill more than half the lines.
+- **Test:** count the concepts in the interface (methods, parameters, types, exceptions) against those in the implementation. Close to equal means shallow.
+- **Fix:** inline it, make it a plain function when more than one caller uses it, or fold it into the module that uses it. A `TemperatureConverter` class around one formula becomes a function.
 
-## The Eight Red Flags
+### 2. Information leakage
 
-### 1. Shallow Modules
+- **Signal:** one piece of knowledge (a format, a mapping, a constant) encoded in more than one place, so a change to it touches each of them.
+- **Find:** grep for duplicated field mappings, format strings and magic constants, and for parallel hierarchies such as a `Reader` and a `Writer` for one format. Look for one shape encoded more than once in a single file, such as a TS type, a JSON schema and a parser. Read the types in public signatures for internal ones, such as a storage row or a wire format, that callers now depend on.
+- **Test:** change an internal format (JSON to YAML, MySQL to Postgres, REST to GraphQL) and count the places that change. More than one means leakage.
+- **Fix:** give the knowledge one owner. A `{ id, name: first + " " + last, email }` mapping repeated in two routes becomes `User.fromRow(row)`.
 
-> "A shallow module is one whose interface is complicated relative to the functionality it provides. Shallow modules don't help much in the battle against complexity, because the benefit they provide (not having to learn about how they work internally) is negated by the cost of learning and using their interfaces."
+### 3. Temporal decomposition
 
-**Signal:** A class/module whose interface is nearly as complex as its body. Files that are mostly boilerplate. Many small classes with one or two methods each.
+- **Signal:** modules split by the order things happen instead of by what each one hides.
+- **Find:** standalone modules with verb-phase names: `Reader`, `Parser`, `Validator`, `Saver`, `Loader`, `Sender`. The same step inside a deeper module is fine.
+- **Test:** the phases share knowledge, such as the format each step reads from the one before. A phase name with nothing shared only hints at the flag.
+- **Fix:** one module owns the concept and keeps the phases inside. `FileReader → DataParser → DataValidator → DataWriter` becomes `DataStore.load(path)` and `DataStore.save(path, data)`.
 
-**Find:** List public classes/modules with ≤2 public methods. List files where >50% of lines are imports, types, and ceremony.
+### 4. Pass-through method
 
-**Test:** Count concepts in the interface (methods + parameters + types + exceptions) vs concepts in the implementation. Close to equal = shallow.
+- **Signal:** a method that only calls another method with the same or similar arguments.
+- **Find:** `grep -rE 'return this\.\w+\.\w+\([^)]*\);?\s*}'` and the like: methods whose body is one delegation.
+- **Test:** remove the method. If the callers get simpler, the method was overhead.
+- **Fix:** give the layer real work (validation, authorization, a business rule, caching), or remove it and let callers use the module beneath. A `UserService.getUser(id)` that returns `this.repo.getUser(id)` goes.
 
-**DON'T:**
+### 5. Pass-through variable
 
-```typescript
-class TemperatureConverter {
-  celsiusToFahrenheit(c: number): number {
-    return (c * 9) / 5 + 32;
-  }
-}
-```
+- **Signal:** a parameter threaded through two or more signatures and untouched until deep in the stack.
+- **Find:** trace suspect parameters (`logger`, `config`, `metrics`, `ctx`) through their call chains. Flag each function that takes one and forwards it without reading it.
+- **Test:** the parameter sits in the signature only because something the function calls needs it.
+- **Fix:** a context object, dependency injection or module-level access. `handleRequest(request, config, logger, metrics)` becomes `handleRequest(request)`.
 
-A class for a one-line formula. The interface is more complex than the operation.
+### 6. Conjoined methods
 
-**DO:** Inline it, make it a plain function if reused, or fold it into the module that needs the conversion.
+- **Signal:** methods you can't understand apart, because they share assumptions about call order, internal state or data formats.
+- **Find:** `init*`, `begin*` or `open*` paired with `finalize*`, `end*` or `close*`. Docs that say "must be called after". Runtime errors of the form "X must be called before Y".
+- **Test:** read one method's signature. If using it right takes reading another method, the two are conjoined.
+- **Fix:** move the sequencing inside. `initBatch()`, `process(items)` and `finalizeBatch()` become `processBatch(items)`.
 
----
+### 7. Overexposure
 
-### 2. Information Leakage
+- **Signal:** an interface that makes every caller learn options, internal state and intermediate results that few of them need.
+- **Find:** constructor and public-method signatures with more than three or four required parameters, or six or more parameters whose optional flags expose implementation choices.
+- **Test:** sensible defaults would serve most callers.
+- **Fix:** default the rare options inside the module. A `Cache` constructor that takes ten options becomes `new Cache("redis://localhost:6379")`.
 
-> "Information leakage occurs when a design decision is reflected in multiple modules. This creates a dependency between the modules: any change to that design decision will require changes to all of the involved modules."
+### 8. Special-general mixture
 
-**Signal:** Same knowledge — format, mapping, constant — encoded in multiple modules. Change one, must change the others.
-
-**Find:** `grep` for duplicated field mappings, format strings, magic constants, parallel hierarchies (`Reader` + `Writer` for the same format).
-
-**Test:** If you changed an internal data format (JSON→YAML, MySQL→Postgres, REST→GraphQL), how many files would need to change? More than one = leakage.
-
-**DON'T:**
-
-```typescript
-// api/routes/users.ts
-const user = { id: row.id, name: row.first + " " + row.last, email: row.email };
-
-// api/routes/admin.ts
-const user = { id: row.id, name: row.first + " " + row.last, email: row.email };
-```
-
-Same field mapping repeated. Change the DB schema, break two files.
-
-**DO:**
-
-```typescript
-// models/user.ts — single source of truth
-class User {
-  static fromRow(row: DbRow): User { ... }
-}
-```
-
----
-
-### 3. Temporal Decomposition
-
-> "In temporal decomposition, the structure of a system corresponds to the time order in which operations will occur... this results in information leakage: the knowledge required for each operation is split across multiple modules."
-
-**Signal:** Code organized by the order things happen rather than by what each piece encapsulates.
-
-**Find:** List module/class names. Flag verb-phase names: `Reader`, `Parser`, `Validator`, `Saver`, `Loader`, `Sender` (when standalone, not as an internal step within a deeper module).
-
-**Test:** Are modules named after phases (verbs) or concepts (nouns)? Phased pipelines where each step knows the previous step's format = temporal decomposition plus information leakage.
-
-**DON'T:**
-
-```
-FileReader → DataParser → DataValidator → DataWriter
-```
-
-Each class knows the data format. Change the format, change all four.
-
-**DO:**
-
-```
-DataStore.load(path)  → validated data
-DataStore.save(path, data)
-```
-
-One module owns the concept. Read, parse, validate are internal steps.
-
----
-
-### 4. Pass-Through Methods
-
-> "A pass-through method is one that does little except invoke another method, whose signature is similar or identical to that of the calling method. This typically indicates that there is not a clean division of responsibility between the classes."
-
-**Signal:** A method body that does nothing except call another method with the same or similar arguments.
-
-**Find:** `grep -rE 'return this\.\w+\.\w+\([^)]*\);?\s*}'` and equivalents — methods whose body is one delegation.
-
-**Test:** Remove the method. Does the caller's code get simpler? If yes, the pass-through was pure overhead.
-
-**DON'T:**
-
-```typescript
-class UserService {
-  getUser(id: string): User {
-    return this.repo.getUser(id); // Just forwarding
-  }
-
-  deleteUser(id: string): void {
-    this.repo.deleteUser(id); // Just forwarding
-  }
-}
-```
-
-**DO:** Either add real logic to the layer (validation, authorization, business rules, caching) that justifies it, or eliminate the layer entirely and let callers use the underlying module directly.
-
----
-
-### 5. Pass-Through Variables
-
-> "Pass-through variables add complexity because they force all of the intermediate methods to be aware of their existence, even though the methods have no use for the variables."
-
-**Signal:** A variable threaded through multiple function signatures, untouched until deep in the stack.
-
-**Find:** Pick suspect parameters (`logger`, `config`, `metrics`, `ctx`). Trace each through its call chain — flag any function that accepts but doesn't read it before forwarding.
-
-**Test:** Does this parameter exist in the signature only because something it calls needs it? That's a pass-through variable.
-
-**DON'T:**
-
-```typescript
-function handleRequest(request: Request, config: Config, logger: Logger, metrics: Metrics) {
-  const user = authenticate(request, config, logger, metrics);
-  ...
-}
-
-function authenticate(request: Request, config: Config, logger: Logger, metrics: Metrics) {
-  const token = extractToken(request, config, logger);
-  ...
-}
-```
-
-**DO:** Use context objects, dependency injection, or module-level access to break the threading:
-
-```typescript
-function handleRequest(request: Request) {
-  const user = authenticate(request);
-  ...
-}
-```
-
----
-
-### 6. Conjoined Methods
-
-**Signal:** Two or more methods that can't be understood independently — they share implicit assumptions about call order, internal state, or data formats.
-
-**Find:** Look for `init*`/`begin*`/`open*` paired with `finalize*`/`end*`/`close*`, or methods whose docs say "must be called after". Search for runtime errors of the form "X must be called before Y".
-
-**Test:** Can you read this method's signature and use it correctly without reading any other method? If not, it's conjoined.
-
-**DON'T:**
-
-```typescript
-processor.initBatch();         // Must call before process()
-processor.process(items);      // Must call after init, before finalize
-processor.finalizeBatch();     // Must call after process()
-```
-
-Three methods with implicit ordering. Miss one, get a bug.
-
-**DO:**
-
-```typescript
-processor.processBatch(items); // Handles init, processing, finalization internally
-```
-
----
-
-### 7. Overexposure (Verbose Interfaces)
-
-> "If the API for a commonly used feature forces users to learn about other features that are rarely used, this increases the cognitive load on users who don't need the rarely used features."
-
-**Signal:** An interface that exposes details the caller rarely needs — every option, every internal state, every intermediate result.
-
-**Find:** List constructor and public-method signatures. Flag any with >3-4 required parameters, or 6+ total parameters with optional flags exposing implementation choices.
-
-**Test:** Could the caller use sensible defaults for most of these? If yes, the interface is overexposing.
-
-**DON'T:**
-
-```typescript
-const cache = new Cache({
-  backend: "redis",
-  host: "localhost",
-  port: 6379,
-  serializer: "json",
-  compression: "gzip",
-  maxConnections: 10,
-  retryPolicy: "exponential",
-  retryMax: 3,
-  ssl: false,
-  keyPrefix: "app:",
-});
-```
-
-**DO:**
-
-```typescript
-const cache = new Cache("redis://localhost:6379"); // Sensible defaults internally
-```
-
----
-
-### 8. Special-General Mixture
-
-**Signal:** General-purpose mechanism code tangled with special-case business logic in the same module.
-
-**Find:** `grep -rE "if \(\w+\.(table|name|type|kind) === ['\"]"` — string-equality switches inside generic code. Look for hardcoded domain names inside utility/builder modules.
-
-**Test:** Is there code in this module that only applies to one specific use case, mixed with code that applies to all use cases?
-
-**DON'T:**
-
-```typescript
-class QueryBuilder {
-  build(params: QueryParams): string {
-    let query = `SELECT * FROM ${params.table}`;
-    if (params.table === "users") {
-      query += " WHERE active = true"; // Special case leaked into general builder
-    }
-    if (params.filters) {
-      query += ` WHERE ${this.buildFilters(params.filters)}`;
-    }
-    return query;
-  }
-}
-```
-
-**DO:** Keep the general mechanism pure. Let callers supply the specialization:
-
-```typescript
-class QueryBuilder {
-  build(table: string, filters: Filter[]): string { ... }
-}
-
-const users = qb.build("users", [new Filter("active", "=", true)]);
-```
-
-## Common Rationalizations
-
-| Rationalization | Reality |
-| --- | --- |
-| "Splitting into more classes is cleaner." | More classes = more interface surface. Cleanliness is fewer concepts, not more files. |
-| "Each class should have one responsibility." | SRP doesn't mean one method per class. A deep module owns one responsibility *fully*. |
-| "We need the layer for testability." | If the layer has no logic, there's nothing meaningful to test in isolation. |
-| "I might need to swap the implementation later." | Add the seam when you actually need it. Speculative abstraction is shallow today, guaranteed. |
-| "The framework requires controller/service/repository." | The framework requires a request handler. Empty pass-through layers are not a framework requirement. |
-| "Pass-through variables are explicit dependency injection." | Threading four functions of unused parameters isn't DI — it's noise. |
-| "It's only one extra parameter." | Each pass-through param adds cognitive load on every reader of every function in the chain. |
-| "I'll inline it later if it stays small." | Later doesn't come. The cost of removal grows with each new caller. |
-
-## Verification
-
-Before declaring an audit done:
-
-- [ ] Listed every public class/module — flagged any whose interface concept count ≈ implementation concept count.
-- [ ] Grepped for duplicated formats, mappings, constants — none span >1 file unless intentional.
-- [ ] Module names are nouns/concepts, not verbs/phases.
-- [ ] No method body is just `return other.sameMethod(...args)`.
-- [ ] No parameter is forwarded through ≥2 functions without being read.
-- [ ] No method requires another to be called first/after — sequencing is internal.
-- [ ] No constructor or factory takes >3-4 required parameters.
-- [ ] No `if name === ...` / `if type === ...` branches inside general code.
-- [ ] For every flag found: file:line cited and a concrete fix proposed.
+- **Signal:** a general mechanism tangled with special-case business logic in one module.
+- **Find:** `grep -rE "if \(\w+\.(table|name|type|kind) === ['\"]"` for string-equality branches in generic code, and domain names hardcoded in utility or builder modules.
+- **Test:** some code in the module serves one use case and sits beside code that serves them all.
+- **Fix:** keep the mechanism general and let callers supply the special case. A `QueryBuilder` that adds `WHERE active = true` when the table is `users` becomes `qb.build("users", [new Filter("active", "=", true)])`.
 
 ## References
 
-- [references/examples.md](references/examples.md) — full audit on a real codebase, fixing every red flag found, plus a quick-reference table for common patterns.
-- Sibling skill: **deep-module-design** — the positive form of the same principles. Use it when *designing* modules; use this skill when *auditing* them.
+- [references/examples.md](references/examples.md) has a full audit of a real codebase that fixes every flag it finds, and a quick-reference table of common patterns.
+- `deep-module-design` applies the same principles while you design a module. This skill audits code that exists.

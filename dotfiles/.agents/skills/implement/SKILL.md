@@ -7,24 +7,27 @@ description: "Implement a ticket (ENG-123 in Linear, owner/repo#12 or #12 in Git
 
 Implement the work named in the invocation: a ticket, a spec file, or what the
 conversation just settled. If nothing was named, ask. One unit per run:
-dispatching several is the caller's job, not yours. When you run unattended,
-nobody answers a question, so anything that needs the human ends the run with a
-brief.
+the caller dispatches the rest. When you run unattended, nobody answers a
+question, so anything that needs the human ends the run with a brief.
 
-Read it first, and the parent for context when there is one. Read a ticket with
+To hand a ticket back, run `factory ticket handback <ID> --brief-file <brief>`.
+It posts the brief and labels the ticket `ready-for-human`. Once you hold a
+ticket, every stop before its pull request opens hands it back, or it sits
+claimed with nobody working on it.
+
+## 1. Read the work
+
+Read the work, and its parent for context when there is one. Read a ticket with
 `factory ticket show <ID> --json`, on either tracker. Its `contract` is what you
 build against: triage's latest agent brief when there is one, otherwise the
 body. A published ticket's body is agreed state: never edit it, and its comments
 are the event log and the only thing you write there. Where there is no ticket
 there is no comment log, so every deviation, decision and followup reaches the
 human through the brief instead. The parent carries the shape, the ticket
-carries the contract. If the work turns out to need a different definition, that
-is the human's call to shape, not yours here.
+carries the contract. If the work turns out to need a different definition,
+shaping it is the human's call.
 
-To hand a ticket back, run `factory ticket handback <ID> --brief-file <brief>`.
-It posts the brief and labels the ticket `ready-for-human`. Once you hold a
-ticket, every stop before its pull request opens hands it back, or it sits
-claimed with nobody working on it.
+## 2. Prepare
 
 Before any code:
 
@@ -39,7 +42,7 @@ Before any code:
    anyway, go on without a claim.
 3. Quote each acceptance line you are working against, and name the
    observation that would falsify it. If you cannot name one, hand the ticket
-   back. Vague acceptance is a shaping problem, not something to work around.
+   back: vague acceptance is a shaping problem.
 4. Create `.factory/<id-or-slug>.md` as working notes, and add `.factory/` to
    the file `git rev-parse --git-path info/exclude` names. Keep it current:
    what you tried, deviations, decisions, open threads. It is yours, it is
@@ -53,6 +56,8 @@ Before any code:
    `.agents/factory.md`, the repo profile, names the gates and the one-way
    doors. Without it, tell the human to run `/setup-factory`, and take the
    gates from the README or CI.
+
+## 3. Build
 
 Build it with TDD: call the Skill tool with "tdd". The acceptance lines are its
 test list, one vertical slice each, and the seams the ticket's Testing line
@@ -85,6 +90,8 @@ workaround; fix the cause, or file it.
 If the work turns out to need something that belongs to another ticket, stop,
 name it, and hand the ticket back. It is not yours to build.
 
+## 4. Verify
+
 Verify before you call it done, in this order:
 
 1. Run the gates the profile lists.
@@ -104,7 +111,9 @@ fix, rerun the gates. If the same check fails three times running, stop and
 hand the ticket back. Grinding at a red check is how a session burns an
 afternoon and arrives with nothing.
 
-Then triage anything you did that departed from the ticket. Deviating is often
+## 5. Report deviations
+
+Triage anything you did that departed from the ticket. Deviating is often
 right. The only failure is an unreported deviation. Acceptance holds while every
 acceptance test passes and still asserts what its line says, so weakening an
 acceptance test to make it pass breaks acceptance.
@@ -125,11 +134,10 @@ Comment format, for deviations the ticket did not cover:
 **Affects elsewhere:** <where this bites, or do not post the comment>
 ```
 
-If "Affects elsewhere" is empty it is just work. Do not post it.
+Out-of-scope discoveries go in the brief, and become new tickets in triage once
+the human approves them. Where there is no tracker, they stay in the brief.
 
-Out-of-scope discoveries become new tickets in triage, filed after the final
-brief and human approval, never carried away in your head. Where there is no
-tracker, raise them in the brief and leave them there.
+## 6. Open the pull request
 
 A ticket carries an autonomy level, `pr` or `merge`. Either way you push and
 open the pull request, and only `babysit-pr` merges. Working without a ticket,
@@ -138,8 +146,8 @@ as the checkpoint, and never push, merge or deploy without being told.
 
 When the work is done on a ticket:
 
-1. Open the pull request ready for review, never as a draft. Call the Skill tool
-   with "pr" for the body. Evidence holds the proof from verify, and Merge
+1. Open the pull request ready for review. Call the Skill tool with "pr" for
+   the body. Evidence holds the proof from verify, and Merge
    Danger names the door. A change that touches a one-way door in the profile is
    a one-way door. End the body with the ticket's `closes` line, so the tracker
    closes the ticket on merge.
@@ -150,6 +158,8 @@ When the work is done on a ticket:
    request waits for the human to merge it.
 3. Stop. The ticket is in Babysit now, and `/factory <ID>` hands the PR to
    `babysit-pr`.
+
+## 7. Brief the human
 
 When the work is done, or the moment you stop, brief the human. Follow
 `references/briefing.md`.

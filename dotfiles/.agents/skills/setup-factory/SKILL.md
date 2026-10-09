@@ -41,8 +41,8 @@ Ask in one round, each with your recommendation:
 
 - Which tracker: Linear, and which team, or GitHub Issues on this repo?
   Recommend where the work is already tracked.
-- What max autonomy? Recommend `pr` until a run skill exists and has been seen
-  working. `merge` lets a ticket labelled `autonomy:merge` merge itself after
+- What max autonomy? Recommend `pr` until a run skill exists and you have seen
+  it work. `merge` lets a ticket labelled `autonomy:merge` merge itself after
   an independent verdict, and `factory pr merge` allows it only while a run
   skill exists on the pull request's base branch. Before agreeing to `merge`,
   require the CI checks in the default branch's protection. The factory mod
@@ -56,15 +56,15 @@ Ask in one round, each with your recommendation:
 
 1. `.agents/factory.md` from `references/profile-template.md`, with every
    example value replaced. Keep the field names and the `## One-way doors`
-   heading exactly: the CLI parses them. For GitHub Issues, the tracker line is
+   heading as they are: the CLI parses them. For GitHub Issues, the tracker line is
    `- **Tracker:** GitHub Issues`, the Issue tracker section's first paragraph
    becomes "Issues live in GitHub Issues on this repo. Use `gh issue`. Blockers
    are issue dependencies, or a `## Blocked by` section listing `#12`. A ticket
    being worked carries the `in-progress` label.", and the labels table gains
    `in-progress`.
 2. An `## Agent skills` block in `CLAUDE.md`, or in `AGENTS.md` when that is
-   the file the repo uses. Never create the second file when the first exists,
-   and update the block in place when it exists:
+   the file the repo uses, so the repo keeps one of the two. Update the block in
+   place when it exists:
 
    ```markdown
    ## Agent skills
@@ -96,8 +96,8 @@ Ask in one round, each with your recommendation:
 
 ## cloud
 
-Cloud sessions get the skills from the environment's setup script, never from
-the repos. The script clones the config repo and links its skills into
+Cloud sessions get the skills from the environment's setup script, so no repo
+needs to carry them. The script clones the config repo and links its skills into
 `~/.claude` the way stow does on the Mac, and the factory mod pulls the latest
 commit at every session start. Give the human these steps with the values
 filled in:

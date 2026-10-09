@@ -8,7 +8,7 @@ Real-world before/after examples organized by principle. Each shows the anti-pat
 
 The comments-first process means writing the interface description before any implementation. Watch how the comment drives design decisions.
 
-**Step 1 — Write the interface comment:**
+**Step 1: write the interface comment.**
 
 ```typescript
 // rate-limiter.ts
@@ -51,7 +51,7 @@ export class RateLimiter {
 }
 ```
 
-**Step 2 — Examine the comment.** Notice what writing it forced us to decide:
+**Step 2: examine the comment.** Notice what writing it forced us to decide:
 
 - Token bucket, not sliding window (explicit algorithm choice)
 - Fail-open on Redis errors (explicit resilience strategy)
@@ -60,7 +60,7 @@ export class RateLimiter {
 
 If any of these had been hard to articulate, that would signal a design problem worth fixing before writing any implementation.
 
-**Step 3 — Now implement.** The comment is the spec. Implementation follows.
+**Step 3: implement.** The comment is the spec. Implementation follows.
 
 ---
 
@@ -80,7 +80,7 @@ If any of these had been hard to articulate, that would signal a design problem 
 async function getUsers(): Promise<User[]>;
 ```
 
-This describes HOW — fetch, JSON parsing, header setting. A caller doesn't need (or want) any of this. If the implementation switches from fetch to axios, the comment becomes a lie even though the behavior didn't change.
+This describes how: fetch, JSON parsing, header setting. A caller needs none of it. If the implementation switches from fetch to axios, the comment becomes a lie even though the behavior didn't change.
 
 **DO: Abstraction in the interface, reasoning in the implementation**
 
@@ -167,7 +167,7 @@ class ImageCache {
 }
 ```
 
-**DO: Describe the abstraction — eviction, memory, thread safety**
+**DO: Describe the abstraction (eviction, memory, thread safety)**
 
 ```typescript
 /**
@@ -322,7 +322,7 @@ interface Order {
 }
 ```
 
-Notice how the comments revealed a design issue: `total` was a bare `number` with no unit indication, representing money in an ambiguous way. The comment-writing process caught the bug — renaming to `totalCents` and adding a union type for `status` emerged naturally.
+Notice how the comments revealed a design issue: `total` was a bare `number` with no unit indication, representing money in an ambiguous way. The comment-writing process caught the bug, and renaming to `totalCents` and adding a union type for `status` followed from it.
 
 ---
 

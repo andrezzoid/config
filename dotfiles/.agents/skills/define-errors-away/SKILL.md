@@ -1,186 +1,96 @@
 ---
 name: define-errors-away
-description: Eliminate error conditions through API redesign instead of handling them. Use when designing an API's error surface, when error handling in a module is getting dense, or when the user asks to "simplify error handling" or "reduce exceptions". Dense error handling is usually a signal that the API should be redesigned instead — the best error handling is the error handling you didn't have to write.
+description: Remove error conditions by redesigning the API instead of handling them. Use when designing an API's error surface, when error handling in a module is getting dense, or when the user asks to "simplify error handling" or "reduce exceptions".
 ---
 
 # Define Errors Out of Existence
 
-## Overview
+Exception handling is hard to test and often outgrows the happy path. Before handling an error, ask: **can I redesign this so the error can't happen?** Exceptions are part of a module's interface, so each one you remove makes the module deeper.
 
-> "The best way to eliminate exception handling complexity is to define your APIs so that there are no exceptions to handle: define errors out of existence."
-> — John Ousterhout, _A Philosophy of Software Design_
+The signal is accumulation: try/catch blocks or guard clauses stacking up across call sites, an error type threading through many layers, the same null check in more than one place. One guard clause on its own is fine.
 
-Exception handling is one of the worst sources of complexity in software. It's hard to test, hard to reason about, and often accounts for more code than the happy path. Instead of asking "how should I handle this error?", ask the more powerful question: **"can I redesign this so the error can't happen?"**
+Keep these errors visible: resource exhaustion, invariant violations (crash loudly), external failures a caller must react to, and security violations. An external failure that a retry or a fallback inside the module recovers gets masked (strategy 2).
 
-## When to Use
+## Workflow
 
-Trigger when designing an API's error surface, or when error handling is accumulating in a module:
+For each error condition, in this order:
 
-- Several try/catch blocks, or guard clauses stacking up across call sites
-- An error code, error object, or Result type threading through many layers
-- The same null/undefined/nil check repeated in multiple places
-- Deciding how "file not found", "key missing", or "index out of bounds" should behave
+1. Name the condition in one sentence: "substring called with `start` past the end of the string."
+2. **Define it out of existence.** Widen the operation's contract so the input is valid. If you can, redesign and stop.
+3. **Mask it.** Recover inside the module with a retry, a default or a fallback, so callers never see it. If you can, stop.
+4. **Aggregate it.** Let it propagate to one handler higher up that already deals with this class of failure. If one exists, stop.
+5. **Crash with context.** For an unrecoverable condition, fail with enough context to debug: an assert, a panic, a throw at the boundary.
+6. Only when all four fail, write a local error path, with a comment naming the strategies you tried and why each failed.
 
-The signal is accumulation, not any single check — one guard clause is usually just a guard clause.
+Done when every error path you wrote names the strategy that failed, and at least one caller that does something with the error. Each remaining error is genuine: resource exhaustion, an invariant violation, an external failure a caller must react to, or a security violation.
 
-**Do NOT use** for genuine errors that must remain visible:
+## 1. Define out of existence
 
-- Resource exhaustion (out of memory, disk full, network down)
-- Programming errors / invariant violations (these should crash loudly)
-- External system failures a caller must react to
-- Security violations (unauthorized access should be loud and explicit)
+Most errors exist because someone defined the operation too narrowly. Widen the definition and the error disappears.
 
-## The Four Strategies (in order of preference)
-
-### Strategy 1: Define out of existence
-
-Redefine the operation so the "error" case becomes a valid, expected outcome. Most "errors" are only errors because the operation was defined too narrowly. Widen the definition, and the error disappears.
-
-> "The exceptions thrown by a class are part of its interface; classes with lots of exceptions have complex interfaces, and they are shallower than classes with fewer exceptions."
-
-| Operation                         | Error to eliminate    | Redefinition                                                |
-| --------------------------------- | --------------------- | ----------------------------------------------------------- |
-| `delete(file)`                    | FileNotFoundError     | "Ensure file does not exist" — already true, return success |
-| `substring(s, start, end)`        | IndexOutOfBoundsError | Clamp to actual bounds — return what's available            |
-| `getOrDefault(map, key, default)` | KeyNotFoundError      | Return default — no error case exists                       |
-| `mkdir_p(path)`                   | DirectoryExistsError  | "Ensure directory exists" — already true, return success    |
-| `addToSet(set, item)`             | DuplicateError        | Sets are idempotent by definition — just return             |
-
-**DON'T: Throw on edge cases the caller can't control**
+| Operation | Error to remove | Redefinition |
+| --- | --- | --- |
+| `delete(file)` | FileNotFoundError | "Ensure the file does not exist": already true, so return success |
+| `substring(s, start, end)` | IndexOutOfBoundsError | Clamp to the actual bounds and return what is there |
+| `getOrDefault(map, key, default)` | KeyNotFoundError | Return the default: no error case exists |
+| `mkdir_p(path)` | DirectoryExistsError | "Ensure the directory exists": already true, so return success |
+| `addToSet(set, item)` | DuplicateError | Adding to a set is idempotent: return |
 
 ```typescript
+// Every caller must guard against RangeError, to get back what it wanted:
 function substring(s: string, start: number, end: number): string {
-  if (start < 0 || end > s.length || start > end) {
-    throw new RangeError("Invalid range");
-  }
+  if (start < 0 || end > s.length || start > end) throw new RangeError("Invalid range");
   return s.slice(start, end);
 }
 
-// Every caller must now guard against RangeError
-let result: string;
-try {
-  result = substring(text, pos, pos + length);
-} catch {
-  result = ""; // What they wanted in the first place
-}
-```
-
-**DO: Redefine to handle edge cases naturally**
-
-```typescript
+// Callers just use it:
 function substring(s: string, start: number, end: number): string {
   start = Math.max(0, start);
   end = Math.min(s.length, end);
-  if (start >= end) return "";
-  return s.slice(start, end);
-}
-
-// Callers just use it. No error handling needed.
-const result = substring(text, pos, pos + length);
-```
-
-**DON'T: Return errors for predictable conditions**
-
-```typescript
-function getUser(id: string): User {
-  const user = cache.get(id);
-  if (!user) {
-    throw new NotFoundError(`User not found: ${id}`);
-  }
-  return user;
-}
-
-// Every single caller:
-try {
-  const user = getUser(id);
-} catch (e) {
-  // Handle "not found"... but what does that even mean here?
+  return start >= end ? "" : s.slice(start, end);
 }
 ```
 
-**DO: Use the type system to express absence**
+Express absence in the type, not with an exception. Give "might not exist" and "must exist" two methods with two contracts:
 
 ```typescript
+// Returns undefined when there is no such user: absence is an answer.
 function findUser(id: string): User | undefined {
-  // Returns undefined if not found — callers who need a user
-  // that must exist call a different, clearly named method.
   return cache.get(id);
 }
 
+// For contexts where the user must exist, such as an authenticated route.
+// A missing user here is a bug, so it fails as one.
 function getUser(id: string): User {
-  // For contexts where the user must exist (e.g., authenticated routes).
-  // Throws if not found — this is a programming error, not a runtime condition.
   const user = cache.get(id);
-  if (!user) {
-    throw new Error(`invariant: authenticated user must exist: ${id}`);
-  }
+  if (!user) throw new Error(`invariant: authenticated user must exist: ${id}`);
   return user;
 }
 ```
 
-Two methods with different contracts: `find` for "might not exist" (no error needed — nil is the answer), `get` for "must exist" (violation is a bug, not a user-facing error).
+Validate input with a parser that returns a result, so the schema replaces the try/catch.
 
-See `references/examples.md` → "HTTP Request Handler", "File Processing Pipeline", "Idempotent State Transitions".
+## 2. Mask
 
-### Strategy 2: Mask the exception
+Handle the exception inside the module when the module can recover, or when the caller could do nothing useful with it. Centralize the defensive check once, where the module owns it, so callers carry none.
 
-Handle the exception inside the module so callers never see it. Use when the module can recover (retry, default, fallback) or the caller couldn't do anything useful with it.
+## 3. Aggregate
 
-See `references/examples.md` → "Cache with Transparent Fallback".
+Let exceptions propagate to one top-level handler that treats many of them the same way, when no single caller can recover and a crash, a restart or an error response at the top is the right answer. Fewer places that handle exceptions means less complexity.
 
-### Strategy 3: Aggregate exceptions
+## 4. Crash with context
 
-Let exceptions propagate to a single top-level handler that deals with many uniformly. Use when individual callers can't meaningfully recover and a crash, restart, or top-level error response is the right answer.
+For invariant violations, resource exhaustion and corrupted state, fail with the context needed to debug. This is the design: a clear failure beats surviving in a partial state.
 
-> "Throwing exceptions is easy; handling them is hard. The best way to reduce the complexity associated with exception handling is to reduce the number of places where exceptions must be handled."
+## Red flags
 
-### Strategy 4: Crash cleanly
+- A catch that returns what the success path returns for empty input.
+- Sibling exceptions for "missing X", "missing Y" and "missing Z" on the same object.
+- Every caller wrapping the same call in the same try/catch.
+- A guard clause that throws for an input the function could handle.
+- A Result or Either type whose error variant no caller inspects.
 
-For unrecoverable conditions, fail loudly with enough context to debug — this is the right design, not a fallback. Use for invariant violations, resource exhaustion, and corrupted state. The goal is a clear failure, not partial-state survival.
+## References
 
-## The Workflow
-
-When you encounter a potential error condition, walk this in order:
-
-1. **STOP.** Don't write the try/catch yet.
-2. **Name the condition** in one sentence. Example: "substring called with `start` past end of string."
-3. **Try Strategy 1.** Can the operation's contract be widened so this input is valid? If yes → redesign and stop.
-4. **Try Strategy 2.** Can the module recover internally without the caller knowing? If yes → mask and stop.
-5. **Try Strategy 3.** Does a higher layer already handle this class of failure? If yes → let it propagate and stop.
-6. **Try Strategy 4.** Is this unrecoverable? If yes → crash with context (assert, panic, throw at the boundary).
-7. **Only if all four fail**, write a local error path. Add a brief comment noting which strategies were tried and why each was rejected.
-
-## Common Rationalizations
-
-| Rationalization                                | Reality                                                                                                 |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| "The caller needs to know it failed."          | Check what callers actually do. Most log and rethrow, or return the empty value the success path would. |
-| "This is an edge case the user shouldn't hit." | Then widen the contract so it's not an edge case.                                                       |
-| "I need to validate input."                    | Use a parser that returns a Result, not validation that throws. The schema replaces the try/catch.      |
-| "Defensive programming is good practice."      | Defensive programming pushes complexity to every caller. Centralize once at a boundary instead.         |
-| "Returning null/undefined isn't safe."         | Provide two methods: `find` (returns optional) and `get` (asserts invariant). The types enforce it.     |
-
-## Red Flags
-
-Observable patterns that signal the skill is being violated:
-
-- A try/catch whose catch produces the same value the success path would on empty input
-- Sibling exceptions for "missing X", "missing Y", "missing Z" on the same object
-- Every caller wraps the same call in the same try/catch
-- Guard clauses that throw for inputs the function could handle
-- Result/Either types whose error variant is never inspected by callers
-
-## Verification
-
-Before declaring error-handling work complete, confirm:
-
-- [ ] For each error path written, identified which of strategies 1–4 was attempted and why it was rejected
-- [ ] For each new throw/return-error, named at least one caller and what they will do with it
-- [ ] No try/catch where the catch produces the same result as success-with-empty-input
-- [ ] No guard clause throwing for inputs the operation could meaningfully handle
-- [ ] Errors that remain are genuine: resource exhaustion, invariant violation, external system, or security
-
-## See Also
-
-- `references/examples.md` — extended before/after transformations: HTTP handlers, file pipelines, cache fallback, state machines
-- `/deep-module-design` — exceptions are part of the interface; fewer exceptions = deeper modules
+- [references/examples.md](references/examples.md): longer before/after examples for an HTTP handler, a file pipeline, a cache with a fallback, and idempotent state transitions.
+- `deep-module-design`: fewer exceptions make a deeper interface.

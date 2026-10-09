@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Build one unit of work end to end, from a ticket (ENG-123 in Linear, owner/repo#12 or #12 in GitHub Issues), a spec file, or what the conversation just settled. Claims the ticket, builds test-first against its acceptance, proves it on the running app, gets an independent verdict, reports deviations instead of absorbing them, and opens the PR. Use when asked to implement, build or pick up a ticket or spec."
+description: "Implement a ticket (ENG-123 in Linear, owner/repo#12 or #12 in GitHub Issues), a spec file, or what the conversation just settled, through to an open pull request. Use when asked to implement, build or pick up any of these."
 ---
 
 # Implement

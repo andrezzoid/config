@@ -46,8 +46,8 @@ Drive, Evidence, Cleanup, plus `features/`), and `maintain-verification-skill`
 keeps it honest.
 **Here:** the CLI half is Claude Code's built-in `/run-skill-generator`, which
 records the repo's `.claude/skills/run-<name>/`, loaded by the built-in `/run`.
-André kept the built-ins for now, after comparing both on strata and omnia, so pstack's
-two skills are vendored but unused, and nothing keeps a feature map yet.
+André chose the built-ins after comparing both on strata and omnia, and pstack's
+two skills were removed. Nothing keeps a feature map yet.
 
 **4. Correctness and quality are separate layers.** Verification answers "does
 the checkout button actually check out"; engineering skills answer whether the

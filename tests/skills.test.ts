@@ -115,7 +115,7 @@ for (const name of own) {
     });
 
     test("names no retired skill or command", () => {
-      for (const retired of ["ddd2", "setup-factory-skills", "check-pr", "find-unknowns", "quiz-me", "visualize", "design-it-twice", "worktrunk", "zellij", "docs/agents/factory.md", "create-verification-skill"]) {
+      for (const retired of ["ddd2", "setup-factory-skills", "check-pr", "find-unknowns", "quiz-me", "visualize", "design-it-twice", "worktrunk", "zellij", "docs/agents/factory.md", "create-verification-skill", "maintain-verification-skill"]) {
         assert.ok(!new RegExp(`[\`/"]${retired}[\`"\\s]`).test(text), `mentions ${retired}`);
       }
     });

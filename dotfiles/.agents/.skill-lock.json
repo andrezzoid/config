@@ -198,26 +198,6 @@
       "installedAt": "2026-10-05T12:09:43.615Z",
       "updatedAt": "2026-10-05T12:09:43.615Z"
     },
-    "create-verification-skill": {
-      "source": "cursor/plugins",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/cursor/plugins.git",
-      "ref": "4e5b1cf2ccb0ea3716f08c8ee0a5856b5ab93536",
-      "skillPath": "pstack/skills/create-verification-skill/SKILL.md",
-      "skillFolderHash": "a2e50d21892772174225073b3e4864f853883ae2bc13b33eca64c3b67fe06be5",
-      "installedAt": "2026-10-05T12:09:43.627Z",
-      "updatedAt": "2026-10-05T12:09:43.627Z"
-    },
-    "maintain-verification-skill": {
-      "source": "cursor/plugins",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/cursor/plugins.git",
-      "ref": "4e5b1cf2ccb0ea3716f08c8ee0a5856b5ab93536",
-      "skillPath": "pstack/skills/maintain-verification-skill/SKILL.md",
-      "skillFolderHash": "283083c9547641392a58c38edeb147e75aa99912e7fba55edaa7b1a02021ffec",
-      "installedAt": "2026-10-05T12:09:43.629Z",
-      "updatedAt": "2026-10-05T12:09:43.629Z"
-    },
     "to-spec": {
       "source": "mattpocock/skills",
       "sourceType": "github",

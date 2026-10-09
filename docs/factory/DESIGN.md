@@ -127,8 +127,7 @@ same way.
 ## Learning
 
 Three skills and one factory mode change the harness, or a repo's guards, from
-what went wrong. They belong to Upkeep: André or a routine starts them, never a
-ticket.
+what went wrong. They belong to Upkeep: André or a routine starts them.
 
 | | Finds | Fixes |
 |---|---|---|

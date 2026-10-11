@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Shrink a single-page, single-image (scan) PDF under a size budget.
+
+Re-encodes the page image as JPEG via macOS `sips`, then rewraps it in a
+minimal PDF. Uses only the system Python and sips, no installs.
+
+Usage: pdfshrink INPUT.pdf [-o OUTPUT.pdf] [-m MAX_MB] [--dpi N]
+"""
+import argparse
+import re
+import struct
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# (long edge in px, jpeg quality) tried in order, shrinking as needed.
+LADDER = [(None, 85), (None, 75), (3300, 80), (2800, 75), (2800, 60),
+          (2200, 70), (2200, 55), (1700, 60), (1700, 45)]
+
+
+def sips(*args):
+    return subprocess.run(["sips", *args], capture_output=True, text=True)
+
+
+def page_box(pdf: Path):
+    """Original page size in PDF points, or None if we can't read it."""
+    m = re.search(rb"/MediaBox\s*\[\s*([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)",
+                  pdf.read_bytes())
+    if not m:
+        return None
+    x0, y0, x1, y1 = (float(v) for v in m.groups())
+    return abs(x1 - x0), abs(y1 - y0)
+
+
+def jpeg_info(data: bytes):
+    """(width, height, components) from the JPEG SOF marker."""
+    i = 2
+    while i < len(data):
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            h, w = struct.unpack(">HH", data[i + 5:i + 9])
+            return w, h, data[i + 9]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        i += 2 + struct.unpack(">H", data[i + 2:i + 4])[0]
+    raise ValueError("no JPEG SOF marker found")
+
+
+def wrap_jpeg(jpg: bytes, box, out: Path):
+    w, h, comps = jpeg_info(jpg)
+    colorspace = {1: "/DeviceGray", 3: "/DeviceRGB", 4: "/DeviceCMYK"}[comps]
+    pw, ph = box if box else (w * 72 / 300, h * 72 / 300)
+    content = f"q {pw:.4f} 0 0 {ph:.4f} 0 0 cm /Im0 Do Q".encode()
+
+    objs = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pw:.4f} {ph:.4f}] "
+        f"/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>".encode(),
+        (f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} "
+         f"/ColorSpace {colorspace} /BitsPerComponent 8 /Filter /DCTDecode "
+         f"/Length {len(jpg)} >>\nstream\n").encode() + jpg + b"\nendstream",
+        f"<< /Length {len(content)} >>\nstream\n".encode() + content + b"\nendstream",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for n, body in enumerate(objs, 1):
+        offsets.append(len(pdf))
+        pdf += f"{n} 0 obj\n".encode() + body + b"\nendobj\n"
+
+    startxref = len(pdf)
+    pdf += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    for off in offsets:
+        pdf += f"{off:010d} 00000 n \n".encode()
+    pdf += (f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{startxref}\n%%EOF\n").encode()
+    out.write_bytes(pdf)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("input", type=Path)
+    ap.add_argument("-o", "--output", type=Path, help="default: INPUT-small.pdf")
+    ap.add_argument("-m", "--max-mb", type=float, default=2.0, help="budget in MB (default 2)")
+    ap.add_argument("--dpi", type=int, help="force a resolution instead of the ladder")
+    ap.add_argument("-q", "--quality", type=int, help="force a JPEG quality (1-100)")
+    args = ap.parse_args()
+
+    src = args.input
+    if not src.is_file():
+        sys.exit(f"pdfshrink: no such file: {src}")
+    out = args.output or src.with_name(src.stem + "-small.pdf")
+    budget = int(args.max_mb * 1024 * 1024)
+    box = page_box(src)
+
+    pages = len(re.findall(rb"/Type\s*/Page[^s]", src.read_bytes()))
+    if pages > 1:
+        sys.exit(f"pdfshrink: {pages} pages found; this handles single-page scans only.")
+
+    if args.dpi or args.quality:
+        long_edge = None
+        if args.dpi and box:
+            long_edge = round(max(box) / 72 * args.dpi)
+        ladder = [(long_edge, args.quality or 75)]
+    else:
+        ladder = LADDER
+
+    with tempfile.TemporaryDirectory() as tmp:
+        jpg_path = Path(tmp) / "page.jpg"
+        for long_edge, quality in ladder:
+            cmd = ["-s", "format", "jpeg", "-s", "formatOptions", str(quality)]
+            if long_edge:
+                cmd += ["-Z", str(long_edge)]
+            r = sips(*cmd, str(src), "--out", str(jpg_path))
+            if r.returncode != 0 or not jpg_path.exists():
+                sys.exit(f"pdfshrink: sips failed to rasterize:\n{r.stderr.strip()}")
+            wrap_jpeg(jpg_path.read_bytes(), box, out)
+            size = out.stat().st_size
+            if size <= budget or len(ladder) == 1:
+                w, h, _ = jpeg_info(jpg_path.read_bytes())
+                print(f"{out}  {size / 1024 / 1024:.2f} MB  "
+                      f"({w}x{h}px, quality {quality}, from "
+                      f"{src.stat().st_size / 1024 / 1024:.2f} MB)")
+                if size > budget:
+                    print(f"warning: still over the {args.max_mb} MB budget", file=sys.stderr)
+                return
+        sys.exit(f"pdfshrink: could not get under {args.max_mb} MB; "
+                 f"best was {out.stat().st_size / 1024 / 1024:.2f} MB")
+
+
+if __name__ == "__main__":
+    main()

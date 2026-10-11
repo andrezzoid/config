@@ -31,12 +31,22 @@ let linearIssues: any[] = [];
 let issueComments: any[] = [];
 // A claim another session posts a second before ours, to stage a race.
 let rivalClaim: any = null;
+// Linear pages every issue list; a test shrinks the page to make the CLI follow the cursor.
+let pageSize = 100;
+
+function page(nodes: any[], after: string | null | undefined) {
+  const start = after ? Number(after) : 0;
+  const end = start + pageSize;
+  return { nodes: nodes.slice(start, end), pageInfo: { hasNextPage: end < nodes.length, endCursor: String(end) } };
+}
 
 function answer(op: string, variables: any): { status: number; body: unknown } {
   const data = (d: unknown) => ({ status: 200, body: { data: d } });
   switch (op) {
     case "FactoryReady":
-      return data({ issues: { nodes: linearIssues } });
+    case "FactoryMine":
+    case "FactoryQueued":
+      return data({ issues: page(linearIssues, variables.after) });
     case "FactoryIssue": {
       const found = linearIssues.find((i) => i.identifier === variables.id);
       return data({ issue: found ? { ...found, comments: { nodes: issueComments } } : null });
@@ -58,8 +68,6 @@ function answer(op: string, variables: any): { status: number; body: unknown } {
       issueComments.push({ id, body: variables.body, createdAt: new Date().toISOString(), user: { name: "André" } });
       return data({ commentCreate: { success: true, comment: { id } } });
     }
-    case "FactoryBrief":
-      return data({ mine: { nodes: linearIssues }, queued: { nodes: linearIssues } });
     case "FactoryDeleteComment":
       issueComments = issueComments.filter((c) => c.id !== variables.id);
       return data({ commentDelete: { success: true } });
@@ -158,6 +166,7 @@ beforeEach(() => {
   linearCalls = [];
   issueComments = [];
   rivalClaim = null;
+  pageSize = 100;
   linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "autonomy:merge"] })];
   routes();
 });
@@ -406,6 +415,15 @@ describe("Linear tickets", () => {
     expect(d.ready.map((t: any) => t.id)).toEqual(["ENG-1"]);
     expect(d.ready[0]).toMatchObject({ tracker: "linear", repo: "andrezzoid/app", autonomy: "merge", closes: "Closes ENG-1" });
     expect(d.skipped).toEqual([{ id: "ENG-2", reason: "blocked by ENG-1" }]);
+  });
+
+  test("next pages through every ready ticket", async () => {
+    pageSize = 1;
+    linearIssues.push(linearIssue({ id: "u2", identifier: "ENG-2" }));
+    const r = await run(["tickets", "next", "--json"]);
+    expect(r.err).toBe("");
+    expect(JSON.parse(r.out).ready.map((t: any) => t.id)).toEqual(["ENG-1", "ENG-2"]);
+    expect(linearCalls.filter((c) => c.op === "FactoryReady")).toHaveLength(2);
   });
 
   test("sends the personal key as is, and no key when the cloud proxy injects it", async () => {
@@ -688,6 +706,14 @@ describe("brief", () => {
     routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
     const d = JSON.parse((await run(["brief", "--json"])).out);
     expect(d.needsHumanPrs).toEqual([]);
+  });
+
+  test("pages through every Linear ticket", async () => {
+    pageSize = 1;
+    linearIssues = [linearIssue({ identifier: "ENG-1" }), linearIssue({ id: "u2", identifier: "ENG-2" })];
+    const r = await run(["brief"]);
+    expect(r.err).toBe("");
+    expect(r.out).toContain("## Queued (2 ready");
   });
 
   test("with no tracker configured, says how to configure one", async () => {

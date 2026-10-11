@@ -36,25 +36,29 @@ export async function linear<T>(query: string, variables: Record<string, unknown
   return json.data as T;
 }
 
+// Linear prices a query before it runs it and rejects one over 10,000 points,
+// and a connection with no page size counts as 50 nodes, so every connection
+// here names a small one: test/linear.spec.ts prices each query. The children
+// are only the open ones, since readiness asks whether any is open.
 export const ISSUE_FIELDS = `
 fragment IssueFields on Issue {
   id identifier title description url branchName priority createdAt updatedAt completedAt
   state { id name type }
   team { id key }
   assignee { id name isMe }
-  labels { nodes { id name parent { name } } }
+  labels(first: 20) { nodes { id name parent { name } } }
   parent { identifier }
-  children { nodes { identifier title state { type name } } }
-  inverseRelations { nodes { type issue { identifier title state { type name } } } }
-  attachments { nodes { url title } }
+  children(first: 10, filter: { state: { type: { nin: ["completed", "canceled"] } } }) { nodes { identifier title state { type name } } }
+  inverseRelations(first: 20) { nodes { type issue { identifier title state { type name } } } }
+  attachments(first: 10) { nodes { url title } }
 }`;
 
 export const READY_QUERY = `
-query FactoryReady($label: String!) {
-  issues(first: 100, filter: {
+query FactoryReady($label: String!, $after: String) {
+  issues(first: 50, after: $after, filter: {
     labels: { some: { name: { eqIgnoreCase: $label } } }
     state: { type: { in: ["triage", "backlog", "unstarted"] } }
-  }) { nodes { ...IssueFields } }
+  }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
 }
 ${ISSUE_FIELDS}`;
 
@@ -67,16 +71,21 @@ query FactoryIssue($id: String!) {
 }
 ${ISSUE_FIELDS}`;
 
-export const BRIEF_QUERY = `
-query FactoryBrief($since: DateTimeOrDuration!, $labels: [String!]) {
-  mine: issues(first: 100, filter: {
+export const MINE_QUERY = `
+query FactoryMine($since: DateTimeOrDuration!, $after: String) {
+  issues(first: 50, after: $after, filter: {
     assignee: { isMe: { eq: true } }
     updatedAt: { gt: $since }
-  }) { nodes { ...IssueFields } }
-  queued: issues(first: 100, filter: {
+  }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
+}
+${ISSUE_FIELDS}`;
+
+export const QUEUED_QUERY = `
+query FactoryQueued($labels: [String!], $after: String) {
+  issues(first: 50, after: $after, filter: {
     labels: { some: { name: { in: $labels } } }
     state: { type: { nin: ["completed", "canceled"] } }
-  }) { nodes { ...IssueFields } }
+  }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
 }
 ${ISSUE_FIELDS}`;
 
@@ -184,6 +193,20 @@ export function toTicket(i: LinearIssue): Ticket {
   };
 }
 
+type IssuePage = { issues: { nodes: LinearIssue[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
+
+// Every issue a paged `issues` query matches, following its cursor.
+async function issues(query: string, variables: Record<string, unknown>): Promise<LinearIssue[]> {
+  const all: LinearIssue[] = [];
+  let after: string | null = null;
+  do {
+    const d: IssuePage = await linear<IssuePage>(query, { ...variables, after });
+    all.push(...d.issues.nodes);
+    after = d.issues.pageInfo.hasNextPage ? d.issues.pageInfo.endCursor : null;
+  } while (after);
+  return all;
+}
+
 export class LinearTracker implements Tracker {
   readonly name = "linear" as const;
   private raw = new Map<string, WithComments>();
@@ -207,8 +230,7 @@ export class LinearTracker implements Tracker {
   }
 
   async ready(): Promise<Ticket[]> {
-    const d = await linear<{ issues: { nodes: LinearIssue[] } }>(READY_QUERY, { label: READY_LABEL });
-    return d.issues.nodes.map(toTicket);
+    return (await issues(READY_QUERY, { label: READY_LABEL })).map(toTicket);
   }
 
   async get(id: string): Promise<{ ticket: Ticket; comments: TicketComment[] }> {
@@ -249,12 +271,10 @@ export class LinearTracker implements Tracker {
   }
 
   async portfolio(): Promise<Ticket[]> {
-    const d = await linear<{ mine: { nodes: LinearIssue[] }; queued: { nodes: LinearIssue[] } }>(BRIEF_QUERY, {
-      since: "-P14D",
-      labels: [READY_LABEL, HUMAN_LABEL],
-    });
+    const mine = await issues(MINE_QUERY, { since: "-P14D" });
+    const queued = await issues(QUEUED_QUERY, { labels: [READY_LABEL, HUMAN_LABEL] });
     const byId = new Map<string, LinearIssue>();
-    for (const i of [...d.mine.nodes, ...d.queued.nodes]) byId.set(i.id, i);
+    for (const i of [...mine, ...queued]) byId.set(i.id, i);
     return [...byId.values()].map(toTicket);
   }
 

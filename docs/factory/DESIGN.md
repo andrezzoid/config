@@ -284,5 +284,6 @@ the merge API, so the forge enforces the gate: a repo whose profile allows
   trusted: run `claude` once interactively in each repo first.
 - The GitHub adapter has run end to end on andrezzoid/strata: claim, take-over,
   pull request, verdict. The Linear queries are validated against Linear's
-  schema, a mock server and a live authentication check, but have never run
-  against a real workspace.
+  schema, a mock server and a live authentication check, and
+  `test/linear.spec.ts` prices each one by Linear's published complexity rules,
+  but they have never run against a real workspace.

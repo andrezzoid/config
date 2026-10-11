@@ -31,7 +31,7 @@ field says what to do:
 | `fix` | work its blockers in the order of steps 3 to 6, then go on from step 7 |
 | `wait` | go to step 9 |
 | `merge-gate` | go to step 8, then step 10 |
-| `human` | brief "waiting on a review" and stop |
+| `human` | brief what it waits on, a review or its author taking it out of draft, and stop |
 | `done` | merged: go to step 11; closed without merging: brief and stop |
 
 Conflicts come before review threads and threads before CI, because fixing a

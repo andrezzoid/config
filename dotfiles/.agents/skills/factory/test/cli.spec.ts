@@ -714,6 +714,17 @@ describe("brief", () => {
     expect(d.needsHumanPrs).toEqual([{ id: "ENG-1", url: "https://github.com/o/r/pull/7", why }]);
   });
 
+  test("puts a draft PR under Needs you as waiting on its author", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
+    routes({ "GET repos/o/r/pulls/7": {
+      number: 7, html_url: "https://github.com/o/r/pull/7", title: "App: thing", state: "open", merged: false,
+      draft: true, mergeable: true, mergeable_state: "draft",
+      head: { sha: SHA, ref: "andre/eng-1-thing" }, base: { ref: "main" },
+    } });
+    const d = JSON.parse((await run(["brief", "--json"])).out);
+    expect(d.needsHumanPrs).toEqual([{ id: "ENG-1", url: "https://github.com/o/r/pull/7", why: "a draft, waiting on its author" }]);
+  });
+
   test("leaves out an autonomy:merge PR the merge gate allows: babysit-pr merges it", async () => {
     linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent", "autonomy:merge"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
     routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });

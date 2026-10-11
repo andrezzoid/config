@@ -359,7 +359,7 @@ async function brief(a: Args) {
       const pr = await prState(url);
       prs.push({ url, status: pr?.status ?? null });
       if (!pr) continue;
-      if (pr.status.next === "human") needsHumanPrs.push({ id: t.id, url, why: "waiting on a review" });
+      if (pr.status.next === "human") needsHumanPrs.push({ id: t.id, url, why: pr.status.verdict === "DRAFT" ? "a draft, waiting on its author" : "waiting on a review" });
       else if (pr.status.verdict === "READY" && autonomy(t) === "pr") needsHumanPrs.push({ id: t.id, url, why: "ready, waiting on your merge" });
       else if (pr.status.verdict === "READY") {
         const gate = mergeGate({ status: pr.status, ticketAutonomy: "merge", repoMaxAutonomy: pr.profile.maxAutonomy, runSkill: hasRunSkill(pr.ref, pr.pull.base.ref), humanApproved: false });

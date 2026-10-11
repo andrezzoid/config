@@ -60,7 +60,8 @@ export type Verdict =
   | "CLOSED";
 
 // What the babysitter does next. "merge-gate" means the forge would accept a
-// merge; whether anyone may merge is decided by mergeGate().
+// merge; whether anyone may merge is decided by mergeGate(). "human" covers a
+// draft too: only its author takes it out of draft.
 export type Next = "fix" | "wait" | "human" | "merge-gate" | "done";
 
 export const EXIT: Record<Verdict, number> = {
@@ -84,7 +85,7 @@ const NEXT: Record<Verdict, Next> = {
   THREADS: "fix",
   CI_FAILING: "fix",
   CHANGES_REQUESTED: "fix",
-  DRAFT: "fix",
+  DRAFT: "human",
   BEHIND: "fix",
   CI_PENDING: "wait",
   COMPUTING: "wait",

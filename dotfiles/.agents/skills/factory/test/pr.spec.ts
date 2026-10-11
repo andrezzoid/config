@@ -77,6 +77,10 @@ describe("decide", () => {
     expect(blocked.next).toBe("human");
   });
 
+  test("a draft waits on its author: no fix the babysitter makes takes it out of draft", () => {
+    expect(decide(facts({ draft: true })).next).toBe("human");
+  });
+
   test("unstable (only non-required checks failing at merge level) is still READY when no check fails", () => {
     expect(decide(facts({ mergeableState: "unstable" })).verdict).toBe("READY");
   });

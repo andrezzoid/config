@@ -45,6 +45,7 @@ export function linearIssue(over: Omit<Partial<LinearIssue>, "labels"> & { label
     children: { nodes: [] },
     inverseRelations: { nodes: [] },
     attachments: { nodes: [] },
+    briefs: { nodes: [] },
     ...rest,
   };
 }

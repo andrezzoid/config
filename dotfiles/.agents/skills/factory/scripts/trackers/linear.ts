@@ -6,7 +6,7 @@
 // The query documents are validated against Linear's published schema.
 
 import { run } from "../proc.ts";
-import { HUMAN_LABEL, READY_LABEL } from "../tickets.ts";
+import { contract, HUMAN_LABEL, READY_LABEL } from "../tickets.ts";
 import type { Ticket, TicketComment, TicketState, Tracker } from "./types.ts";
 
 const ENDPOINT = process.env.FACTORY_LINEAR_URL ?? "https://api.linear.app/graphql";
@@ -39,7 +39,9 @@ export async function linear<T>(query: string, variables: Record<string, unknown
 // Linear prices a query before it runs it and rejects one over 10,000 points,
 // and a connection with no page size counts as 50 nodes, so every connection
 // here names a small one: test/linear.spec.ts prices each query. The children
-// are only the open ones, since readiness asks whether any is open.
+// are only the open ones, since readiness asks whether any is open. `briefs`
+// holds the comments that may be triage's agent brief, which can carry the
+// Repo line a reporter's description lacks.
 export const ISSUE_FIELDS = `
 fragment IssueFields on Issue {
   id identifier title description url branchName priority createdAt updatedAt completedAt
@@ -51,6 +53,7 @@ fragment IssueFields on Issue {
   children(first: 10, filter: { state: { type: { nin: ["completed", "canceled"] } } }) { nodes { identifier title state { type name } } }
   inverseRelations(first: 20) { nodes { type issue { identifier title state { type name } } } }
   attachments(first: 10) { nodes { url title } }
+  briefs: comments(last: 3, filter: { body: { contains: "## Agent Brief" } }) { nodes { id body createdAt } }
 }`;
 
 export const READY_QUERY = `
@@ -146,6 +149,7 @@ export type LinearIssue = {
   children: { nodes: Ref[] };
   inverseRelations: { nodes: { type: string; issue: Ref }[] };
   attachments: { nodes: { url: string; title?: string | null }[] };
+  briefs: { nodes: TicketComment[] };
 };
 type WithComments = LinearIssue & { comments: { nodes: { id: string; body: string; createdAt: string }[] } };
 
@@ -155,11 +159,15 @@ const STATE: Record<string, TicketState> = { triage: "queued", backlog: "queued"
 const REPO_LINE = /^[ \t>*_-]*repo(?:sitory)?[*_]*\s*:[\s*_`]*(?:https:\/\/github\.com\/)?([\w.-]+\/[\w.-]+?)(?:\.git)?[`*_]*\s*$/im;
 const GITHUB_URL = /github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/;
 
-// to-tickets writes a `Repo: owner/name` line. Linear's GitHub integration
-// attaches PR and commit links, which name the repo as well.
-export function repoOf(issue: Pick<LinearIssue, "description" | "attachments">): string | null {
-  const line = REPO_LINE.exec(issue.description ?? "");
-  if (line) return line[1].toLowerCase();
+// to-tickets writes a `Repo: owner/name` line in the description, and triage
+// writes one in its agent brief, which is the contract once it exists, so the
+// brief's line wins. Linear's GitHub integration attaches PR and commit links,
+// which name the repo as well.
+export function repoOf(issue: Pick<LinearIssue, "description" | "attachments" | "briefs">): string | null {
+  for (const text of [contract({ body: "" }, issue.briefs.nodes).text, issue.description ?? ""]) {
+    const line = REPO_LINE.exec(text);
+    if (line) return line[1].toLowerCase();
+  }
   for (const a of issue.attachments.nodes) {
     const m = GITHUB_URL.exec(a.url);
     if (m) return m[1].toLowerCase();

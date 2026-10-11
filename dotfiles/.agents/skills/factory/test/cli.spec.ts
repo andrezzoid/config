@@ -417,6 +417,19 @@ describe("Linear tickets", () => {
     expect(d.skipped).toEqual([{ id: "ENG-2", reason: "blocked by ENG-1" }]);
   });
 
+  test("next takes the repo from triage's latest agent brief when the description names none", async () => {
+    linearIssues = [linearIssue({
+      description: "The reporter's words, with no repo line.",
+      briefs: { nodes: [
+        { id: "b1", body: "## Agent Brief\n\nRepo: andrezzoid/old", createdAt: "2026-10-02T00:00:00Z" },
+        { id: "b2", body: "## Agent Brief\n\nRepo: andrezzoid/app", createdAt: "2026-10-03T00:00:00Z" },
+      ] },
+    })];
+    const r = await run(["tickets", "next", "--json"]);
+    expect(r.err).toBe("");
+    expect(JSON.parse(r.out).ready.map((t: any) => [t.id, t.repo])).toEqual([["ENG-1", "andrezzoid/app"]]);
+  });
+
   test("next pages through every ready ticket", async () => {
     pageSize = 1;
     linearIssues.push(linearIssue({ id: "u2", identifier: "ENG-2" }));

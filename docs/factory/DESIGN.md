@@ -212,7 +212,7 @@ means adding one adapter.
 | Queued / started | workflow state type | open / open with `in-progress` |
 | Blockers | "blocked by" relations | issue dependencies, or a `## Blocked by` section |
 | Parent | children | sub-issues |
-| Repo | `Repo: owner/name` line in the body | the issue's repository |
+| Repo | `Repo: owner/name` line in triage's agent brief, else in the body | the issue's repository |
 | PR closes it with | `Closes ENG-123` | `Closes #12` |
 | Transport | GraphQL over fetch | `gh api` REST only: cloud sessions block GitHub GraphQL |
 
@@ -265,10 +265,6 @@ the merge API, so the forge enforces the gate: a repo whose profile allows
   its sessions no harness: no skills, no `factory` CLI, no mod. Dispatched
   sessions and routines in it fail. Step 1 of `/setup-factory cloud` is what
   installs it.
-- On Linear, a ticket that came through triage carries its `Repo:` line in the
-  agent brief, a comment, and the dispatcher reads it only from the description
-  or from an attached GitHub link. With neither, the ticket never leaves the
-  queue until someone adds the line to the description.
 - The cloud review-thread route (`ccr/review_threads`) returned an empty list
   in every probe, so its non-empty shape is a guess. The parser returns
   "unreadable" for a shape it does not know, which blocks the merge.

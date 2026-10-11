@@ -184,12 +184,22 @@ describe("Linear adapter", () => {
     ["> Repo: org/my.repo", "org/my.repo"],
   ]) {
     test(`repo from "${description}"`, () => {
-      expect(repoOf({ description, attachments: { nodes: [] } })).toBe(expected);
+      expect(repoOf({ description, attachments: { nodes: [] }, briefs: { nodes: [] } })).toBe(expected);
     });
   }
 
   test("repo falls back to a GitHub attachment", () => {
-    expect(repoOf({ description: null, attachments: { nodes: [{ url: "https://github.com/org/app/pull/3" }] } })).toBe("org/app");
+    expect(repoOf({ description: null, attachments: { nodes: [{ url: "https://github.com/org/app/pull/3" }] }, briefs: { nodes: [] } })).toBe("org/app");
+  });
+
+  test("triage's agent brief names the repo over the description, as it is the contract", () => {
+    const briefs = { nodes: [{ id: "b1", body: "## Agent Brief\n\nRepo: org/new", createdAt: "2026-10-02T00:00:00Z" }] };
+    expect(repoOf({ description: "Repo: org/old", attachments: { nodes: [] }, briefs })).toBe("org/new");
+  });
+
+  test("a brief with no Repo line leaves the description's", () => {
+    const briefs = { nodes: [{ id: "b1", body: "## Agent Brief\n\nNo repo here.", createdAt: "2026-10-02T00:00:00Z" }] };
+    expect(repoOf({ description: "Repo: org/app", attachments: { nodes: [] }, briefs })).toBe("org/app");
   });
 
   test("normalizes state, blockers, children and linked PRs", () => {

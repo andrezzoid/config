@@ -3,7 +3,7 @@
 // resolution, which REST does not expose: cloud sessions read it from the
 // proxy's ccr route, local ones from GraphQL.
 
-import { attributed, latestMarker, patchKey, type PrFacts } from "./pr.ts";
+import { attributed, type PrFacts } from "./pr.ts";
 import { git, run } from "./proc.ts";
 
 const GH = process.env.FACTORY_GH ?? "gh";
@@ -79,8 +79,7 @@ export function resolvePr(arg: string | undefined, repoFlag: string | undefined)
   return { ...repo, number: pulls[0].number };
 }
 
-// A failed lookup is not cached: the next call retries, and until one succeeds
-// no verdict marker counts.
+// A failed lookup is not cached: the next call retries.
 let viewerCache: string | undefined;
 export function viewer(): string | null {
   if (viewerCache === undefined) {
@@ -166,39 +165,15 @@ export function replyTo(r: Repo, number: number, commentId: number, body: string
   api(`repos/${r.owner}/${r.repo}/pulls/${number}/comments/${commentId}/replies`, { method: "POST", body: { body: attributed(body) } });
 }
 
-export function patchId(r: Repo, number: number): string | null {
-  try {
-    return patchKey(api<string>(`repos/${r.owner}/${r.repo}/pulls/${number}`, { accept: "application/vnd.github.diff" }));
-  } catch {
-    return null;
-  }
-}
-
-// GitHub lists at most 3000 files per PR. A rename counts at both paths, so
-// moving a file out of a one-way door still touches the door.
-const MAX_PR_FILES = 3000;
-export function prFiles(r: Repo, number: number): { files: string[]; complete: boolean } {
-  const raw = paginate<any>(`repos/${r.owner}/${r.repo}/pulls/${number}/files`, (p) => p, MAX_PR_FILES / 100);
-  const files = raw.flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]));
-  return { files, complete: raw.length < MAX_PR_FILES };
-}
-
-export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts {
+export function prFacts(r: Repo, number: number): PrFacts {
   const base = `repos/${r.owner}/${r.repo}`;
   const pull = api<any>(`${base}/pulls/${number}`);
   const sha: string = pull.head.sha;
-  const checkRuns = paginate<any>(`${base}/commits/${sha}/check-runs`, (p) => p.check_runs, 3);
-  const status = api<any>(`${base}/commits/${sha}/status`);
-  const comments = paginate<any>(`${base}/issues/${number}/comments`);
-  const login = viewer();
-  const marker = latestMarker(comments, login);
-  const files = prFiles(r, number);
   return {
-    owner: r.owner,
-    repo: r.repo,
     number,
     url: pull.html_url,
     title: pull.title,
+    body: pull.body ?? null,
     state: pull.state,
     merged: Boolean(pull.merged),
     draft: Boolean(pull.draft),
@@ -207,17 +182,46 @@ export function prFacts(r: Repo, number: number, oneWayGlobs: string[]): PrFacts
     headSha: sha,
     headRef: pull.head.ref,
     baseRef: pull.base.ref,
-    checkRuns,
-    statuses: status?.statuses ?? [],
+    updatedAt: pull.updated_at ?? new Date().toISOString(),
+    checkRuns: paginate<any>(`${base}/commits/${sha}/check-runs`, (p) => p.check_runs, 3),
+    statuses: api<any>(`${base}/commits/${sha}/status`)?.statuses ?? [],
     reviews: paginate<any>(`${base}/pulls/${number}/reviews`),
     unresolvedThreads: pull.state === "open" ? unresolvedThreads(r, number) : 0,
-    comments,
-    viewer: login,
-    patchId: marker && !sha.startsWith(marker.sha) ? patchId(r, number) : null,
-    files: files.files,
-    filesComplete: files.complete,
-    oneWayGlobs,
   };
+}
+
+// The repository's own merge setting: squash where it allows squash, else a
+// merge commit, else rebase.
+export function mergeMethod(r: Repo): "squash" | "merge" | "rebase" {
+  const repo = api<any>(`repos/${r.owner}/${r.repo}`);
+  if (repo?.allow_squash_merge !== false) return "squash";
+  return repo.allow_merge_commit !== false ? "merge" : "rebase";
+}
+
+export type Comment = { id: string; body: string; createdAt: string };
+
+// The conversation on a pull request or issue, oldest first: where reports go.
+export function comments(repo: string, number: number): Comment[] {
+  return paginate<any>(`repos/${repo}/issues/${number}/comments`).map((c) => ({ id: String(c.id), body: c.body ?? "", createdAt: c.created_at }));
+}
+
+export type Merged = { repo: string; number: number; url: string; title: string; mergedAt: string };
+
+// Pull requests merged since a moment, read from the 300 most recently
+// updated closed ones: enough for a week.
+export function mergedSince(repo: string, since: string): Merged[] {
+  return paginate<any>(`repos/${repo}/pulls?state=closed&sort=updated&direction=desc`, (p) => p, 3)
+    .filter((p) => p.merged_at && Date.parse(p.merged_at) >= Date.parse(since))
+    .map((p) => ({ repo, number: p.number, url: p.html_url, title: p.title, mergedAt: p.merged_at }));
+}
+
+// The first line of each review comment on a pull request's diff.
+export function reviewComments(repo: string, number: number): { author: string; path: string; text: string }[] {
+  return paginate<any>(`repos/${repo}/pulls/${number}/comments`).map((c) => ({
+    author: c.user?.login ?? "?",
+    path: c.path ?? "",
+    text: String(c.body ?? "").trim().split("\n", 1)[0].slice(0, 200),
+  }));
 }
 
 // A ticket's open pull requests: those from its branch, plus the ones its
@@ -239,16 +243,6 @@ export function openPrs(repo: string, branch: string, linked: string[]): string[
     }
   }
   return [...urls];
-}
-
-// The entry names of a directory in the repo; empty when it does not exist.
-export function listRepoDir(r: Repo, path: string): string[] {
-  try {
-    const entries = api<{ name: string }[]>(`repos/${r.owner}/${r.repo}/contents/${path}`);
-    return Array.isArray(entries) ? entries.map((e) => e.name) : [];
-  } catch {
-    return [];
-  }
 }
 
 export function readRepoFile(r: Repo, path: string): string | null {

@@ -4,11 +4,8 @@
 // :id), "DIFF path" or "GRAPHQL". Every call is appended to calls.jsonl so
 // tests can assert what was sent.
 //
-// Two route values make comment threads live: "$append" on a POST adds the
-// sent body, with a fresh id, to the GET list at the same path; "$delete" on a
-// DELETE .../comments/<id> removes that comment from every list. A "$rival"
-// route is a comment another session posts a second before the next "$append",
-// to stage a claim race.
+// The route value "$append" makes a comment thread live: a POST adds the sent
+// body, with a fresh id, to the GET list at the same path.
 
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -44,17 +41,8 @@ if (!key) {
 let body = routes[key];
 if (body === "$append") {
   const list: any[] = (routes[`GET ${bare}`] ??= []);
-  if (routes.$rival) {
-    list.push({ created_at: new Date(Date.now() - 1000).toISOString(), ...routes.$rival });
-    delete routes.$rival;
-  }
   body = { id: 9000 + list.length, created_at: new Date().toISOString(), ...JSON.parse(stdin ?? "{}") };
   list.push(body);
   writeFileSync(file, JSON.stringify(routes));
-} else if (body === "$delete") {
-  const id = Number(bare.split("/").pop());
-  for (const k of Object.keys(routes)) if (Array.isArray(routes[k])) routes[k] = routes[k].filter((c: any) => c?.id !== id);
-  writeFileSync(file, JSON.stringify(routes));
-  body = "";
 }
 console.log(typeof body === "string" ? body : JSON.stringify(body));

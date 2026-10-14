@@ -41,17 +41,22 @@ export type TicketComment = { id: string; body: string; createdAt: string };
 
 export interface Tracker {
   readonly name: TrackerName;
-  // Labelled ready-for-agent and not started.
-  ready(): Promise<Ticket[]>;
+  // Open tickets the factory reads: those with a factory label, and new ones
+  // with no label at all. Ready tickets come with their blockers and children.
+  open(): Promise<Ticket[]>;
   get(id: string): Promise<{ ticket: Ticket; comments: TicketComment[] }>;
-  // Mark started where it is not yet, and assign the viewer only when nobody
-  // is assigned: the assignee stays the human's.
+  // The claim: label it in-progress, mark it started where the tracker has
+  // states, and assign the viewer only when nobody is assigned: the assignee
+  // stays the human's.
   start(t: Ticket): Promise<void>;
-  comment(id: string, body: string): Promise<string>;
-  deleteComment(id: string, commentId: string): Promise<void>;
-  // Back to the queue for a human: ready-for-human instead of ready-for-agent.
+  comment(id: string, body: string): Promise<void>;
+  // Back to the queue for a human: ready-for-human instead of ready-for-agent
+  // and in-progress.
   handBack(id: string): Promise<{ labelled: boolean }>;
-  // Recent and open factory work, for the brief.
-  portfolio(): Promise<Ticket[]>;
+  // Once its pull request merges: neither ready-for-agent nor in-progress.
+  release(id: string): Promise<void>;
+  // Tickets completed since a moment, each with when it last became
+  // ready-for-agent, if it ever did.
+  done(since: string): Promise<{ ticket: Ticket; readyAt: string | null }[]>;
   viewer(): Promise<string>;
 }

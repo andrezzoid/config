@@ -1,36 +1,32 @@
-// End to end: the real CLI as a subprocess, a fake `gh`, and a mock Linear.
+// End to end: the real CLI as a subprocess, a fake `gh`, a fake `claude`, and
+// a mock Linear.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, beforeEach, describe, test } from "node:test";
 import { expectedSkills } from "../scripts/cli.ts";
-import { patchKey, renderMarker } from "../scripts/pr.ts";
-import { claimBody } from "../scripts/tickets.ts";
+import { claimLog } from "../scripts/tickets.ts";
 import { expect } from "./expect.ts";
 import { githubIssue, linearIssue } from "./fixtures.ts";
 
 const CLI = join(import.meta.dirname, "..", "scripts", "cli.ts");
 const FAKE_GH = join(import.meta.dirname, "fake-gh.ts");
 const SHA = "c".repeat(40);
-const DIFF = `diff --git a/src/a.ts b/src/a.ts
-index 1111111..2222222 100644
---- a/src/a.ts
-+++ b/src/a.ts
-@@ -1 +1 @@
--export const a = 1;
-+export const a = 2;
-`;
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 
 type LinearCall = { op: string; variables: any; auth: string | undefined };
 let linearCalls: LinearCall[] = [];
 let linearIssues: any[] = [];
+let doneIssues: any[] = [];
+// Comments on ENG-1, or on whichever ticket a test names in commentsFor.
 let issueComments: any[] = [];
-// A claim another session posts a second before ours, to stage a race.
-let rivalClaim: any = null;
+let commentsFor: Record<string, any[]> = {};
+// Labels the mock workspace lacks.
+let missingLabels: string[] = [];
 // Linear pages every issue list; a test shrinks the page to make the CLI follow the cursor.
 let pageSize = 100;
 
@@ -43,13 +39,13 @@ function page(nodes: any[], after: string | null | undefined) {
 function answer(op: string, variables: any): { status: number; body: unknown } {
   const data = (d: unknown) => ({ status: 200, body: { data: d } });
   switch (op) {
-    case "FactoryReady":
-    case "FactoryMine":
-    case "FactoryQueued":
+    case "FactoryOpen":
       return data({ issues: page(linearIssues, variables.after) });
+    case "FactoryDone":
+      return data({ issues: page(doneIssues, variables.after) });
     case "FactoryIssue": {
-      const found = linearIssues.find((i) => i.identifier === variables.id);
-      return data({ issue: found ? { ...found, comments: { nodes: issueComments } } : null });
+      const found = [...linearIssues, ...doneIssues].find((i) => i.identifier === variables.id);
+      return data({ issue: found ? { ...found, comments: { nodes: commentsFor[variables.id] ?? issueComments } } : null });
     }
     case "FactoryViewer":
       return data({ viewer: { id: "me", name: "André" } });
@@ -61,18 +57,11 @@ function answer(op: string, variables: any): { status: number; body: unknown } {
       ] } } });
     case "FactoryUpdate":
       return data({ issueUpdate: { success: true } });
-    case "FactoryComment": {
-      if (rivalClaim) issueComments.push({ ...rivalClaim, createdAt: new Date(Date.now() - 1000).toISOString() });
-      rivalClaim = null;
-      const id = `mine-${issueComments.length}`;
-      issueComments.push({ id, body: variables.body, createdAt: new Date().toISOString(), user: { name: "André" } });
-      return data({ commentCreate: { success: true, comment: { id } } });
-    }
-    case "FactoryDeleteComment":
-      issueComments = issueComments.filter((c) => c.id !== variables.id);
-      return data({ commentDelete: { success: true } });
+    case "FactoryComment":
+      issueComments.push({ id: `c-${issueComments.length}`, body: variables.body, createdAt: new Date().toISOString(), user: { name: "André" } });
+      return data({ commentCreate: { success: true, comment: { id: "c" } } });
     case "FactoryLabel":
-      return data({ issueLabels: { nodes: [{ id: "lbl-human", name: variables.name, team: null }] } });
+      return data({ issueLabels: { nodes: missingLabels.includes(variables.name) ? [] : [{ id: `lbl-${variables.name}`, name: variables.name, team: null }] } });
     case "FactoryRemoveLabel":
       return data({ issueRemoveLabel: { success: true } });
     case "FactoryAddLabel":
@@ -100,32 +89,31 @@ before(async () => {
 });
 after(() => server.close());
 
+// A pull request as `gh api repos/o/r/pulls/<n>` returns it.
+function pull(number: number, over: Record<string, unknown> = {}) {
+  return {
+    number, html_url: `https://github.com/o/r/pull/${number}`, title: "App: thing", body: "Does it.\n\nCloses ENG-1", state: "open", merged: false,
+    draft: false, mergeable: true, mergeable_state: "clean", updated_at: hoursAgo(1),
+    head: { sha: SHA, ref: "andre/eng-1-thing" }, base: { ref: "main" }, ...over,
+  };
+}
+
 let dir: string;
 function routes(over: Record<string, unknown> = {}) {
-  const profile = Buffer.from("- **Max autonomy:** `merge`\n\n## One-way doors\n\n- `db/**`\n").toString("base64");
   const all = {
-    "GET repos/o/r/pulls/7": {
-      number: 7, html_url: "https://github.com/o/r/pull/7", title: "App: thing", state: "open", merged: false,
-      draft: false, mergeable: true, mergeable_state: "clean",
-      head: { sha: SHA, ref: "andre/eng-1-thing" }, base: { ref: "main" },
-    },
+    "GET repos/o/r/pulls/7": pull(7),
     [`GET repos/o/r/commits/${SHA}/check-runs`]: { check_runs: [{ id: 1, name: "test", status: "completed", conclusion: "success" }] },
     [`GET repos/o/r/commits/${SHA}/status`]: { state: "success", statuses: [] },
     "GET repos/o/r/pulls/7/reviews": [],
-    "GET repos/o/r/issues/7/comments": [],
-    "GET repos/o/r/pulls/7/files": [{ filename: "src/a.ts" }],
-    "GET repos/o/r/contents/.agents/factory.md": { encoding: "base64", content: profile },
-    "GET repos/o/r/contents/.claude/skills": [{ name: "verify", type: "dir" }, { name: "run-app", type: "dir" }],
-    "GET repos/o/r/contents/.claude/skills/run-app/SKILL.md": { encoding: "base64", content: Buffer.from("# run").toString("base64") },
+    "GET repos/o/r": { allow_squash_merge: true, allow_merge_commit: true, allow_rebase_merge: true },
     "GET user": { login: "andrezzoid" },
     "GRAPHQL": { data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: true }] } } } } },
-    "DIFF repos/o/r/pulls/7": DIFF,
     "PUT repos/o/r/pulls/7/merge": { merged: true },
-    "POST repos/o/r/issues/7/comments": { id: 1 },
     ...over,
   };
   writeFileSync(join(dir, "routes.json"), JSON.stringify(all));
 }
+const current = () => JSON.parse(readFileSync(join(dir, "routes.json"), "utf8"));
 
 function ghCalls(): { args: string[]; stdin: string | null }[] {
   try {
@@ -137,9 +125,11 @@ function ghCalls(): { args: string[]; stdin: string | null }[] {
 
 const sent = (method: string, path: string) =>
   ghCalls().filter((c) => c.args[1] === path && c.args.includes(method)).map((c) => JSON.parse(c.stdin ?? "null"));
+const ops = (op: string) => linearCalls.filter((c) => c.op === op).map((c) => c.variables);
 
 // Async on purpose: the mock Linear answers from this same process. Runs in
-// a scratch folder unless told otherwise, so no real clone leaks in.
+// a scratch folder unless told otherwise, so no real clone leaks in, and with
+// no session of its own, since these tests run inside one.
 function run(args: string[], env: Record<string, string> = {}, cwd = dir): Promise<{ out: string; err: string; code: number }> {
   const p = spawn(process.execPath, [CLI, ...args], {
     cwd,
@@ -148,9 +138,12 @@ function run(args: string[], env: Record<string, string> = {}, cwd = dir): Promi
       FACTORY_GH: FAKE_GH,
       FAKE_GH_DIR: dir,
       FACTORY_LINEAR_URL: linearUrl,
+      FACTORY_CLAUDE: "/nonexistent/claude",
       LINEAR_API_KEY: "lin_api_test",
       FACTORY_GITHUB_REPOS: "",
       CLAUDE_CODE_REMOTE: "",
+      CLAUDE_CODE_REMOTE_SESSION_ID: "",
+      CLAUDE_CODE_SESSION_ID: "",
       ...env,
     },
   });
@@ -161,13 +154,22 @@ function run(args: string[], env: Record<string, string> = {}, cwd = dir): Promi
   return new Promise((ok) => p.on("close", (code) => ok({ out, err, code: code ?? 1 })));
 }
 
+function clone(): string {
+  const path = join(dir, "clone");
+  spawnSync("git", ["init", "-q", path]);
+  spawnSync("git", ["-C", path, "remote", "add", "origin", "https://github.com/o/r.git"]);
+  return path;
+}
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "factory-cli-"));
   linearCalls = [];
   issueComments = [];
-  rivalClaim = null;
+  commentsFor = {};
+  missingLabels = [];
+  doneIssues = [];
   pageSize = 100;
-  linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "autonomy:merge"] })];
+  linearIssues = [linearIssue({ identifier: "ENG-1" })];
   routes();
 });
 
@@ -181,173 +183,86 @@ test("cli.ts runs when started through a symlink", () => {
 });
 
 describe("pr status", () => {
-  test("READY with exit 0, profile read from the base branch", async () => {
-    const r = await run(["pr", "status", "7", "--repo", "o/r", "--json"]);
+  test("reports facts as JSON and exits 0", async () => {
+    const r = await run(["pr", "status", "--json", "7", "--repo", "o/r"]);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const s = JSON.parse(r.out);
-    expect(s.verdict).toBe("READY");
-    expect(s.unresolvedThreads).toBe(0);
-    expect(ghCalls().some((c) => c.args[1] === "repos/o/r/contents/.agents/factory.md?ref=main")).toBe(true);
+    expect(s).toMatchObject({ pr: 7, state: "open", draft: false, conflicts: false, unresolvedThreads: 0, checks: { failing: [], pending: [], passing: 1 } });
+    expect("next" in s || "verdict" in s).toBe(false);
   });
 
   test("cloud sessions read review threads from the ccr route", async () => {
     routes({ "GET repos/o/r/pulls/7/ccr/review_threads": [{ is_resolved: false }], GRAPHQL: undefined });
     const r = await run(["pr", "status", "7", "--repo", "o/r", "--json"], { CLAUDE_CODE_REMOTE: "true" });
-    expect(r.code).toBe(3);
-    expect(JSON.parse(r.out).verdict).toBe("THREADS");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).unresolvedThreads).toBe(1);
   });
 
-  test("a failing check exits 4 and names the check", async () => {
+  test("names a failing check and still exits 0", async () => {
     routes({ [`GET repos/o/r/commits/${SHA}/check-runs`]: { check_runs: [{ id: 1, name: "lint", status: "completed", conclusion: "failure" }] } });
     const r = await run(["pr", "status", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(4);
+    expect(r.code).toBe(0);
     expect(r.out).toContain("failing: lint");
   });
 });
 
 describe("pr merge", () => {
-  test("refuses without a verdict and never calls the merge endpoint", async () => {
-    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(3);
-    expect(r.out).toContain("no passing verdict");
-    expect(ghCalls().some((c) => c.args.includes("PUT"))).toBe(false);
-  });
-
-  test("a forged marker from another login does not unlock the merge", async () => {
-    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "mallory" } }] });
-    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(3);
-  });
-
-  test("merges with the head SHA pinned when every condition holds", async () => {
-    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
+  test("merges at the checked head with the repo's method, then takes the factory's labels off its ticket", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "in-progress"] })];
     const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(sent("PUT", "repos/o/r/pulls/7/merge")).toEqual([{ merge_method: "squash", sha: SHA }]);
-    expect(linearCalls.find((c) => c.op === "FactoryIssue")?.variables).toEqual({ id: "ENG-1" });
+    expect(ops("FactoryRemoveLabel")).toEqual([{ id: "uuid-1", labelId: "lbl-0" }, { id: "uuid-1", labelId: "lbl-1" }]);
   });
 
-  test("a GitHub issue's autonomy label comes from the issue the branch names", async () => {
+  test("refuses with every blocker named and never calls the merge endpoint", async () => {
     routes({
-      "GET repos/o/r/pulls/7": {
-        number: 7, html_url: "https://github.com/o/r/pull/7", title: "Thing", state: "open", merged: false,
-        draft: false, mergeable: true, mergeable_state: "clean", head: { sha: SHA, ref: "issue-12-thing" }, base: { ref: "main" },
-      },
-      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-      "GET repos/o/r/issues/12": githubIssue({ labels: ["in-progress", "autonomy:merge"] }),
-      "GET repos/o/r/issues/12/comments": [],
+      [`GET repos/o/r/commits/${SHA}/check-runs`]: { check_runs: [{ id: 1, name: "lint", status: "completed", conclusion: "failure" }] },
+      GRAPHQL: { data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: false }] } } } } },
     });
     const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.err).toBe("");
-    expect(r.code).toBe(0);
-    expect(linearCalls).toEqual([]);
-  });
-
-  test("a ticket the PR does not name lends it no autonomy", async () => {
-    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
-    linearIssues.push(linearIssue({ id: "u9", identifier: "ENG-9", labels: ["autonomy:merge"] }));
-    const r = await run(["pr", "merge", "7", "--repo", "o/r", "--ticket", "ENG-9"]);
     expect(r.code).toBe(3);
-    expect(r.err).toContain("does not name ENG-9");
+    expect(r.out).toContain("failing: lint");
+    expect(r.out).toContain("1 open review thread(s)");
     expect(ghCalls().some((c) => c.args.includes("PUT"))).toBe(false);
   });
 
-  test("a Closes line in the PR body names its ticket", async () => {
-    routes({
-      "GET repos/o/r/pulls/7": {
-        number: 7, html_url: "https://github.com/o/r/pull/7", title: "Thing", state: "open", merged: false, body: "Does it.\n\nCloses ENG-1",
-        draft: false, mergeable: true, mergeable_state: "clean", head: { sha: SHA, ref: "feature-x" }, base: { ref: "main" },
-      },
-      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-    });
+  test("refuses while the ticket the pull request names is handed back", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-human"] })];
+    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("ENG-1 is handed back (ready-for-human)");
+    expect(ghCalls().some((c) => c.args.includes("PUT"))).toBe(false);
+  });
+
+  test("uses a merge commit where the repo turns squash off", async () => {
+    routes({ "GET repos/o/r": { allow_squash_merge: false, allow_merge_commit: true } });
     expect((await run(["pr", "merge", "7", "--repo", "o/r"])).code).toBe(0);
+    expect(sent("PUT", "repos/o/r/pulls/7/merge")).toEqual([{ merge_method: "merge", sha: SHA }]);
   });
 
-  test("without a run skill on the base branch, no self-merge", async () => {
-    // A recorded /verify skill is not enough: agents cannot start /verify.
+  test("checks and releases the GitHub issue its branch names", async () => {
     routes({
-      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-      "GET repos/o/r/contents/.claude/skills": [{ name: "verify", type: "dir" }],
+      "GET repos/o/r/pulls/7": pull(7, { body: null, head: { sha: SHA, ref: "issue-12-thing" } }),
+      "GET repos/o/r/issues/12": githubIssue({ labels: ["ready-for-agent", "in-progress"] }),
+      "GET repos/o/r/issues/12/comments": [],
+      "DELETE repos/o/r/issues/12/labels/ready-for-agent": [],
+      "DELETE repos/o/r/issues/12/labels/in-progress": [],
     });
     const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(3);
-    expect(r.out).toContain("no run skill");
-    expect(ghCalls().some((c) => c.args[1] === "repos/o/r/contents/.claude/skills?ref=main")).toBe(true);
-  });
-
-  test("a run-* folder without a SKILL.md does not count", async () => {
-    routes({
-      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-      "GET repos/o/r/contents/.claude/skills/run-app/SKILL.md": undefined,
-    });
-    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(3);
-    expect(r.out).toContain("no run skill");
-  });
-
-  test("a switch before the PR number does not swallow it", async () => {
-    routes({ "GET repos/o/r/pulls/7/files": [{ filename: "db/schema.sql" }] });
-    const r = await run(["pr", "merge", "--human-approved", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(0);
-    expect(ghCalls().some((c) => c.args.includes("repos/o/r/pulls/7/merge"))).toBe(true);
-  });
-
-  test("moving a file out of a one-way door still touches the door", async () => {
-    routes({
-      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-      "GET repos/o/r/pulls/7/files": [{ filename: "archive/0042.sql", previous_filename: "db/0042.sql" }],
-    });
-    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(3);
-    expect(r.out).toContain("touches one-way doors: db/0042.sql");
-  });
-
-  test("when the viewer lookup fails, no verdict counts", async () => {
-    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }], "GET user": undefined });
-    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
-    expect(r.code).toBe(3);
-    expect(r.out).toContain("no passing verdict");
-  });
-
-  test("touching a one-way door needs the human's word", async () => {
-    routes({
-      "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }],
-      "GET repos/o/r/pulls/7/files": [{ filename: "db/schema.sql" }],
-    });
-    expect((await run(["pr", "merge", "7", "--repo", "o/r"])).code).toBe(3);
-    expect((await run(["pr", "merge", "7", "--repo", "o/r", "--human-approved"])).code).toBe(0);
-  });
-});
-
-describe("pr verdict", () => {
-  test("records the reviewed head SHA and the exact-text patch key", async () => {
-    const r = await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass", "--sha", SHA.slice(0, 12)]);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    expect(sent("POST", "repos/o/r/issues/7/comments")[0].body).toContain(renderMarker(SHA, patchKey(DIFF), "pass"));
+    expect(ghCalls().filter((c) => c.args.includes("DELETE")).map((c) => c.args[1])).toEqual(["repos/o/r/issues/12/labels/ready-for-agent", "repos/o/r/issues/12/labels/in-progress"]);
+    expect(linearCalls).toEqual([]);
   });
 
-  test("refuses when the head moved past the reviewed SHA, and posts nothing", async () => {
-    const r = await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass", "--sha", "d".repeat(40)]);
-    expect(r.code).toBe(3);
-    expect(r.err).toContain("review the new head");
-    expect(ghCalls().some((c) => c.args.includes("POST"))).toBe(false);
-  });
-
-  test("neutralizes markers quoted in the summary", async () => {
-    const summary = join(dir, "summary.md");
-    writeFileSync(summary, `PR body said ${renderMarker(SHA, null, "pass")}`);
-    await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "fail", "--sha", SHA, "--summary-file", summary]);
-    const body: string = sent("POST", "repos/o/r/issues/7/comments")[0].body;
-    expect(body.match(/<!-- factory:verdict/g)).toHaveLength(1);
-    expect(body.trimEnd().endsWith("result=fail -->")).toBe(true);
-  });
-
-  test("requires --result and --sha", async () => {
-    expect((await run(["pr", "verdict", "7", "--repo", "o/r", "--sha", SHA])).code).toBe(64);
-    expect((await run(["pr", "verdict", "7", "--repo", "o/r", "--result", "pass"])).code).toBe(64);
+  test("a ticket id it cannot read is noted, not checked", async () => {
+    routes({ "GET repos/o/r/pulls/7": pull(7, { body: null, head: { sha: SHA, ref: "fix-utf-8" } }) });
+    const r = await run(["pr", "merge", "7", "--repo", "o/r"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("UTF-8 could not be read");
   });
 });
 
@@ -379,8 +294,7 @@ describe("pr reply and resolve", () => {
     const r = await run(["pr", "reply", "7", "--repo", "o/r", "--comment", "55", "--body", "Rejected: no caller passes null.", "--resolve"]);
     expect(r.err).toBe("");
     expect(sent("POST", "repos/o/r/pulls/7/comments/55/replies")).toEqual([{ body: `Rejected: no caller passes null.${FOOTER}` }]);
-    const mutation = graphqlCalls().find((c) => c.includes("resolveReviewThread"));
-    expect(mutation).toContain("id=T1");
+    expect(graphqlCalls().find((c) => c.includes("resolveReviewThread"))).toContain("id=T1");
   });
 
   test("resolve uses the ccr route in a cloud session, where GraphQL is blocked", async () => {
@@ -406,15 +320,25 @@ describe("pr reply and resolve", () => {
 });
 
 describe("Linear tickets", () => {
+  const file = (name: string, text: string) => {
+    const path = join(dir, name);
+    writeFileSync(path, text);
+    return path;
+  };
+
   test("next lists ready tickets and says why the rest wait", async () => {
-    linearIssues.push(linearIssue({ identifier: "ENG-2", inverseRelations: { nodes: [{ type: "blocks", issue: { identifier: "ENG-1", state: { type: "unstarted" } } }] } }));
+    linearIssues.push(
+      linearIssue({ id: "u2", identifier: "ENG-2", inverseRelations: { nodes: [{ type: "blocks", issue: { identifier: "ENG-1", state: { type: "unstarted" } } }] } }),
+      linearIssue({ id: "u3", identifier: "ENG-3", labels: ["ready-for-agent", "in-progress"] }),
+      linearIssue({ id: "u4", identifier: "ENG-4", labels: ["needs-triage"] }),
+    );
     const r = await run(["tickets", "next", "--json"]);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const d = JSON.parse(r.out);
     expect(d.ready.map((t: any) => t.id)).toEqual(["ENG-1"]);
-    expect(d.ready[0]).toMatchObject({ tracker: "linear", repo: "andrezzoid/app", autonomy: "merge", closes: "Closes ENG-1" });
-    expect(d.skipped).toEqual([{ id: "ENG-2", reason: "blocked by ENG-1" }]);
+    expect(d.ready[0]).toMatchObject({ tracker: "linear", repo: "andrezzoid/app", closes: "Closes ENG-1" });
+    expect(d.skipped).toEqual([{ id: "ENG-2", reason: "blocked by ENG-1" }, { id: "ENG-3", reason: "claimed (in-progress)" }]);
   });
 
   test("next takes the repo from triage's latest agent brief when the description names none", async () => {
@@ -430,120 +354,136 @@ describe("Linear tickets", () => {
     expect(JSON.parse(r.out).ready.map((t: any) => [t.id, t.repo])).toEqual([["ENG-1", "andrezzoid/app"]]);
   });
 
-  test("next pages through every ready ticket", async () => {
+  test("next pages through every open ticket", async () => {
     pageSize = 1;
     linearIssues.push(linearIssue({ id: "u2", identifier: "ENG-2" }));
     const r = await run(["tickets", "next", "--json"]);
-    expect(r.err).toBe("");
     expect(JSON.parse(r.out).ready.map((t: any) => t.id)).toEqual(["ENG-1", "ENG-2"]);
-    expect(linearCalls.filter((c) => c.op === "FactoryReady")).toHaveLength(2);
+    expect(ops("FactoryOpen")).toHaveLength(2);
   });
 
   test("sends the personal key as is, and no key when the cloud proxy injects it", async () => {
-    await run(["ticket", "show", "ENG-1"]);
+    await run(["tickets", "show", "ENG-1"]);
     expect(linearCalls.map((c) => c.auth)).toEqual(["lin_api_test"]);
     linearCalls = [];
-    const r = await run(["ticket", "show", "ENG-1"], { LINEAR_API_KEY: "proxy-injected" });
+    const r = await run(["tickets", "show", "ENG-1"], { LINEAR_API_KEY: "proxy-injected" });
     expect(r.code).toBe(0);
     expect(linearCalls.map((c) => c.auth)).toEqual([undefined]);
   });
 
-  test("claim assigns, moves to the first started state, and comments", async () => {
-    const r = await run(["ticket", "claim", "eng-1"]);
+  test("claim labels it in-progress, assigns, starts it and logs the local session", async () => {
+    const r = await run(["tickets", "claim", "eng-1"], { CLAUDE_CODE_SESSION_ID: "sess-1" });
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    expect(linearCalls.find((c) => c.op === "FactoryUpdate")?.variables.input).toEqual({ assigneeId: "me", stateId: "s-doing" });
-    expect(issueComments[0].body).toContain("<!-- factory:claim -->");
+    expect(ops("FactoryAddLabel")).toEqual([{ id: "uuid-1", labelId: "lbl-in-progress" }]);
+    expect(ops("FactoryUpdate")[0].input).toEqual({ assigneeId: "me", stateId: "s-doing" });
+    expect(issueComments[0].body).toMatch(/^Claimed by local session sess-1 on .+\.$/);
   });
 
-  test("a claim that lost the race withdraws its comment", async () => {
-    rivalClaim = { id: "theirs", body: claimBody(null, "local"), user: null };
-    const r = await run(["ticket", "claim", "ENG-1"]);
-    expect(r.code).toBe(3);
-    expect(linearCalls.find((c) => c.op === "FactoryDeleteComment")?.variables).toEqual({ id: "mine-1" });
+  test("a cloud session's claim links the session", async () => {
+    await run(["tickets", "claim", "ENG-1"], { CLAUDE_CODE_REMOTE_SESSION_ID: "cse_abc" });
+    expect(issueComments[0].body).toBe("Claimed by [a cloud session](https://claude.ai/code/session_abc).");
   });
 
-  test("after a handback, the old claim is gone and a new claim wins", async () => {
-    issueComments.push({ id: "old-claim", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z", user: null });
-    const brief = join(dir, "brief.md");
-    writeFileSync(brief, "**Handed back · acceptance line 2 cannot hold**");
-    const h = await run(["ticket", "handback", "ENG-1", "--brief-file", brief]);
-    expect(h.err).toBe("");
-    expect(h.code).toBe(0);
-    expect(issueComments.some((c) => c.id === "old-claim")).toBe(false);
-    expect(linearCalls.find((c) => c.op === "FactoryAddLabel")?.variables).toEqual({ id: "uuid-1", labelId: "lbl-human" });
-    expect(linearCalls.find((c) => c.op === "FactoryUpdate")?.variables.input).toEqual({ stateId: "s-todo" });
-    expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
-  });
-
-  test("an old claim still holds; --take-over replaces it and names it", async () => {
-    issueComments.push({ id: "stale", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z", user: null });
-    const refused = await run(["ticket", "claim", "ENG-1"]);
+  test("a claimed ticket refuses another session; --take-over replaces the claim and names it", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "in-progress"] })];
+    issueComments.push({ id: "theirs", body: claimLog("[a cloud session](https://claude.ai/code/session_x)", null), createdAt: "2026-09-01T10:00:00Z" });
+    const refused = await run(["tickets", "claim", "ENG-1"]);
     expect(refused.code).toBe(3);
+    expect(refused.err).toContain("claimed by [a cloud session](https://claude.ai/code/session_x), claimed 2026-09-01 10:00");
     expect(refused.err).toContain("--take-over");
-    expect((await run(["ticket", "claim", "ENG-1", "--take-over"])).code).toBe(0);
-    expect(issueComments.at(-1).body).toContain("Takes over from a cloud session, quiet since 2026-09-01");
-  });
-
-  test("a live claim from another session refuses without commenting", async () => {
-    issueComments.push({ id: "theirs", body: claimBody("https://claude.ai/code/session_x", "cloud"), createdAt: new Date(Date.now() - 3600_000).toISOString(), user: null });
-    const r = await run(["ticket", "claim", "ENG-1"]);
-    expect(r.code).toBe(3);
-    expect(r.err).toContain("claimed by");
-    expect(linearCalls.some((c) => c.op === "FactoryComment")).toBe(false);
+    expect(ops("FactoryComment")).toEqual([]);
+    expect((await run(["tickets", "claim", "--take-over", "ENG-1"])).code).toBe(0);
+    expect(issueComments.at(-1).body).toContain("Takes over from [a cloud session](https://claude.ai/code/session_x), claimed 2026-09-01 10:00.");
+    expect(ops("FactoryAddLabel")).toEqual([]);
   });
 
   test("the session that holds the claim may claim again", async () => {
-    issueComments.push({ id: "own", body: claimBody("https://claude.ai/code/session_abc", "cloud"), createdAt: new Date(Date.now() - 3600_000).toISOString(), user: null });
-    const r = await run(["ticket", "claim", "ENG-1"], { CLAUDE_CODE_REMOTE_SESSION_ID: "cse_abc" });
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "in-progress"] })];
+    issueComments.push({ id: "own", body: claimLog("[a cloud session](https://claude.ai/code/session_abc)", null), createdAt: hoursAgo(1) });
+    const r = await run(["tickets", "claim", "ENG-1"], { CLAUDE_CODE_REMOTE_SESSION_ID: "cse_abc" });
     expect(r.code).toBe(0);
-    expect(linearCalls.some((c) => c.op === "FactoryComment")).toBe(false);
+    expect(ops("FactoryComment")).toEqual([]);
   });
 
-  test("claim takes a ticket a human already started, keeping its state and assignee", async () => {
-    linearIssues = [linearIssue({ identifier: "ENG-1", state: { name: "In Progress", type: "started" }, assignee: { id: "me", name: "André", isMe: true } })];
-    const r = await run(["ticket", "claim", "ENG-1"]);
+  test("claim refuses a ticket that is not ready-for-agent", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["needs-info"] })];
+    const r = await run(["tickets", "claim", "ENG-1"]);
+    expect(r.code).toBe(3);
+    expect(r.err).toContain("no ready-for-agent label");
+  });
+
+  test("claim fails before writing anything when Linear has no in-progress label", async () => {
+    missingLabels = ["in-progress"];
+    const r = await run(["tickets", "claim", "ENG-1"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("no in-progress label exists in Linear");
+    expect([...ops("FactoryUpdate"), ...ops("FactoryAddLabel"), ...ops("FactoryComment")]).toEqual([]);
+  });
+
+  test("handback posts the report, swaps the labels and moves the ticket back", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "in-progress"] })];
+    const report = file("report.md", "## Handed back · acceptance line 2 cannot hold\n\n**Expected:** x");
+    const r = await run(["tickets", "handback", "ENG-1", "--body-file", report]);
+    expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    expect(linearCalls.some((c) => c.op === "FactoryUpdate")).toBe(false);
-    expect(issueComments[0].body).toContain("<!-- factory:claim -->");
+    expect(ops("FactoryComment")[0].body).toContain("## Handed back · acceptance line 2 cannot hold");
+    expect(ops("FactoryRemoveLabel").map((v) => v.labelId)).toEqual(["lbl-0", "lbl-1"]);
+    expect(ops("FactoryAddLabel")).toEqual([{ id: "uuid-1", labelId: "lbl-ready-for-human" }]);
+    expect(ops("FactoryUpdate")[0].input).toEqual({ stateId: "s-todo" });
   });
 
-  test("claim leaves a colleague's assignee and only starts the ticket", async () => {
-    linearIssues = [linearIssue({ identifier: "ENG-1", assignee: { id: "u9", name: "Rita", isMe: false } })];
-    expect((await run(["ticket", "claim", "ENG-1"])).code).toBe(0);
-    expect(linearCalls.find((c) => c.op === "FactoryUpdate")?.variables.input).toEqual({ stateId: "s-doing" });
+  test("handback and revise post only a report of their own kind", async () => {
+    const wrong = file("wrong.md", "## Revised · drop the export");
+    expect((await run(["tickets", "handback", "ENG-1", "--body-file", wrong])).code).toBe(64);
+    expect((await run(["tickets", "revise", "ENG-1", "--body", "Revised the plan, see thread"])).code).toBe(64);
+    expect(ops("FactoryComment")).toEqual([]);
   });
 
-  test("ticket show names the phase", async () => {
-    const d = JSON.parse((await run(["ticket", "show", "ENG-1", "--json"])).out);
-    expect(d.phase).toBe("iterate");
-    expect(d.openPrs).toEqual([]);
+  test("revise posts a revision that tickets show reads into the contract", async () => {
+    const revision = file("revision.md", "## Revised · drop the CSV export\n\n**Expected:** no CSV button");
+    const r = await run(["tickets", "revise", "ENG-1", "--body-file", revision]);
+    expect(r.err).toBe("");
+    expect(r.code).toBe(0);
+    const d = JSON.parse((await run(["tickets", "show", "ENG-1", "--json"])).out);
+    expect(d.contract.map((p: any) => p.kind)).toEqual(["body", "revised"]);
+    expect(d.contract[1].text).toContain("drop the CSV export");
+  });
+
+  test("show names the phase, the open pull requests and the claim", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "in-progress"] })];
+    issueComments.push({ id: "c", body: claimLog("local session s1 on mac", null), createdAt: hoursAgo(1) });
+    const d = JSON.parse((await run(["tickets", "show", "ENG-1", "--json"])).out);
+    expect(d).toMatchObject({ phase: "iterate", openPrs: [], claimedBy: "local session s1 on mac" });
   });
 });
 
 describe("GitHub Issues tickets", () => {
   const gh = { FACTORY_GITHUB_REPOS: "O/R", LINEAR_API_KEY: "" };
+  const agentSkills = (tracker: string) => ({ encoding: "base64", content: Buffer.from(`# R\n\n## Agent skills\n\nTracker: ${tracker}\n`).toString("base64") });
 
   beforeEach(() => {
     linearIssues = [];
     routes({
-      "GET repos/o/r/issues?state=open&labels=ready-for-agent": [
-        githubIssue({ number: 12, labels: ["ready-for-agent", "autonomy:merge"] }),
+      "GET repos/o/r/issues?state=open": [
+        githubIssue({ number: 12 }),
         githubIssue({ number: 13, title: "Second", body: "Blocked by: #12" }),
         { ...githubIssue({ number: 14 }), pull_request: { url: "x" } },
         githubIssue({ number: 15, title: "Parent" }),
+        githubIssue({ number: 16, title: "A bug nobody triaged into the factory", labels: ["bug"] }),
       ],
+      "GET repos/o/r/pulls?state=open": [],
       "GET repos/o/r/issues/12/dependencies/blocked_by": [],
       "GET repos/o/r/issues/12/sub_issues": [],
       "GET repos/o/r/issues/13/sub_issues": [{ number: 20, state: "closed" }],
       "GET repos/o/r/issues/15/sub_issues": [{ number: 21, state: "open" }, { number: 22, state: "closed" }],
-      "GET repos/o/r/issues/12": githubIssue({ number: 12, labels: ["ready-for-agent", "autonomy:merge"] }),
+      "GET repos/o/r/issues/12": githubIssue({ number: 12 }),
       "GET repos/o/r/issues/12/comments": [],
       "POST repos/o/r/issues/12/comments": "$append",
-      "DELETE repos/o/r/issues/comments/:id": "$delete",
       "POST repos/o/r/issues/12/assignees": {},
       "POST repos/o/r/issues/12/labels": [],
       "DELETE repos/o/r/issues/12/labels/ready-for-agent": [],
+      "DELETE repos/o/r/issues/12/labels/in-progress": [],
     });
   });
 
@@ -553,197 +493,214 @@ describe("GitHub Issues tickets", () => {
     expect(r.code).toBe(0);
     const d = JSON.parse(r.out);
     expect(d.ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
-    expect(d.ready[0]).toMatchObject({ tracker: "github", repo: "o/r", status: "queued", autonomy: "merge", branchName: "issue-12-app-do-the-thing", closes: "Closes #12" });
+    expect(d.ready[0]).toMatchObject({ tracker: "github", repo: "o/r", status: "queued", branchName: "issue-12-app-do-the-thing", closes: "Closes #12" });
     expect(d.skipped).toEqual([
       { id: "o/r#13", reason: "blocked by o/r#12" },
       { id: "o/r#15", reason: "parent of 1 open ticket(s)" },
     ]);
   });
 
-  test("a repo whose profile names GitHub joins without FACTORY_GITHUB_REPOS", async () => {
-    const profile = Buffer.from("- **Tracker:** GitHub Issues\n").toString("base64");
-    routes({
-      "GET repos/o/r/contents/.agents/factory.md": { encoding: "base64", content: profile },
-      "GET repos/o/r/issues?state=open&labels=ready-for-agent": [githubIssue({ number: 12 })],
-      "GET repos/o/r/issues/12/dependencies/blocked_by": [],
-    });
+  test("a repo whose CLAUDE.md names GitHub Issues joins without FACTORY_GITHUB_REPOS", async () => {
+    routes({ ...current(), "GET repos/o/r/contents/CLAUDE.md": agentSkills("GitHub Issues") });
     const r = await run(["tickets", "next", "--repo", "o/r", "--json"], { LINEAR_API_KEY: "" });
     expect(r.err).toBe("");
     expect(JSON.parse(r.out).ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
   });
 
-  test("inside a clone whose profile names GitHub, doctor and brief use its issues", async () => {
-    const clone = join(dir, "clone");
-    spawnSync("git", ["init", "-q", clone]);
-    spawnSync("git", ["-C", clone, "remote", "add", "origin", "https://github.com/o/r.git"]);
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/contents/.agents/factory.md": { encoding: "base64", content: Buffer.from("- **Tracker:** GitHub Issues\n").toString("base64") },
-      "GET repos/o/r/issues?state=open": [githubIssue({ number: 12 })],
-      "GET repos/o/r/issues": [],
-      "GET repos/o/r/pulls": [],
-    });
+  test("inside a clone whose AGENTS.md names GitHub Issues, doctor and inbox use its issues", async () => {
+    const path = clone();
+    writeFileSync(join(path, "AGENTS.md"), "# R\n\n## Agent skills\n\nTracker: GitHub Issues\n");
+    routes({ ...current(), "GET repos/o/r/contents/AGENTS.md": agentSkills("GitHub Issues") });
     const env = { LINEAR_API_KEY: "", FACTORY_GITHUB_REPOS: "" };
-    const doctor = await run(["doctor"], env, clone);
+    const doctor = await run(["doctor"], env, path);
     expect(doctor.out).toContain("issues in o/r as andrezzoid");
-    expect(doctor.out).not.toContain("trackers");
-    const brief = await run(["brief", "--json"], env, clone);
-    expect(brief.err).toBe("");
-    expect(JSON.parse(brief.out).queued.ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
+    expect(doctor.out).toContain("AGENTS.md names github");
+    const inbox = await run(["inbox", "--agent", "--json"], env, path);
+    expect(inbox.err).toBe("");
+    expect(JSON.parse(inbox.out)).toEqual({ agent: [{ id: "o/r#12", title: "App: do the thing", url: "https://github.com/o/r/issues/12", why: "ready to build" }] });
   });
 
-  test("the brief counts a blocked GitHub ticket as waiting, as tickets next does", async () => {
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/issues?state=open": [githubIssue({ number: 12 }), githubIssue({ number: 13, body: "Blocked by: #12" })],
-      "GET repos/o/r/issues": [],
-      "GET repos/o/r/pulls": [],
-    });
-    const d = JSON.parse((await run(["brief", "--json"], gh)).out);
-    expect(d.queued.ready.map((t: any) => t.id)).toEqual(["o/r#12"]);
-    expect(d.queued.waiting).toEqual([{ id: "o/r#13", reason: "blocked by o/r#12" }]);
-  });
-
-  test("claim assigns the viewer, labels in-progress and comments", async () => {
-    const r = await run(["ticket", "claim", "#12", "--repo", "o/r"], gh);
+  test("claim assigns the viewer, labels it in-progress and logs the session", async () => {
+    const r = await run(["tickets", "claim", "#12", "--repo", "o/r"], gh);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(sent("POST", "repos/o/r/issues/12/assignees")).toEqual([{ assignees: ["andrezzoid"] }]);
     expect(sent("POST", "repos/o/r/issues/12/labels")).toEqual([{ labels: ["in-progress"] }]);
-    expect(sent("POST", "repos/o/r/issues/12/comments")[0].body).toContain("<!-- factory:claim -->");
-  });
-
-  test("a claim that lost the race deletes its own comment", async () => {
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      $rival: { id: 1, body: claimBody(null, "cloud") },
-    });
-    const r = await run(["ticket", "claim", "o/r#12"], gh);
-    expect(r.code).toBe(3);
-    expect(ghCalls().filter((c) => c.args.includes("DELETE")).map((c) => c.args[1])).toEqual(["repos/o/r/issues/comments/9001"]);
+    expect(sent("POST", "repos/o/r/issues/12/comments")[0].body).toMatch(/^Claimed by a local session on .+\.$/);
   });
 
   test("claim leaves a colleague's assignee", async () => {
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/issues/12": githubIssue({ number: 12, assignees: [{ login: "rita" }] }),
-    });
-    expect((await run(["ticket", "claim", "o/r#12"], gh)).code).toBe(0);
+    routes({ ...current(), "GET repos/o/r/issues/12": githubIssue({ number: 12, assignees: [{ login: "rita" }] }) });
+    expect((await run(["tickets", "claim", "o/r#12"], gh)).code).toBe(0);
     expect(sent("POST", "repos/o/r/issues/12/assignees")).toEqual([]);
     expect(sent("POST", "repos/o/r/issues/12/labels")).toEqual([{ labels: ["in-progress"] }]);
   });
 
-  test("ticket show is in babysit while a PR from its branch is open", async () => {
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/pulls?head=o:issue-12-app-do-the-thing&state=open": [{ number: 7, html_url: "https://github.com/o/r/pull/7" }],
-    });
-    const d = JSON.parse((await run(["ticket", "show", "o/r#12", "--json"], gh)).out);
+  test("show is in babysit while a pull request from its branch is open", async () => {
+    routes({ ...current(), "GET repos/o/r/pulls?head=o:issue-12-app-do-the-thing&state=open": [{ number: 7, html_url: "https://github.com/o/r/pull/7" }] });
+    const d = JSON.parse((await run(["tickets", "show", "o/r#12", "--json"], gh)).out);
     expect(d.phase).toBe("babysit");
     expect(d.openPrs).toEqual(["https://github.com/o/r/pull/7"]);
   });
 
-  test("handback comments the brief, drops the claim and relabels for a human", async () => {
-    routes({
-      ...JSON.parse(readFileSync(join(dir, "routes.json"), "utf8")),
-      "GET repos/o/r/issues/12/comments": [{ id: 1, body: claimBody(null, "cloud"), created_at: "2026-10-01T00:00:00Z" }],
-    });
-    const brief = join(dir, "brief.md");
-    writeFileSync(brief, "Handed back: acceptance line 2 cannot hold");
-    const r = await run(["ticket", "handback", "#12", "--repo", "o/r", "--brief-file", brief], gh);
+  test("handback posts the report, takes off ready-for-agent and in-progress, and labels it ready-for-human", async () => {
+    const report = join(dir, "report.md");
+    writeFileSync(report, "**Handed back · acceptance line 2 cannot hold**");
+    const r = await run(["tickets", "handback", "#12", "--repo", "o/r", "--body-file", report], gh);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    const deleted = ghCalls().filter((c) => c.args.includes("DELETE")).map((c) => c.args[1]);
-    expect(deleted).toContain("repos/o/r/issues/comments/1");
-    expect(deleted).toContain("repos/o/r/issues/12/labels/ready-for-agent");
+    expect(ghCalls().filter((c) => c.args.includes("DELETE")).map((c) => c.args[1])).toEqual(["repos/o/r/issues/12/labels/ready-for-agent", "repos/o/r/issues/12/labels/in-progress"]);
     expect(sent("POST", "repos/o/r/issues/12/labels")).toEqual([{ labels: ["ready-for-human"] }]);
-    expect(sent("POST", "repos/o/r/issues/12/comments")[0].body).toBe("Handed back: acceptance line 2 cannot hold");
+    expect(sent("POST", "repos/o/r/issues/12/comments")[0].body).toBe("**Handed back · acceptance line 2 cannot hold**");
   });
 
-  test("brief maps open PRs to the issues they close", async () => {
-    const old = new Date(Date.now() - 5 * 3600_000).toISOString();
-    routes({
-      "GET user": { login: "andrezzoid" },
-      "GET repos/o/r/pulls": [{ html_url: "https://github.com/o/r/pull/7", body: "Closes #12", head: { ref: "x" } }],
-      "GET repos/o/r/issues?state=open": [
-        githubIssue({ number: 12, title: "Running", labels: ["in-progress"] }),
-        githubIssue({ number: 13, title: "Stuck", labels: ["in-progress"], updated_at: old }),
-        githubIssue({ number: 15, title: "Untracked", labels: ["bug"] }),
-      ],
-      "GET repos/o/r/issues": [githubIssue({ number: 11, title: "Shipped", state: "closed", labels: ["in-progress"], closed_at: new Date().toISOString() })],
-    });
-    const r = await run(["brief", "--json"], gh);
+  test("next --dispatch starts a background session per ready ticket of this clone", async () => {
+    const claude = join(dir, "claude");
+    writeFileSync(claude, `#!/bin/sh\nprintf '%s\\n' "$@" > "${join(dir, "claude-args")}"\necho "started abc123"\n`);
+    chmodSync(claude, 0o755);
+    const r = await run(["tickets", "next", "--dispatch"], { ...gh, FACTORY_CLAUDE: claude }, clone());
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    const d = JSON.parse(r.out);
-    expect(d.running.map((t: any) => [t.id, t.prs.map((p: any) => p.url)])).toEqual([
-      ["o/r#12", ["https://github.com/o/r/pull/7"]],
-      ["o/r#13", []],
-    ]);
-    expect(d.stalled.map((t: any) => t.id)).toEqual(["o/r#13"]);
-    expect(d.landed.map((t: any) => t.id)).toEqual(["o/r#11"]);
+    expect(r.out).toBe("dispatched o/r#12: started abc123\n");
+    expect(readFileSync(join(dir, "claude-args"), "utf8").trim().split("\n")).toEqual(["--bg", "-n", "o/r#12", "-w", "o-r-12", "--permission-mode", "auto", "/factory o/r#12"]);
+  });
+
+  test("next --dispatch refuses in a cloud session, which dispatches with create_session", async () => {
+    const r = await run(["tickets", "next", "--dispatch"], { ...gh, CLAUDE_CODE_REMOTE: "true" }, clone());
+    expect(r.code).toBe(64);
+    expect(r.err).toContain("create_session");
   });
 });
 
-describe("brief", () => {
-  test("puts handed-back and stalled tickets under Needs you", async () => {
-    const old = new Date(Date.now() - 5 * 3600_000).toISOString();
+describe("inbox", () => {
+  const SHA8 = "d".repeat(40);
+  const SHA9 = "e".repeat(40);
+  const claimed = (id: string, n: number, over: Record<string, unknown> = {}) =>
+    linearIssue({ id: `u${n}`, identifier: id, title: `T${n}`, labels: ["ready-for-agent", "in-progress"], state: { name: "In Progress", type: "started" }, ...over });
+  const pr = (n: number) => ({ attachments: { nodes: [{ url: `https://github.com/o/r/pull/${n}` }] } });
+
+  beforeEach(() => {
     linearIssues = [
-      linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent"] }),
-      linearIssue({ id: "u2", identifier: "ENG-2", title: "Stuck", labels: [], state: { name: "In Progress", type: "started" }, updatedAt: old }),
-      linearIssue({ id: "u3", identifier: "ENG-3", title: "Bounced", labels: ["ready-for-human"] }),
-      linearIssue({ id: "u4", identifier: "ENG-4", title: "Shipped", labels: [], state: { name: "Done", type: "completed" }, completedAt: new Date().toISOString() }),
+      linearIssue({ id: "u1", identifier: "ENG-1", title: "T1" }),
+      linearIssue({ id: "u2", identifier: "ENG-2", title: "T2", labels: ["needs-triage"] }),
+      linearIssue({ id: "u3", identifier: "ENG-3", title: "T3", labels: [] }),
+      linearIssue({ id: "u4", identifier: "ENG-4", title: "T4", labels: ["needs-info"] }),
+      linearIssue({ id: "u5", identifier: "ENG-5", title: "T5", labels: ["ready-for-human"] }),
+      claimed("ENG-6", 6, { updatedAt: hoursAgo(5) }),
+      claimed("ENG-7", 7, pr(7)),
+      claimed("ENG-8", 8, pr(8)),
+      claimed("ENG-9", 9, pr(9)),
     ];
-    const r = await run(["brief"]);
+    const session = (s: string) => [{ id: "c", body: claimLog(s, null), createdAt: hoursAgo(6) }];
+    commentsFor = {
+      "ENG-5": [...session("[a cloud session](https://claude.ai/code/session_5)"), { id: "r", body: "## Handed back · line 2 cannot hold", createdAt: hoursAgo(2) }],
+      "ENG-6": session("local session s6 on mac"),
+      "ENG-7": session("local session s7 on mac"),
+      "ENG-8": session("local session s8 on mac"),
+      "ENG-9": session("local session s9 on mac"),
+    };
+    routes({
+      "GET repos/o/r/pulls/8": pull(8, { draft: true, mergeable_state: "draft", head: { sha: SHA8, ref: "andre/eng-8" } }),
+      "GET repos/o/r/pulls/8/reviews": [],
+      "GET repos/o/r/issues/8/comments": [{ id: 1, body: "## Deviation · kept the old endpoint\n\n**Needs you:** pick one", created_at: hoursAgo(1) }],
+      [`GET repos/o/r/commits/${SHA8}/check-runs`]: { check_runs: [] },
+      [`GET repos/o/r/commits/${SHA8}/status`]: { statuses: [] },
+      "GET repos/o/r/pulls/9": pull(9, { updated_at: hoursAgo(5), head: { sha: SHA9, ref: "andre/eng-9" } }),
+      "GET repos/o/r/pulls/9/reviews": [],
+      [`GET repos/o/r/commits/${SHA9}/check-runs`]: { check_runs: [{ id: 1, name: "test", status: "completed", conclusion: "failure" }] },
+      [`GET repos/o/r/commits/${SHA9}/status`]: { statuses: [] },
+    });
+  });
+
+  test("lists what needs André and what an agent can pick up, each with its session", async () => {
+    const r = await run(["inbox", "--json"]);
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    const needsYou = r.out.split("## Running")[0];
-    expect(needsYou).toContain("ENG-3 Bounced: waiting on your decision");
-    expect(needsYou).toContain("ENG-2 Stuck: stalled");
-    expect(r.out).toContain("## Queued (1 ready");
-    expect(r.out).toContain("## Landed this week (1)");
+    const d = JSON.parse(r.out);
+    expect(d.human.map((i: any) => [i.id, i.why, i.pr ?? null, i.session ?? null])).toEqual([
+      ["ENG-2", "new, needs triage", null, null],
+      ["ENG-3", "new, needs triage", null, null],
+      ["ENG-4", "waiting on more information", null, null],
+      ["ENG-5", "waiting on your decision: Handed back · line 2 cannot hold", null, "[a cloud session](https://claude.ai/code/session_5)"],
+      ["ENG-6", "claimed, but no pull request and quiet for over 3h", null, "local session s6 on mac"],
+      ["ENG-7", "ready to merge", "https://github.com/o/r/pull/7", "local session s7 on mac"],
+      ["ENG-8", "a draft pull request: Deviation · kept the old endpoint", "https://github.com/o/r/pull/8", "local session s8 on mac"],
+    ]);
+    expect(d.agent.map((i: any) => [i.id, i.why, i.pr ?? null, i.session ?? null])).toEqual([
+      ["ENG-1", "ready to build", null, null],
+      ["ENG-9", "its pull request fails test, quiet for over 3h", "https://github.com/o/r/pull/9", "local session s9 on mac"],
+    ]);
   });
 
-  test("puts an autonomy:merge PR the merge gate refuses under Needs you, with the reasons", async () => {
-    linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent", "autonomy:merge"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
-    const why = `ready, but the merge gate refuses it: no passing verdict for head ${SHA.slice(0, 7)} (verification missing)`;
-    const r = await run(["brief"]);
-    expect(r.err).toBe("");
-    expect(r.out.split("## Running")[0]).toContain(`ENG-1 https://github.com/o/r/pull/7: ${why}`);
-    const d = JSON.parse((await run(["brief", "--json"])).out);
-    expect(d.needsHumanPrs).toEqual([{ id: "ENG-1", url: "https://github.com/o/r/pull/7", why }]);
-  });
-
-  test("puts a draft PR under Needs you as waiting on its author", async () => {
-    linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
-    routes({ "GET repos/o/r/pulls/7": {
-      number: 7, html_url: "https://github.com/o/r/pull/7", title: "App: thing", state: "open", merged: false,
-      draft: true, mergeable: true, mergeable_state: "draft",
-      head: { sha: SHA, ref: "andre/eng-1-thing" }, base: { ref: "main" },
-    } });
-    const d = JSON.parse((await run(["brief", "--json"])).out);
-    expect(d.needsHumanPrs).toEqual([{ id: "ENG-1", url: "https://github.com/o/r/pull/7", why: "a draft, waiting on its author" }]);
-  });
-
-  test("leaves out an autonomy:merge PR the merge gate allows: babysit-pr merges it", async () => {
-    linearIssues = [linearIssue({ identifier: "ENG-1", title: "Thing", labels: ["ready-for-agent", "autonomy:merge"], state: { name: "In Progress", type: "started" }, attachments: { nodes: [{ url: "https://github.com/o/r/pull/7", title: "PR" }] } })];
-    routes({ "GET repos/o/r/issues/7/comments": [{ body: renderMarker(SHA, null, "pass"), user: { login: "andrezzoid" } }] });
-    const d = JSON.parse((await run(["brief", "--json"])).out);
-    expect(d.needsHumanPrs).toEqual([]);
-  });
-
-  test("pages through every Linear ticket", async () => {
-    pageSize = 1;
-    linearIssues = [linearIssue({ identifier: "ENG-1" }), linearIssue({ id: "u2", identifier: "ENG-2" })];
-    const r = await run(["brief"]);
-    expect(r.err).toBe("");
-    expect(r.out).toContain("## Queued (2 ready");
+  test("--human and --agent each show one list", async () => {
+    const human = await run(["inbox", "--human"]);
+    expect(human.out).toContain("## Needs you");
+    expect(human.out).toContain("- ENG-7 T7: ready to merge · https://github.com/o/r/pull/7 · local session s7 on mac");
+    expect(human.out).not.toContain("## For agents");
+    const agent = await run(["inbox", "--agent"]);
+    expect(agent.out).toBe("## For agents\n- ENG-1 T1: ready to build\n- ENG-9 T9: its pull request fails test, quiet for over 3h · https://github.com/o/r/pull/9 · local session s9 on mac\n");
   });
 
   test("with no tracker configured, says how to configure one", async () => {
-    const r = await run(["brief"], { LINEAR_API_KEY: "", PATH: "/nonexistent" });
+    const r = await run(["inbox"], { LINEAR_API_KEY: "", PATH: "/nonexistent" });
     expect(r.code).toBe(1);
     expect(r.err).toContain("FACTORY_GITHUB_REPOS");
+  });
+});
+
+describe("stats", () => {
+  test("counts what got done, what went wrong and what is still open", async () => {
+    doneIssues = [
+      { ...linearIssue({ id: "u1", identifier: "ENG-1", title: "Shipped", labels: [] }), completedAt: hoursAgo(4), history: { nodes: [{ createdAt: hoursAgo(30), addedLabelIds: ["lbl-ready-for-agent"] }, { createdAt: hoursAgo(40), addedLabelIds: ["lbl-other"] }] } },
+      { ...linearIssue({ id: "u2", identifier: "ENG-2", title: "By hand", labels: [] }), completedAt: hoursAgo(10), history: { nodes: [] } },
+    ];
+    linearIssues = [
+      linearIssue({ id: "u3", identifier: "ENG-3", title: "Bounced", labels: ["ready-for-human"], createdAt: hoursAgo(240), updatedAt: hoursAgo(2) }),
+      linearIssue({ id: "u4", identifier: "ENG-4", title: "Rita's", labels: ["ready-for-agent"], assignee: { id: "r", name: "Rita", isMe: false } }),
+    ];
+    commentsFor = { "ENG-3": [{ id: "h", body: "## Handed back · line 2 cannot hold", createdAt: hoursAgo(3) }, { id: "o", body: "## Handed back · an old one", createdAt: hoursAgo(400) }] };
+    routes({
+      "GET repos/andrezzoid/app/pulls?state=closed&sort=updated&direction=desc": [
+        { number: 21, html_url: "https://github.com/andrezzoid/app/pull/21", title: "Add export", merged_at: hoursAgo(5) },
+        { number: 22, html_url: "https://github.com/andrezzoid/app/pull/22", title: "Revert \"Add export\"", merged_at: hoursAgo(1) },
+        { number: 23, html_url: "https://github.com/andrezzoid/app/pull/23", title: "Old", merged_at: hoursAgo(24 * 30) },
+        { number: 24, html_url: "https://github.com/andrezzoid/app/pull/24", title: "Closed unmerged", merged_at: null },
+      ],
+      "GET repos/andrezzoid/app/issues/21/comments": [{ id: 1, body: "## Deviation · kept the old endpoint\n\n**Needs you:** pick one", created_at: hoursAgo(6) }],
+      "GET repos/andrezzoid/app/issues/22/comments": [],
+      "GET repos/andrezzoid/app/pulls/21/comments": [{ user: { login: "claude" }, path: "src/a.ts", body: "Missing null check\n\nDetails." }],
+      "GET repos/andrezzoid/app/pulls/22/comments": [],
+    });
+    const r = await run(["stats", "--json"]);
+    expect(r.err).toBe("");
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.out);
+    expect(d.done.tickets.map((t: any) => [t.id, t.readyToDoneHours])).toEqual([["ENG-1", 26], ["ENG-2", null]]);
+    expect(d.done.merged.map((p: any) => p.number)).toEqual([21, 22]);
+    expect(d.wrong.handBacks.map((x: any) => [x.where, x.title])).toEqual([["ENG-3", "Handed back · line 2 cannot hold"]]);
+    expect(d.wrong.needsYou.map((x: any) => x.where)).toEqual(["andrezzoid/app#21"]);
+    expect(d.wrong.reverts.map((p: any) => p.number)).toEqual([22]);
+    expect(d.wrong.reviewComments).toEqual([{ pr: "andrezzoid/app#21", author: "claude", path: "src/a.ts", text: "Missing null check" }]);
+    expect(d.open.map((t: any) => [t.id, t.ageDays])).toEqual([["ENG-3", 10]]);
+  });
+
+  test("reads when a GitHub issue became ready from its label events", async () => {
+    routes({
+      "GET repos/o/r/issues?state=open": [],
+      "GET repos/o/r/pulls?state=open": [],
+      "GET repos/o/r/issues": [githubIssue({ number: 11, state: "closed", state_reason: "completed", closed_at: hoursAgo(4), labels: [] })],
+      "GET repos/o/r/issues/11/events": [{ event: "labeled", label: { name: "ready-for-agent" }, created_at: hoursAgo(30) }],
+      "GET repos/o/r/issues/11": githubIssue({ number: 11, state: "closed", closed_at: hoursAgo(4) }),
+      "GET repos/o/r/issues/11/comments": [],
+      "GET repos/o/r/pulls?state=closed&sort=updated&direction=desc": [],
+    });
+    const r = await run(["stats", "--json", "--since", "48h"], { FACTORY_GITHUB_REPOS: "o/r", LINEAR_API_KEY: "" });
+    expect(r.err).toBe("");
+    expect(JSON.parse(r.out).done.tickets.map((t: any) => [t.id, t.readyToDoneHours])).toEqual([["o/r#11", 26]]);
+  });
+
+  test("a since it cannot read is a usage error", async () => {
+    expect((await run(["stats", "--since", "last week"])).code).toBe(64);
   });
 });
 
@@ -755,6 +712,6 @@ test("unknown commands print help and exit 64", async () => {
 
 test("doctor expects every skill folder next to factory", () => {
   const skills = expectedSkills(join(import.meta.dirname, "..", ".."));
-  for (const s of ["factory", "implement", "grilling", "correct", "setup-factory"]) expect(skills).toContain(s);
+  for (const s of ["factory", "implement", "grilling", "correct"]) expect(skills).toContain(s);
   expect(skills).not.toContain("rem-cli");
 });

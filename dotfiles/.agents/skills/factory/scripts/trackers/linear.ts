@@ -6,7 +6,7 @@
 // The query documents are validated against Linear's published schema.
 
 import { run } from "../proc.ts";
-import { contract, HUMAN_LABEL, READY_LABEL } from "../tickets.ts";
+import { CLAIMED_LABEL, FACTORY_LABELS, HUMAN_LABEL, latestBrief, READY_LABEL } from "../tickets.ts";
 import type { Ticket, TicketComment, TicketState, Tracker } from "./types.ts";
 
 const ENDPOINT = process.env.FACTORY_LINEAR_URL ?? "https://api.linear.app/graphql";
@@ -56,11 +56,16 @@ fragment IssueFields on Issue {
   briefs: comments(last: 3, filter: { body: { contains: "## Agent Brief" } }) { nodes { id body createdAt } }
 }`;
 
-export const READY_QUERY = `
-query FactoryReady($label: String!, $after: String) {
+// Open tickets the factory reads: labelled with one of its labels, or new,
+// with no label at all, and filed by or assigned to the viewer.
+export const OPEN_QUERY = `
+query FactoryOpen($labels: [String!], $after: String) {
   issues(first: 50, after: $after, filter: {
-    labels: { some: { name: { eqIgnoreCase: $label } } }
-    state: { type: { in: ["triage", "backlog", "unstarted"] } }
+    state: { type: { nin: ["completed", "canceled"] } }
+    or: [
+      { labels: { some: { name: { in: $labels } } } }
+      { labels: { length: { eq: 0 } }, or: [{ creator: { isMe: { eq: true } } }, { assignee: { isMe: { eq: true } } }] }
+    ]
   }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
 }
 ${ISSUE_FIELDS}`;
@@ -74,21 +79,14 @@ query FactoryIssue($id: String!) {
 }
 ${ISSUE_FIELDS}`;
 
-export const MINE_QUERY = `
-query FactoryMine($since: DateTimeOrDuration!, $after: String) {
-  issues(first: 50, after: $after, filter: {
+// The viewer's tickets completed since a moment, with the label changes that
+// say when each became ready-for-agent.
+export const DONE_QUERY = `
+query FactoryDone($since: DateTimeOrDuration!, $after: String) {
+  issues(first: 25, after: $after, filter: {
     assignee: { isMe: { eq: true } }
-    updatedAt: { gt: $since }
-  }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
-}
-${ISSUE_FIELDS}`;
-
-export const QUEUED_QUERY = `
-query FactoryQueued($labels: [String!], $after: String) {
-  issues(first: 50, after: $after, filter: {
-    labels: { some: { name: { in: $labels } } }
-    state: { type: { nin: ["completed", "canceled"] } }
-  }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
+    completedAt: { gt: $since }
+  }) { nodes { ...IssueFields history(first: 50) { nodes { createdAt addedLabelIds } } } pageInfo { hasNextPage endCursor } }
 }
 ${ISSUE_FIELDS}`;
 
@@ -124,11 +122,6 @@ mutation FactoryComment($issueId: String!, $body: String!) {
   commentCreate(input: { issueId: $issueId, body: $body }) { success comment { id } }
 }`;
 
-export const DELETE_COMMENT = `
-mutation FactoryDeleteComment($id: String!) {
-  commentDelete(id: $id) { success }
-}`;
-
 type Ref = { identifier: string; title?: string; state: { type: string; name?: string } };
 export type LinearIssue = {
   id: string;
@@ -152,6 +145,7 @@ export type LinearIssue = {
   briefs: { nodes: TicketComment[] };
 };
 type WithComments = LinearIssue & { comments: { nodes: { id: string; body: string; createdAt: string }[] } };
+type WithHistory = LinearIssue & { history: { nodes: { createdAt: string; addedLabelIds: string[] | null }[] } };
 
 const DONE = ["completed", "canceled"];
 const STATE: Record<string, TicketState> = { triage: "queued", backlog: "queued", unstarted: "queued", started: "started", completed: "done", canceled: "canceled" };
@@ -164,7 +158,7 @@ const GITHUB_URL = /github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/;
 // brief's line wins. Linear's GitHub integration attaches PR and commit links,
 // which name the repo as well.
 export function repoOf(issue: Pick<LinearIssue, "description" | "attachments" | "briefs">): string | null {
-  for (const text of [contract({ body: "" }, issue.briefs.nodes).text, issue.description ?? ""]) {
+  for (const text of [latestBrief(issue.briefs.nodes)?.body ?? "", issue.description ?? ""]) {
     const line = REPO_LINE.exec(text);
     if (line) return line[1].toLowerCase();
   }
@@ -201,14 +195,14 @@ export function toTicket(i: LinearIssue): Ticket {
   };
 }
 
-type IssuePage = { issues: { nodes: LinearIssue[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
+type IssuePage<T> = { issues: { nodes: T[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
 
 // Every issue a paged `issues` query matches, following its cursor.
-async function issues(query: string, variables: Record<string, unknown>): Promise<LinearIssue[]> {
-  const all: LinearIssue[] = [];
+async function issues<T = LinearIssue>(query: string, variables: Record<string, unknown>): Promise<T[]> {
+  const all: T[] = [];
   let after: string | null = null;
   do {
-    const d: IssuePage = await linear<IssuePage>(query, { ...variables, after });
+    const d: IssuePage<T> = await linear<IssuePage<T>>(query, { ...variables, after });
     all.push(...d.issues.nodes);
     after = d.issues.pageInfo.hasNextPage ? d.issues.pageInfo.endCursor : null;
   } while (after);
@@ -231,14 +225,24 @@ export class LinearTracker implements Tracker {
     return d.team.states.nodes.filter((s) => s.type === type).sort((a, b) => a.position - b.position)[0]?.id ?? null;
   }
 
+  private async labelIds(name: string): Promise<{ id: string; team: { id: string } | null }[]> {
+    return (await linear<{ issueLabels: { nodes: { id: string; team: { id: string } | null }[] } }>(LABEL_QUERY, { name })).issueLabels.nodes;
+  }
+
+  // The team's own label by that name, else the workspace's.
   private async labelId(name: string, teamId: string): Promise<string | null> {
-    const d = await linear<{ issueLabels: { nodes: { id: string; team: { id: string } | null }[] } }>(LABEL_QUERY, { name });
-    const nodes = d.issueLabels.nodes;
+    const nodes = await this.labelIds(name);
     return (nodes.find((l) => l.team?.id === teamId) ?? nodes.find((l) => !l.team))?.id ?? null;
   }
 
-  async ready(): Promise<Ticket[]> {
-    return (await issues(READY_QUERY, { label: READY_LABEL })).map(toTicket);
+  private async unlabel(i: LinearIssue, names: string[]): Promise<void> {
+    for (const l of i.labels.nodes.filter((l) => names.includes(l.name.toLowerCase()))) {
+      if (l.id) await linear(REMOVE_LABEL, { id: i.id, labelId: l.id });
+    }
+  }
+
+  async open(): Promise<Ticket[]> {
+    return (await issues(OPEN_QUERY, { labels: FACTORY_LABELS })).map(toTicket);
   }
 
   async get(id: string): Promise<{ ticket: Ticket; comments: TicketComment[] }> {
@@ -248,6 +252,9 @@ export class LinearTracker implements Tracker {
 
   async start(t: Ticket): Promise<void> {
     const i = this.raw.get(t.id) ?? (await this.issue(t.id));
+    const claimed = t.labels.includes(CLAIMED_LABEL) ? null : await this.labelId(CLAIMED_LABEL, i.team.id);
+    if (!t.labels.includes(CLAIMED_LABEL) && !claimed) throw new LinearError(`no ${CLAIMED_LABEL} label exists in Linear: create it, as /factory setup does`);
+    if (claimed) await linear(ADD_LABEL, { id: i.id, labelId: claimed });
     const input: Record<string, string> = {};
     if (t.assignees.length === 0) input.assigneeId = (await linear<{ viewer: { id: string } }>(VIEWER_QUERY)).viewer.id;
     if (t.state !== "started") {
@@ -257,20 +264,14 @@ export class LinearTracker implements Tracker {
     if (Object.keys(input).length > 0) await linear(UPDATE_ISSUE, { id: i.id, input });
   }
 
-  async comment(id: string, body: string): Promise<string> {
+  async comment(id: string, body: string): Promise<void> {
     const i = this.raw.get(id) ?? (await this.issue(id));
-    const d = await linear<{ commentCreate: { comment: { id: string } } }>(CREATE_COMMENT, { issueId: i.id, body });
-    return d.commentCreate.comment.id;
-  }
-
-  async deleteComment(_id: string, commentId: string): Promise<void> {
-    await linear(DELETE_COMMENT, { id: commentId });
+    await linear(CREATE_COMMENT, { issueId: i.id, body });
   }
 
   async handBack(id: string): Promise<{ labelled: boolean }> {
     const i = this.raw.get(id) ?? (await this.issue(id));
-    const old = i.labels.nodes.find((l) => l.name.toLowerCase() === READY_LABEL);
-    if (old?.id) await linear(REMOVE_LABEL, { id: i.id, labelId: old.id });
+    await this.unlabel(i, [READY_LABEL, CLAIMED_LABEL]);
     const human = await this.labelId(HUMAN_LABEL, i.team.id);
     if (human) await linear(ADD_LABEL, { id: i.id, labelId: human });
     const todo = await this.firstState(i.team.id, "unstarted");
@@ -278,12 +279,16 @@ export class LinearTracker implements Tracker {
     return { labelled: Boolean(human) };
   }
 
-  async portfolio(): Promise<Ticket[]> {
-    const mine = await issues(MINE_QUERY, { since: "-P14D" });
-    const queued = await issues(QUEUED_QUERY, { labels: [READY_LABEL, HUMAN_LABEL] });
-    const byId = new Map<string, LinearIssue>();
-    for (const i of [...mine, ...queued]) byId.set(i.id, i);
-    return [...byId.values()].map(toTicket);
+  async release(id: string): Promise<void> {
+    await this.unlabel(this.raw.get(id) ?? (await this.issue(id)), [READY_LABEL, CLAIMED_LABEL]);
+  }
+
+  async done(since: string): Promise<{ ticket: Ticket; readyAt: string | null }[]> {
+    const ready = new Set((await this.labelIds(READY_LABEL)).map((l) => l.id));
+    return (await issues<WithHistory>(DONE_QUERY, { since })).map((i) => ({
+      ticket: toTicket(i),
+      readyAt: i.history.nodes.filter((h) => h.addedLabelIds?.some((id) => ready.has(id))).map((h) => h.createdAt).sort().at(-1) ?? null,
+    }));
   }
 
   async viewer(): Promise<string> {

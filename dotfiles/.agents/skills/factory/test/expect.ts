@@ -18,6 +18,7 @@ export function expect(actual: any) {
     toEqual: (expected: unknown) => assert.deepEqual(actual, expected),
     toBeNull: () => assert.equal(actual, null),
     toContain: (item: unknown) => assert.ok(actual.includes(item), `expected ${JSON.stringify(actual)} to contain ${JSON.stringify(item)}`),
+    toMatch: (pattern: RegExp) => assert.match(actual, pattern),
     toHaveLength: (n: number) => assert.equal(actual.length, n),
     toThrow: (pattern?: RegExp) => (pattern ? assert.throws(actual, pattern) : assert.throws(actual)),
     toMatchObject: (expected: object) => assert.ok(partial(actual, expected), `expected ${JSON.stringify(actual)} to match ${JSON.stringify(expected)}`),

@@ -1,23 +1,23 @@
 // Pure ticket policy over the normalized Ticket: which tickets an agent may
-// pick up, how much autonomy they carry, and who won a claim race. No tracker
-// is named here.
+// pick up, what a ticket asks for, which session holds it and where it stands.
+// No tracker is named here.
 
 import type { Ticket, TicketComment } from "./trackers/types.ts";
 
+// Triage's state labels, plus the claim.
+export const TRIAGE_LABEL = "needs-triage";
+export const INFO_LABEL = "needs-info";
 export const READY_LABEL = "ready-for-agent";
 export const HUMAN_LABEL = "ready-for-human";
-// Trackers with no workflow states (GitHub) mark a claimed ticket with it.
-export const STARTED_LABEL = "in-progress";
-export const CLAIM_PREFIX = "factory:claim";
-
-export function autonomy(t: Pick<Ticket, "labels">): "merge" | "pr" {
-  return t.labels.some((l) => l.replace(/\s+/g, "") === "autonomy:merge") ? "merge" : "pr";
-}
+export const CLAIMED_LABEL = "in-progress";
+// A ticket with none of these and no other label is new: nobody triaged it.
+export const FACTORY_LABELS = [TRIAGE_LABEL, INFO_LABEL, READY_LABEL, HUMAN_LABEL, CLAIMED_LABEL];
 
 export type Readiness = { ready: true } | { ready: false; reason: string };
 
 export function readiness(t: Ticket, opts: { repo?: string } = {}): Readiness {
   if (!t.labels.includes(READY_LABEL)) return { ready: false, reason: `no ${READY_LABEL} label` };
+  if (t.labels.includes(CLAIMED_LABEL)) return { ready: false, reason: `claimed (${CLAIMED_LABEL})` };
   if (t.state !== "queued") return { ready: false, reason: `state is ${t.stateName}` };
   const open = t.blockers.filter((b) => !b.done);
   if (open.length > 0) return { ready: false, reason: `blocked by ${open.map((b) => b.id).join(", ")}` };
@@ -53,66 +53,70 @@ export function nextTickets(tickets: Ticket[], opts: { repo?: string } = {}) {
   return { ready, skipped };
 }
 
-export function claimBody(sessionUrl: string | null, runtime: string, replaces?: string): string {
-  const where = sessionUrl ? `[${runtime} session](${sessionUrl})` : `a ${runtime} session`;
-  const takeover = replaces ? ` Takes over from ${replaces}.` : "";
-  return `Claimed by ${where}.${takeover}\n\n<!-- ${CLAIM_PREFIX} -->`;
+const oldestFirst = (a: TicketComment, b: TicketComment) => Date.parse(a.createdAt) - Date.parse(b.createdAt);
+
+// The claim is the in-progress label. Each claim also logs a comment naming
+// the session, so anyone reading the ticket can find that session and steer
+// it. Two sessions that claim one ticket at the same moment can both win:
+// accepted, since one hourly routine does the dispatching.
+export function claimLog(session: string, replaces: string | null): string {
+  return `Claimed by ${session}.${replaces ? ` Takes over from ${replaces}.` : ""}`;
 }
 
-// Who a claim names, for a takeover's message: the session link, or the runtime.
+export function latestClaim(comments: TicketComment[]): TicketComment | null {
+  return comments.filter((c) => c.body.startsWith("Claimed by ")).sort(oldestFirst).at(-1) ?? null;
+}
+
+// Who a claim log names: the session link, or the local session and host.
 export function claimant(c: Pick<TicketComment, "body">): string {
-  return /Claimed by (.*?)\.(?:\s|$)/.exec(c.body)?.[1] ?? "an earlier session";
+  return /^Claimed by (.*?)\.(?:\s|$)/.exec(c.body)?.[1] ?? "an earlier session";
 }
 
-export function isClaim(c: Pick<TicketComment, "body">): boolean {
-  return c.body.includes(`<!-- ${CLAIM_PREFIX} -->`);
+// Reports share one template: a title line "<Kind> · <subject>", as a heading
+// or in bold, then Expected, Happened, Why, Affects and, when only André can
+// move the work, Needs you. Hand-backs and revisions go on the ticket;
+// deviations and unverified claims on the pull request.
+const REPORT_TITLE = /^(Handed back|Revised|Deviation|Unverified)\s*[·:–—-]\s*\S/i;
+const NEEDS_YOU = /^\s*(?:#{1,6}\s*|\*\*|__)?Needs you\b/im;
+
+export type Report = { kind: string; title: string; needsYou: boolean; at: string };
+
+export function report(c: TicketComment): Report | null {
+  const title = (c.body.trimStart().split("\n", 1)[0] ?? "").replace(/^#{1,6}\s*/, "").replace(/^(\*\*|__)(.*)\1$/, "$2").trim();
+  const m = REPORT_TITLE.exec(title);
+  if (!m) return null;
+  const kind = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+  return { kind, title, needsYou: NEEDS_YOU.test(c.body), at: c.createdAt };
 }
 
-// Two dispatchers can race. Both write, then both read back: the oldest claim
-// inside the race window wins and the loser withdraws. A claim older than the
-// window belongs to an earlier attempt (a crash, a handback) and never wins.
-export const CLAIM_RACE_MS = 15 * 60_000;
-export function claimWinner(comments: TicketComment[], mine: string): string | null {
-  const claims = comments.filter(isClaim);
-  const own = claims.find((c) => c.id === mine);
-  const since = own ? Date.parse(own.createdAt) - CLAIM_RACE_MS : -Infinity;
-  const live = claims
-    .filter((c) => Date.parse(c.createdAt) >= since)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  return live[0]?.id ?? null;
+export function latestReport(comments: TicketComment[]): Report | null {
+  return [...comments].sort(oldestFirst).map(report).filter((r) => r !== null).at(-1) ?? null;
 }
 
-// What a ticket asks for. Triage posts its agent brief as a comment and
-// leaves the reporter's text alone, so the latest comment carrying an
-// "## Agent Brief" heading is the contract, and the body only until one exists.
-export function contract(t: Pick<Ticket, "body">, comments: TicketComment[]): { source: "brief" | "body"; text: string } {
-  const briefs = comments.filter((c) => /^## Agent Brief\s*$/m.test(c.body)).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  const latest = briefs.at(-1);
-  return latest ? { source: "brief", text: latest.body } : { source: "body", text: t.body };
+// Triage posts its agent brief as a comment and leaves the reporter's text
+// alone, so the latest comment with an "## Agent Brief" heading is the brief.
+export function latestBrief(comments: TicketComment[]): TicketComment | null {
+  return comments.filter((c) => /^## Agent Brief\s*$/m.test(c.body)).sort(oldestFirst).at(-1) ?? null;
 }
 
-// A claim marks which agent session works a ticket, never who owns it: the
-// assignee stays the human's. It holds until the ticket is handed back or
-// another session takes it over on purpose (`claim --take-over`). No timer
-// ends it: a slow session and a dead one look alike from outside, and only the
-// person who reads the claim's session link can tell which it is.
-export type HeldClaim = { claim: TicketComment; lastActivity: string };
+export type ContractPart = { kind: "body" | "brief" | "revised"; at: string; text: string };
 
-export function currentClaim(comments: TicketComment[]): HeldClaim | null {
-  const claims = comments.filter(isClaim).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  const newest = claims.at(-1);
-  if (!newest) return null;
-  const claim = claims.find((c) => c.id === claimWinner(comments, newest.id))!;
-  const since = Date.parse(claim.createdAt);
-  const lastActivity = comments
-    .map((c) => c.createdAt)
-    .filter((at) => Date.parse(at) >= since)
-    .sort((a, b) => Date.parse(a) - Date.parse(b))
-    .at(-1)!;
-  return { claim, lastActivity };
+// What a ticket asks for: triage's latest agent brief, or the body until one
+// exists, then every Revised report posted after it, oldest first. A revision
+// records an acceptance change André agreed in a session; a newer brief
+// replaces the revisions before it.
+export function contract(t: Pick<Ticket, "body" | "createdAt">, comments: TicketComment[]): ContractPart[] {
+  const brief = latestBrief(comments);
+  const since = brief ? Date.parse(brief.createdAt) : -Infinity;
+  const revisions = [...comments]
+    .sort(oldestFirst)
+    .filter((c) => Date.parse(c.createdAt) > since && report(c)?.kind === "Revised")
+    .map((c) => ({ kind: "revised" as const, at: c.createdAt, text: c.body }));
+  const head: ContractPart = brief ? { kind: "brief", at: brief.createdAt, text: brief.body } : { kind: "body", at: t.createdAt, text: t.body };
+  return [head, ...revisions];
 }
 
-// Where a ticket is in the factory: the stage that acts on it next. Shape is
+// Where a ticket is in the factory: the phase that acts on it next. Shape is
 // André's (or triage's); iterate builds it; babysit lands its pull request.
 // A ticket handed back waits on the human even while its pull request is open.
 export type Phase = "shape" | "iterate" | "babysit" | "done";
@@ -136,7 +140,7 @@ export function ticketFromBranch(branch: string, repo: string | null): string | 
 
 // The tickets a pull request names itself: in its branch, or on a closing
 // line of its body (Closes ENG-123, Fixes #12, Resolves o/r#12 or an issue
-// URL). Only these may lend the PR their autonomy.
+// URL). `pr merge` checks these for a hand-back and clears their labels.
 const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+|[\w.-]+\/[\w.-]+#\d+|#\d+|[a-z][a-z0-9]{1,9}-\d+)\b/gi;
 export function ticketsOfPr(pr: { body: string | null; headRef: string }, repo: string): string[] {
   const out = new Set<string>();

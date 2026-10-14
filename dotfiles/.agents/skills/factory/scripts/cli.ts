@@ -1,6 +1,7 @@
-// factory: the deterministic half of the factory. Skills hold the judgment;
-// this CLI computes ticket readiness, claims, PR merge-readiness and the merge
-// gate, so every session, local or cloud, reaches the same answer the same way.
+// factory: the deterministic half of the factory. It exposes the facts and
+// state of tickets, claims and pull requests, and enforces the two gates a
+// skill can't (a claim, a merge), so every session, local or cloud, reads and
+// writes them the same way. Skills set the goals; the model makes the calls.
 
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -8,22 +9,43 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import * as forge from "./forge.ts";
-import { decide, EXIT, fingerprint, isRunSkill, mergeGate, renderMarker, REPO_SKILLS, type Status } from "./pr.ts";
-import { parseProfile, PROFILE_PATH, type Profile } from "./profile.ts";
-import { autonomy, claimant, claimBody, claimWinner, contract, currentClaim, HUMAN_LABEL, isClaim, nextTickets, phaseOf, READY_LABEL, ticketsOfPr } from "./tickets.ts";
+import { fingerprint, mergeBlockers, status as statusFromFacts, type Status } from "./pr.ts";
+import { run } from "./proc.ts";
+import {
+  CLAIMED_LABEL,
+  claimant,
+  claimLog,
+  contract,
+  FACTORY_LABELS,
+  HUMAN_LABEL,
+  INFO_LABEL,
+  latestClaim,
+  latestReport,
+  nextTickets,
+  phaseOf,
+  READY_LABEL,
+  report,
+  ticketsOfPr,
+  TRIAGE_LABEL,
+} from "./tickets.ts";
 import type { GithubTracker } from "./trackers/github.ts";
-import { enabledTrackers, normalizeId, trackerFor } from "./trackers/index.ts";
-import type { Ticket } from "./trackers/types.ts";
+import { enabledTrackers, githubRepos, normalizeId, repoTracker, trackerFor, trackerLine } from "./trackers/index.ts";
+import type { Ticket, Tracker } from "./trackers/types.ts";
 
 // The folder holding every skill: this file is skills/factory/scripts/cli.ts.
 const SKILLS_DIR = resolve(import.meta.dirname, "..", "..");
-const STALL_MS = 3 * 3600_000;
+// A claimed ticket or a broken pull request this quiet has most likely lost
+// its session.
+const QUIET_MS = 3 * 3600_000;
+const CLAUDE = process.env.FACTORY_CLAUDE ?? "claude";
+// Where /run-skill-generator records how to run the app, for the built-in /run.
+const RUN_SKILLS = ".claude/skills";
 
 type Args = { _: string[]; flags: Record<string, string | true> };
 
-// Switches never take a value, so `pr merge --human-approved 42` keeps 42 as
-// the PR instead of swallowing it.
-const SWITCHES = new Set(["json", "here", "human-approved", "help", "resolve"]);
+// Switches never take a value, so `claim --take-over ENG-1` keeps ENG-1 as
+// the ticket instead of swallowing it.
+const SWITCHES = new Set(["json", "here", "help", "resolve", "take-over", "dispatch", "human", "agent"]);
 
 export function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: {} };
@@ -42,9 +64,17 @@ export function parseArgs(argv: string[]): Args {
 const str = (v: string | true | undefined) => (typeof v === "string" ? v : undefined);
 const runtime = () => (process.env.CLAUDE_CODE_REMOTE === "true" ? "cloud" : "local");
 
-function sessionUrl(): string | null {
-  const id = process.env.CLAUDE_CODE_REMOTE_SESSION_ID;
-  return id?.startsWith("cse_") ? `https://claude.ai/code/session_${id.slice(4)}` : null;
+// The session running this command, as a claim names it: a link in the
+// cloud, the id `claude --resume` takes on a Mac. `key` tells its own claim
+// apart from another session's.
+function session(): { name: string; key: string | null } {
+  const remote = process.env.CLAUDE_CODE_REMOTE_SESSION_ID;
+  if (remote?.startsWith("cse_")) {
+    const url = `https://claude.ai/code/session_${remote.slice(4)}`;
+    return { name: `[a cloud session](${url})`, key: url };
+  }
+  const id = process.env.CLAUDE_CODE_SESSION_ID;
+  return { name: id ? `local session ${id} on ${hostname()}` : `a local session on ${hostname()}`, key: id ?? null };
 }
 
 class Exit extends Error {
@@ -55,8 +85,8 @@ class Exit extends Error {
   }
 }
 
-function print(json: boolean, data: unknown, human: () => string) {
-  console.log(json ? JSON.stringify(data, null, 2) : human());
+function print(a: Args, data: unknown, human: () => string) {
+  console.log(a.flags.json ? JSON.stringify(data, null, 2) : human());
 }
 
 // The repository a command is about: --repo, or the clone it runs in.
@@ -67,46 +97,65 @@ function repoArg(a: Args): string | null {
   return here ? `${here.owner}/${here.repo}`.toLowerCase() : null;
 }
 
-// The profile is read from the base branch, never the PR's working tree: a
-// branch must not be able to raise its own autonomy.
-function profileOf(repo: string, ref?: string): Profile {
-  const r = forge.parseRepo(repo);
-  if (!r) return parseProfile(null);
-  return parseProfile(forge.readRepoFile(r, ref ? `${PROFILE_PATH}?ref=${encodeURIComponent(ref)}` : PROFILE_PATH));
+function trackersFor(repo: string | null): Tracker[] {
+  // A repository whose instructions name GitHub Issues joins the GitHub tracker.
+  const trackers = enabledTrackers(repo && repoTracker(repo) === "github" ? [repo] : []);
+  if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
+  return trackers;
 }
 
-// A named repository whose profile says GitHub joins the GitHub tracker.
-function githubFor(repo: string | null): string[] {
-  return repo && profileOf(repo).tracker === "github" ? [repo] : [];
+const openTickets = async (repo: string | null) => (await Promise.all(trackersFor(repo).map((t) => t.open()))).flat();
+
+// The text of a report or reply, from --body-file or --body.
+function bodyArg(a: Args, usage: string): string {
+  const file = str(a.flags["body-file"]);
+  const body = (file ? readFileSync(file, "utf8") : (str(a.flags.body) ?? "")).trim();
+  if (!body) throw new Exit(64, usage);
+  return body;
 }
 
-async function statusOf(ref: forge.Repo & { number: number }): Promise<{ status: Status; profile: Profile; pull: any }> {
-  const pull = forge.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`);
-  const profile = profileOf(`${ref.owner}/${ref.repo}`, pull.base.ref);
-  let status = decide(forge.prFacts(ref, ref.number, profile.oneWayGlobs));
-  if (status.verdict === "COMPUTING") {
+// A report whose title line names the kind the command posts, so the
+// contract and the inbox can find it again.
+function reportArg(a: Args, kind: string, usage: string): string {
+  const body = bodyArg(a, usage);
+  if (report({ id: "", body, createdAt: "" })?.kind !== kind) throw new Exit(64, `the report must start with its title line, "${kind} · <subject>"`);
+  return body;
+}
+
+// GitHub computes mergeability after each push: ask once more before
+// reporting it unknown.
+async function statusOf(ref: forge.Repo & { number: number }): Promise<{ status: Status; body: string | null }> {
+  let facts = forge.prFacts(ref, ref.number);
+  if (facts.state === "open" && facts.mergeable === null) {
     await sleep(3000);
-    status = decide(forge.prFacts(ref, ref.number, profile.oneWayGlobs));
+    facts = forge.prFacts(ref, ref.number);
   }
-  return { status, profile, pull };
+  return { status: statusFromFacts(facts), body: facts.body };
 }
 
-function statusLine(s: Status): string {
-  const lines = [`#${s.pr} ${s.verdict} → ${s.next}  ${s.title}`, `  ${s.url}  head ${s.headSha.slice(0, 7)}`];
-  for (const b of s.blockers) lines.push(`  - ${b}`);
-  lines.push(`  verification: ${s.verification.status}${s.verification.result ? ` (${s.verification.result})` : ""}`);
-  if (s.oneWayTouched.length) lines.push(`  one-way doors touched: ${s.oneWayTouched.join(", ")}`);
-  return lines.join("\n");
+function statusLines(s: Status): string {
+  const checks = [`${s.checks.passing} passing`];
+  if (s.checks.failing.length) checks.push(`failing: ${s.checks.failing.join(", ")}`);
+  if (s.checks.pending.length) checks.push(`pending: ${s.checks.pending.join(", ")}`);
+  const reviews = s.reviews.changesRequested.length ? `changes requested by ${s.reviews.changesRequested.join(", ")}` : s.reviews.approved ? "approved" : "no approval yet";
+  return [
+    `#${s.pr} ${s.state}${s.draft ? ", a draft" : ""}  ${s.title}`,
+    `  ${s.url}  head ${s.headSha.slice(0, 7)}  ${s.headRef} → ${s.baseRef}`,
+    `  conflicts ${s.conflicts === null ? "unknown" : s.conflicts ? "yes" : "no"} · GitHub says ${s.mergeState}`,
+    `  checks ${checks.join(", ")}`,
+    `  open review threads ${s.unresolvedThreads ?? "unknown"} · ${reviews}`,
+  ].join("\n");
 }
 
 async function prStatus(a: Args) {
   const { status } = await statusOf(forge.resolvePr(a._[2], str(a.flags.repo)));
-  print(Boolean(a.flags.json), status, () => statusLine(status));
-  return EXIT[status.verdict];
+  print(a, status, () => statusLines(status));
+  return 0;
 }
 
 // One line per change, nothing while nothing moves: built for the Monitor
-// tool, which turns each line into a wake-up.
+// tool, which turns each line into a wake-up. Ends once the PR is merged or
+// closed.
 async function prWatch(a: Args) {
   const ref = forge.resolvePr(a._[2], str(a.flags.repo));
   const interval = Number(str(a.flags.interval) ?? 60) * 1000;
@@ -118,11 +167,10 @@ async function prWatch(a: Args) {
       failures = 0;
       const fp = fingerprint(status);
       if (fp !== last) {
-        const at = new Date().toISOString().slice(11, 19);
-        console.log(`${at} #${status.pr} ${fp} next=${status.next}${status.blockers.length ? ` | ${status.blockers.join("; ")}` : ""}`);
+        console.log(`${new Date().toISOString().slice(11, 19)} #${status.pr} ${fp}`);
         last = fp;
       }
-      if (status.next === "done") return EXIT[status.verdict];
+      if (status.state !== "open") return 0;
       await sleep(interval);
     } catch (e) {
       failures++;
@@ -131,35 +179,6 @@ async function prWatch(a: Args) {
       await sleep(Math.min(interval * 2 ** failures, 300_000));
     }
   }
-}
-
-// A verdict belongs to the SHA the reviewers checked. If the head moved since,
-// or moves while the diff is read, the verdict is about other code: refuse.
-async function prVerdict(a: Args) {
-  const result = str(a.flags.result);
-  const reviewed = str(a.flags.sha);
-  if (result !== "pass" && result !== "fail") throw new Exit(64, "--result pass|fail is required");
-  if (!reviewed || !/^[0-9a-f]{7,40}$/.test(reviewed)) throw new Exit(64, "--sha <the commit the reviewers checked> is required");
-  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
-  const headNow = () => forge.api<any>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`).head.sha as string;
-  const head = headNow();
-  if (!head.startsWith(reviewed)) throw new Exit(3, `head is ${head.slice(0, 7)}, not the reviewed ${reviewed.slice(0, 7)}: review the new head`);
-  const patch = forge.patchId(ref, ref.number);
-  if (headNow() !== head) throw new Exit(3, "head moved while the diff was read: review the new head");
-  const summaryFile = str(a.flags["summary-file"]);
-  // Quoted markers in the summary must not read as verdicts.
-  const summary = (summaryFile ? readFileSync(summaryFile, "utf8").trim() : `Verification ${result}.`).replaceAll("<!--", "&lt;!--");
-  forge.api(`repos/${ref.owner}/${ref.repo}/issues/${ref.number}/comments`, { method: "POST", body: { body: `${summary}\n\n${renderMarker(head, patch, result)}` } });
-  console.log(`recorded ${result} for #${ref.number} at ${head.slice(0, 7)}`);
-  return 0;
-}
-
-// Whether a run skill exists on the PR's base branch: the gate's evidence that
-// an agent could see the change working.
-function hasRunSkill(ref: forge.Repo, baseRef: string): boolean {
-  const base = encodeURIComponent(baseRef);
-  return forge.listRepoDir(ref, `${REPO_SKILLS}?ref=${base}`).filter(isRunSkill)
-    .some((n) => forge.readRepoFile(ref, `${REPO_SKILLS}/${n}/SKILL.md?ref=${base}`) !== null);
 }
 
 function commentArg(a: Args, usage: string): number {
@@ -172,9 +191,7 @@ const REPLY_USAGE = "usage: factory pr reply [PR] --comment <id> (--body <text> 
 
 async function prReply(a: Args) {
   const comment = commentArg(a, REPLY_USAGE);
-  const file = str(a.flags["body-file"]);
-  const body = (file ? readFileSync(file, "utf8") : (str(a.flags.body) ?? "")).trim();
-  if (!body) throw new Exit(64, REPLY_USAGE);
+  const body = bodyArg(a, REPLY_USAGE);
   const ref = forge.resolvePr(a._[2], str(a.flags.repo));
   forge.replyTo(ref, ref.number, comment, body);
   const resolve = a.flags.resolve === true;
@@ -191,37 +208,34 @@ async function prResolve(a: Args) {
   return 0;
 }
 
+// Merges only a pull request whose facts allow it, at the head it checked,
+// then takes the factory's labels off the tickets it names.
 async function prMerge(a: Args) {
   const ref = forge.resolvePr(a._[2], str(a.flags.repo));
-  const { status, profile, pull } = await statusOf(ref);
-  const repo = `${ref.owner}/${ref.repo}`.toLowerCase();
-  // Autonomy comes only from a ticket the PR itself names, never from any id
-  // passed in.
-  const named = ticketsOfPr({ body: pull.body, headRef: status.headRef }, repo);
-  const flagged = str(a.flags.ticket);
-  const ticketId = flagged ? normalizeId(flagged, repo) : (named[0] ?? null);
-  if (ticketId && !named.includes(ticketId)) {
-    throw new Exit(3, `refusing to merge #${status.pr}: it does not name ${ticketId} in its branch or a Closes line (it names ${named.join(", ") || "nothing"})`);
-  }
-  const runSkill = hasRunSkill(ref, pull.base.ref);
-  let ticketAutonomy: "merge" | "pr" | null = null;
-  let handedBack = false;
-  if (ticketId) {
+  const { status: s, body } = await statusOf(ref);
+  const blockers = mergeBlockers(s);
+  const named: { id: string; tracker: Tracker }[] = [];
+  for (const id of ticketsOfPr({ body, headRef: s.headRef }, `${ref.owner}/${ref.repo}`)) {
+    const tracker = trackerFor(id);
     try {
-      const { ticket } = await trackerFor(ticketId).get(ticketId);
-      ticketAutonomy = autonomy(ticket);
-      handedBack = ticket.labels.includes(HUMAN_LABEL);
-    } catch {
-      ticketAutonomy = null;
+      const { ticket } = await tracker.get(id);
+      named.push({ id, tracker });
+      if (ticket.labels.includes(HUMAN_LABEL)) blockers.push(`${id} is handed back (${HUMAN_LABEL})`);
+    } catch (e) {
+      console.log(`${id} could not be read, so it was not checked: ${(e as Error).message}`);
     }
   }
-  const gate = mergeGate({ status, ticketAutonomy, repoMaxAutonomy: profile.maxAutonomy, runSkill, humanApproved: a.flags["human-approved"] === true, handedBack });
-  if (!gate.allowed) {
-    console.log(`refusing to merge #${status.pr}:\n${gate.reasons.map((r) => `  - ${r}`).join("\n")}`);
+  if (blockers.length) {
+    console.log(`refusing to merge #${s.pr}:\n${blockers.map((b) => `  - ${b}`).join("\n")}`);
     return 3;
   }
-  forge.api(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/merge`, { method: "PUT", body: { merge_method: profile.mergeMethod, sha: status.headSha } });
-  console.log(`merged #${status.pr} (${profile.mergeMethod}) at ${status.headSha.slice(0, 7)}`);
+  const method = forge.mergeMethod(ref);
+  forge.api(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/merge`, { method: "PUT", body: { merge_method: method, sha: s.headSha } });
+  console.log(`merged #${s.pr} (${method}) at ${s.headSha.slice(0, 7)}`);
+  for (const t of named) {
+    await t.tracker.release(t.id);
+    console.log(`${t.id}: took off ${READY_LABEL} and ${CLAIMED_LABEL}`);
+  }
   return 0;
 }
 
@@ -235,7 +249,6 @@ function summary(t: Ticket) {
     status: t.state,
     state: t.stateName,
     repo: t.repo,
-    autonomy: autonomy(t),
     branchName: t.branchName,
     closes: t.closes,
     labels: t.labels,
@@ -243,18 +256,30 @@ function summary(t: Ticket) {
   };
 }
 
+// Ready tickets, best first. --dispatch starts one background session per
+// ready ticket of the clone it runs in, each in a worktree named after the
+// ticket; cloud sessions dispatch with the create_session tool instead.
 async function ticketsNext(a: Args) {
-  const repo = a.flags.here || a.flags.repo ? repoArg(a) : null;
-  if ((a.flags.here || a.flags.repo) && !repo) throw new Exit(64, "cannot tell which repository: pass --repo owner/name or run inside a clone");
-  const trackers = enabledTrackers(githubFor(repo));
-  if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
-  const all = (await Promise.all(trackers.map((t) => t.ready()))).flat();
-  const { ready, skipped } = nextTickets(all, { repo: repo ?? undefined });
-  print(Boolean(a.flags.json), { ready: ready.map(summary), skipped }, () => {
+  const dispatch = a.flags.dispatch === true;
+  if (dispatch && runtime() === "cloud") throw new Exit(64, "--dispatch starts background sessions on this machine; from a cloud session, start one per ticket with the create_session tool");
+  const here = forge.currentRepo();
+  const repo = dispatch ? (here ? `${here.owner}/${here.repo}`.toLowerCase() : null) : a.flags.here || a.flags.repo ? repoArg(a) : null;
+  if ((dispatch || a.flags.here || a.flags.repo) && !repo) throw new Exit(64, "cannot tell which repository: pass --repo owner/name or run inside a clone");
+  const labelled = (await openTickets(repo)).filter((t) => t.labels.includes(READY_LABEL));
+  const { ready, skipped } = nextTickets(labelled, { repo: repo ?? undefined });
+  const dispatched = dispatch
+    ? ready.map((t) => {
+        const slug = t.id.toLowerCase().replace(/[^a-z0-9]/g, "-");
+        const r = run(CLAUDE, ["--bg", "-n", t.id, "-w", slug, "--permission-mode", "auto", `/factory ${t.id}`]);
+        return { id: t.id, ok: r.code === 0, output: (r.code === 0 ? r.stdout : r.stderr).trim() };
+      })
+    : [];
+  print(a, { ready: ready.map(summary), skipped, ...(dispatch ? { dispatched } : {}) }, () => {
+    if (dispatch) return dispatched.map((d) => (d.ok ? `dispatched ${d.id}: ${d.output}` : `could not dispatch ${d.id}: ${d.output}`)).join("\n") || `no ticket is ready for ${repo}`;
     if (!ready.length) return `no ticket is ready${repo ? ` for ${repo}` : ""} (${skipped.length} labelled but waiting)`;
-    return ready.map((t) => `${t.id}  ${t.repo}  autonomy:${autonomy(t)}  ${t.title}`).join("\n");
+    return ready.map((t) => `${t.id}  ${t.repo}  ${t.title}`).join("\n");
   });
-  return 0;
+  return dispatched.every((d) => d.ok) ? 0 : 1;
 }
 
 function idArg(a: Args, usage: string): string {
@@ -262,122 +287,205 @@ function idArg(a: Args, usage: string): string {
   return normalizeId(a._[2], repoArg(a));
 }
 
-async function ticketShow(a: Args) {
-  const id = idArg(a, "usage: factory ticket show <ID>");
+async function ticketsShow(a: Args) {
+  const id = idArg(a, "usage: factory tickets show <ID>");
   const { ticket, comments } = await trackerFor(id).get(id);
   const open = ticket.repo ? forge.openPrs(ticket.repo, ticket.branchName, ticket.prs) : [];
   const phase = phaseOf(ticket, open);
-  const agreed = contract(ticket, comments);
-  print(Boolean(a.flags.json), { ...summary(ticket), phase, openPrs: open, contract: agreed, body: ticket.body, comments }, () => {
-    const s = summary(ticket);
-    return [
-      `${s.id} ${s.title}`,
-      `  ${s.url}`,
-      `  phase ${phase}${open.length ? ` · ${open.join(", ")}` : ""} · contract from the ${agreed.source === "brief" ? "triage agent brief" : "body"}`,
-      `  state ${s.state} · repo ${s.repo ?? "?"} · autonomy ${s.autonomy} · branch ${s.branchName}`,
-      `  labels ${s.labels.join(", ") || "none"}`,
-      `  blockers ${s.blockers.join(", ") || "none"}`,
-    ].join("\n");
-  });
+  const held = ticket.labels.includes(CLAIMED_LABEL) ? latestClaim(comments) : null;
+  const parts = contract(ticket, comments);
+  const SOURCE = { body: "the ticket's body", brief: "triage's agent brief", revised: "a revision" };
+  print(a, { ...summary(ticket), phase, openPrs: open, claimedBy: held ? claimant(held) : null, contract: parts, body: ticket.body }, () =>
+    [
+      `${ticket.id} ${ticket.title}`,
+      `  ${ticket.url}`,
+      `  phase ${phase}${open.length ? ` · ${open.join(", ")}` : ""}${held ? ` · claimed by ${claimant(held)}` : ""}`,
+      `  state ${ticket.stateName} · repo ${ticket.repo ?? "?"} · branch ${ticket.branchName}`,
+      `  labels ${ticket.labels.join(", ") || "none"} · blockers ${summary(ticket).blockers.join(", ") || "none"}`,
+      ...parts.map((p) => `\n--- ${SOURCE[p.kind]}, ${p.at.slice(0, 10)}\n${p.text.trim()}`),
+    ].join("\n"),
+  );
   return 0;
 }
 
-// Claim as the first write: assign and start, comment, then read back. The
-// oldest claim in the race window wins; a loser withdraws its comment.
-async function ticketClaim(a: Args) {
-  const id = idArg(a, "usage: factory ticket claim <ID>");
+// The claim is the in-progress label plus a comment naming this session.
+async function ticketsClaim(a: Args) {
+  const id = idArg(a, "usage: factory tickets claim <ID> [--take-over]");
   const tracker = trackerFor(id);
   const { ticket, comments } = await tracker.get(id);
   if (ticket.state === "done" || ticket.state === "canceled") throw new Exit(3, `${id} is ${ticket.stateName}`);
   if (!ticket.labels.includes(READY_LABEL)) throw new Exit(3, `${id} has no ${READY_LABEL} label`);
-  // The claim comment is the lock, not the tracker's state: a human may have
-  // started the ticket before handing it to an agent.
-  const where = str(a.flags.session) ?? sessionUrl();
-  const held = currentClaim(comments);
-  if (held && where && held.claim.body.includes(where)) {
-    print(Boolean(a.flags.json), summary(ticket), () => `${id} is already claimed by this session`);
-    return 0;
-  }
-  if (held && a.flags["take-over"] !== true) {
-    throw new Exit(3, `${id} is claimed by ${claimant(held.claim)}, last active ${held.lastActivity}. If that session is gone, rerun with --take-over.`);
-  }
-  const replaces = held ? `${claimant(held.claim)}, quiet since ${held.lastActivity.slice(0, 16).replace("T", " ")}` : undefined;
-  const mine = await tracker.comment(id, claimBody(where, `${runtime()}${where ? "" : ` (${hostname()})`}`, replaces));
-  const winner = claimWinner((await tracker.get(id)).comments, mine);
-  if (winner && winner !== mine) {
-    await tracker.deleteComment(id, mine);
-    throw new Exit(3, `${id} was claimed by another session first`);
+  const me = session();
+  let replaces: string | null = null;
+  if (ticket.labels.includes(CLAIMED_LABEL)) {
+    const held = latestClaim(comments);
+    if (held && me.key && held.body.includes(me.key)) {
+      print(a, summary(ticket), () => `${id} is already claimed by this session`);
+      return 0;
+    }
+    replaces = held ? `${claimant(held)}, claimed ${held.createdAt.slice(0, 16).replace("T", " ")}` : `whoever labelled it ${CLAIMED_LABEL}`;
+    if (a.flags["take-over"] !== true) throw new Exit(3, `${id} is claimed by ${replaces}. If that session is gone, rerun with --take-over.`);
   }
   await tracker.start(ticket);
-  print(Boolean(a.flags.json), summary(ticket), () => `claimed ${id}: branch ${ticket.branchName} in ${ticket.repo ?? "?"}, autonomy ${autonomy(ticket)}, PR body says "${ticket.closes}"`);
+  await tracker.comment(id, claimLog(me.name, replaces));
+  print(a, summary(ticket), () => `claimed ${id}: branch ${ticket.branchName} in ${ticket.repo ?? "?"}, PR body says "${ticket.closes}"`);
   return 0;
 }
 
-async function ticketHandback(a: Args) {
-  const id = idArg(a, "usage: factory ticket handback <ID> --brief-file <path>");
-  const file = str(a.flags["brief-file"]);
-  if (!file) throw new Exit(64, "usage: factory ticket handback <ID> --brief-file <path>");
+const REVISE_USAGE = "usage: factory tickets revise <ID> --body-file <report>";
+
+// A contract change André agreed in a session, posted where the contract lives.
+async function ticketsRevise(a: Args) {
+  const id = idArg(a, REVISE_USAGE);
+  await trackerFor(id).comment(id, reportArg(a, "Revised", REVISE_USAGE));
+  console.log(`posted the revision on ${id}: tickets show now reads it as part of the contract`);
+  return 0;
+}
+
+const HANDBACK_USAGE = "usage: factory tickets handback <ID> --body-file <report>";
+
+async function ticketsHandback(a: Args) {
+  const id = idArg(a, HANDBACK_USAGE);
+  const body = reportArg(a, "Handed back", HANDBACK_USAGE);
   const tracker = trackerFor(id);
-  const { comments } = await tracker.get(id);
-  await tracker.comment(id, readFileSync(file, "utf8").trim());
-  // The claim belonged to this attempt; the next attempt claims afresh.
-  for (const c of comments.filter(isClaim)) await tracker.deleteComment(id, c.id);
+  await tracker.comment(id, body);
   const { labelled } = await tracker.handBack(id);
   console.log(`handed ${id} back${labelled ? ` (${HUMAN_LABEL})` : `; no ${HUMAN_LABEL} label exists in the tracker, create it`}`);
   return 0;
 }
 
-async function brief(a: Args) {
-  const trackers = enabledTrackers(githubFor(repoArg(a)));
-  if (!trackers.length) throw new Exit(1, "no tracker configured: set LINEAR_API_KEY, or FACTORY_GITHUB_REPOS for GitHub Issues");
-  const tickets = (await Promise.all(trackers.map((t) => t.portfolio()))).flat();
-  const weekAgo = Date.now() - 7 * 864e5;
-  const prState = async (url: string) => {
-    try {
+type Item = { id: string; title: string; url: string; why: string; pr?: string; session?: string };
+
+// What waits on André, and what an agent can pick up now. A line names the
+// session behind it, so André can open that session and steer it.
+async function inbox(a: Args) {
+  const tickets = await openTickets(repoArg(a));
+  const human: Item[] = [];
+  const agent: Item[] = [];
+  const quiet = (at: string) => Date.now() - Date.parse(at) > QUIET_MS;
+  const item = (t: Ticket, why: string, more: Partial<Item> = {}): Item => ({ id: t.id, title: t.title, url: t.url, why, ...more });
+  for (const t of tickets) {
+    const claimed = t.labels.includes(CLAIMED_LABEL);
+    if (!t.labels.includes(HUMAN_LABEL) && !claimed) {
+      if (t.labels.includes(INFO_LABEL)) human.push(item(t, "waiting on more information"));
+      else if (t.labels.includes(TRIAGE_LABEL) || !t.labels.some((l) => FACTORY_LABELS.includes(l))) human.push(item(t, "new, needs triage"));
+      continue;
+    }
+    const { comments } = await trackerFor(t.id).get(t.id);
+    const held = latestClaim(comments);
+    const session = held ? claimant(held) : undefined;
+    if (t.labels.includes(HUMAN_LABEL)) {
+      const last = latestReport(comments);
+      human.push(item(t, last ? `waiting on your decision: ${last.title}` : "waiting on your decision", { session }));
+      continue;
+    }
+    const prs = t.repo ? forge.openPrs(t.repo, t.branchName, t.prs) : [];
+    if (!prs.length && quiet(t.updatedAt)) human.push(item(t, "claimed, but no pull request and quiet for over 3h", { session }));
+    for (const url of prs) {
       const ref = forge.resolvePr(url, undefined);
-      return { ref, ...(await statusOf(ref)) };
-    } catch {
-      return null;
+      const { status: s } = await statusOf(ref);
+      const broken = [
+        s.conflicts ? "conflicts" : "",
+        s.checks.failing.length ? `fails ${s.checks.failing.join(", ")}` : "",
+        (s.unresolvedThreads ?? 0) > 0 ? `has ${s.unresolvedThreads} open thread(s)` : "",
+      ].filter(Boolean);
+      if (s.draft) {
+        const last = latestReport(forge.comments(`${ref.owner}/${ref.repo}`, ref.number));
+        human.push(item(t, last ? `a draft pull request: ${last.title}` : "a draft pull request", { pr: url, session }));
+      } else if (!mergeBlockers(s).length) human.push(item(t, "ready to merge", { pr: url, session }));
+      else if (broken.length && quiet(s.updatedAt)) agent.push(item(t, `its pull request ${broken.join(", ")}, quiet for over 3h`, { pr: url, session }));
     }
-  };
-  // ready-for-human: a decision only André can make, whether triage put it
-  // there or an agent handed the ticket back. The ticket's comments say which.
-  const needsHuman = tickets.filter((t) => t.labels.includes(HUMAN_LABEL) && (t.state === "queued" || t.state === "started"));
-  const running = tickets.filter((t) => t.state === "started" && !needsHuman.includes(t));
-  // pstack's audit rule: progress is a side effect. Started, no PR and no
-  // update for hours means the session died after claiming.
-  const stalled = running.filter((t) => t.prs.length === 0 && Date.now() - Date.parse(t.updatedAt) > STALL_MS);
-  const { ready, skipped } = nextTickets(tickets.filter((t) => t.labels.includes(READY_LABEL) && t.state === "queued"));
-  const landed = tickets.filter((t) => t.completedAt && Date.parse(t.completedAt) > weekAgo);
-  const runningWithPrs: (ReturnType<typeof summary> & { prs: { url: string; status: Status | null }[] })[] = [];
-  // A PR needs the human when it waits on a review, or is ready and only the
-  // human may merge it: the ticket's autonomy is pr, or the gate refuses it.
-  const needsHumanPrs: { id: string; url: string; why: string }[] = [];
-  for (const t of running) {
-    const prs: { url: string; status: Status | null }[] = [];
-    for (const url of t.prs) {
-      const pr = await prState(url);
-      prs.push({ url, status: pr?.status ?? null });
-      if (!pr) continue;
-      if (pr.status.next === "human") needsHumanPrs.push({ id: t.id, url, why: pr.status.verdict === "DRAFT" ? "a draft, waiting on its author" : "waiting on a review" });
-      else if (pr.status.verdict === "READY" && autonomy(t) === "pr") needsHumanPrs.push({ id: t.id, url, why: "ready, waiting on your merge" });
-      else if (pr.status.verdict === "READY") {
-        const gate = mergeGate({ status: pr.status, ticketAutonomy: "merge", repoMaxAutonomy: pr.profile.maxAutonomy, runSkill: hasRunSkill(pr.ref, pr.pull.base.ref), humanApproved: false });
-        if (!gate.allowed) needsHumanPrs.push({ id: t.id, url, why: `ready, but the merge gate refuses it: ${gate.reasons.join("; ")}` });
-      }
-    }
-    runningWithPrs.push({ ...summary(t), prs });
   }
-  const data = { needsHuman: needsHuman.map(summary), stalled: stalled.map(summary), needsHumanPrs, running: runningWithPrs, queued: { ready: ready.map(summary), waiting: skipped }, landed: landed.map(summary) };
-  print(Boolean(a.flags.json), data, () => {
-    const out: string[] = ["## Needs you"];
-    out.push(...needsHuman.map((t) => `- ${t.id} ${t.title}: waiting on your decision`));
-    out.push(...stalled.map((t) => `- ${t.id} ${t.title}: stalled, started with no PR and quiet for over 3h`));
-    out.push(...needsHumanPrs.map((p) => `- ${p.id} ${p.url}: ${p.why}`));
-    out.push(`## Running (${running.length})`, ...runningWithPrs.map((r) => `- ${r.id} ${r.title}${r.prs[0]?.status ? `: PR ${r.prs[0].status.verdict}` : ": no PR yet"}`));
-    out.push(`## Queued (${ready.length} ready, ${skipped.length} waiting)`, ...ready.map((t) => `- ${t.id} ${t.title}`));
-    out.push(`## Landed this week (${landed.length})`, ...landed.map((t) => `- ${t.id} ${t.title}`));
-    return out.join("\n");
+  const { ready } = nextTickets(tickets.filter((t) => t.labels.includes(READY_LABEL)));
+  agent.unshift(...ready.map((t) => item(t, "ready to build")));
+  const both = !a.flags.human && !a.flags.agent;
+  const data = { ...(both || a.flags.human ? { human } : {}), ...(both || a.flags.agent ? { agent } : {}) };
+  print(a, data, () => {
+    const lines = (items: Item[]) => (items.length ? items.map((i) => `- ${i.id} ${i.title}: ${i.why}${i.pr ? ` · ${i.pr}` : ""}${i.session ? ` · ${i.session}` : ""}`) : ["- nothing"]);
+    return [...(data.human ? ["## Needs you", ...lines(human)] : []), ...(data.agent ? ["## For agents", ...lines(agent)] : [])].join("\n");
+  });
+  return 0;
+}
+
+function sinceArg(a: Args): string {
+  const v = str(a.flags.since) ?? "7d";
+  const m = /^(\d+)([dh])$/.exec(v);
+  if (m) return new Date(Date.now() - Number(m[1]) * (m[2] === "d" ? 864e5 : 3600_000)).toISOString();
+  if (!Number.isNaN(Date.parse(v))) return new Date(v).toISOString();
+  throw new Exit(64, "usage: factory stats [--since 7d | 48h | 2026-10-01]");
+}
+
+// The week's facts for the Upkeep review: what got done, what went wrong, and
+// what is still open. Which mistakes repeat, and why a ticket is stuck, is the
+// model's call.
+async function stats(a: Args) {
+  const since = sinceArg(a);
+  const repo = repoArg(a);
+  const trackers = trackersFor(repo);
+  const done = (await Promise.all(trackers.map((t) => t.done(since)))).flat();
+  const open = await openTickets(repo);
+  const recent = (at: string) => Date.parse(at) >= Date.parse(since);
+  const repos = new Set([...githubRepos(repo ? [repo] : []), ...[...done.map((d) => d.ticket), ...open].map((t) => t.repo).filter((r) => r !== null)]);
+  const merged = [...repos].flatMap((r) => {
+    try {
+      return forge.mergedSince(r, since);
+    } catch {
+      return [];
+    }
+  });
+  const reports: { where: string; url: string; kind: string; title: string; needsYou: boolean; at: string }[] = [];
+  for (const t of [...done.map((d) => d.ticket), ...open.filter((t) => recent(t.updatedAt))]) {
+    for (const c of (await trackerFor(t.id).get(t.id)).comments) {
+      const r = report(c);
+      if (r && recent(r.at)) reports.push({ where: t.id, url: t.url, ...r });
+    }
+  }
+  for (const p of merged) {
+    for (const c of forge.comments(p.repo, p.number)) {
+      const r = report(c);
+      if (r && recent(r.at)) reports.push({ where: `${p.repo}#${p.number}`, url: p.url, ...r });
+    }
+  }
+  const hours = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 3600_000);
+  const tickets = done.map(({ ticket: t, readyAt }) => ({
+    id: t.id,
+    title: t.title,
+    url: t.url,
+    readyAt,
+    doneAt: t.completedAt,
+    readyToDoneHours: readyAt && t.completedAt ? hours(readyAt, t.completedAt) : null,
+  }));
+  const data = {
+    since,
+    done: { tickets, merged },
+    wrong: {
+      handBacks: reports.filter((r) => r.kind === "Handed back"),
+      needsYou: reports.filter((r) => r.needsYou),
+      reverts: merged.filter((p) => /^revert\b/i.test(p.title)),
+      reviewComments: merged.flatMap((p) => forge.reviewComments(p.repo, p.number).map((c) => ({ pr: `${p.repo}#${p.number}`, ...c }))),
+    },
+    // André's own and nobody's: a colleague's ticket is theirs to account for.
+    open: open
+      .filter((t) => !t.assignees.length || t.assignees.some((x) => x.me))
+      .map((t) => ({ id: t.id, title: t.title, url: t.url, labels: t.labels, ageDays: Math.floor((Date.now() - Date.parse(t.createdAt)) / 864e5) }))
+      .sort((x, y) => y.ageDays - x.ageDays),
+  };
+  print(a, data, () => {
+    const lead = tickets.map((t) => t.readyToDoneHours).filter((h) => h !== null).sort((x, y) => x - y);
+    const w = data.wrong;
+    return [
+      `## Done since ${since.slice(0, 10)}: ${tickets.length} ticket(s), ${merged.length} pull request(s) merged`,
+      ...tickets.map((t) => `- ${t.id} ${t.title}: ${t.readyToDoneHours === null ? "never labelled ready-for-agent" : `ready to done in ${t.readyToDoneHours}h`}`),
+      ...merged.map((p) => `- ${p.repo}#${p.number} ${p.title}`),
+      ...(lead.length ? [`Median ready to done: ${lead[Math.floor(lead.length / 2)]}h`] : []),
+      `## Went wrong`,
+      ...w.handBacks.map((r) => `- hand-back on ${r.where}: ${r.title}`),
+      ...w.needsYou.map((r) => `- needed you on ${r.where}: ${r.title}`),
+      ...w.reverts.map((p) => `- revert ${p.repo}#${p.number}: ${p.title}`),
+      ...w.reviewComments.map((c) => `- review comment on ${c.pr} ${c.path} (${c.author}): ${c.text}`),
+      `## Open (${data.open.length}, oldest first)`,
+      ...data.open.map((t) => `- ${t.id} ${t.title}: ${t.ageDays} day(s), ${t.labels.join(", ") || "no labels"}`),
+    ].join("\n");
   });
   return 0;
 }
@@ -399,7 +507,8 @@ async function doctor(a: Args) {
   add("gh", login ? "ok" : "fail", login ? `gh authenticated as ${login}` : "gh cannot reach GitHub: run `gh auth login` locally; in the cloud, connect GitHub to the session");
 
   const here = forge.currentRepo();
-  const trackers = enabledTrackers(githubFor(here ? `${here.owner}/${here.repo}` : null));
+  const repo = here ? `${here.owner}/${here.repo}` : null;
+  const trackers = enabledTrackers(repo && repoTracker(repo) === "github" ? [repo] : []);
   if (!trackers.length) add("trackers", "fail", "none: set LINEAR_API_KEY for Linear, FACTORY_GITHUB_REPOS=owner/a,owner/b for GitHub Issues");
   for (const t of trackers) {
     try {
@@ -414,69 +523,61 @@ async function doctor(a: Args) {
   const missing = expectedSkills().filter((s) => !existsSync(join(skillsHome, s, "SKILL.md")));
   add("skills", missing.length ? "fail" : "ok", missing.length ? `missing in ${skillsHome}: ${missing.join(", ")}` : `all ${expectedSkills().length} installed`);
 
-  const repo = forge.currentRepo();
   const root = forge.repoRoot();
   if (repo && root) {
-    const path = join(root, PROFILE_PATH);
-    const profile = parseProfile(existsSync(path) ? readFileSync(path, "utf8") : null);
-    add("profile", profile.found ? "ok" : "warn", profile.found
-      ? `${PROFILE_PATH}: tracker ${profile.tracker ?? "?"}, max autonomy ${profile.maxAutonomy}, ${profile.gates.length} gate(s), ${profile.oneWayGlobs.length} one-way glob(s)`
-      : `${repo.owner}/${repo.repo} has no ${PROFILE_PATH}: run /setup-factory`);
-    const skills = join(root, REPO_SKILLS);
-    const run = existsSync(skills) ? readdirSync(skills).filter(isRunSkill).find((n) => existsSync(join(skills, n, "SKILL.md"))) : undefined;
-    add("run-skill", run ? "ok" : "warn", run ? `${REPO_SKILLS}/${run}` : "no run skill: agents cannot see the app run, so autonomy stays at pr (run /run-skill-generator)");
+    const file = ["CLAUDE.md", "AGENTS.md"].find((f) => trackerLine(existsSync(join(root, f)) ? readFileSync(join(root, f), "utf8") : null));
+    add("tracker", file ? "ok" : "warn", file ? `${file} names ${trackerLine(readFileSync(join(root, file), "utf8"))}` : "no Tracker line in an ## Agent skills block of CLAUDE.md or AGENTS.md: run /factory setup");
+    const dir = join(root, RUN_SKILLS);
+    const runSkill = existsSync(dir) ? readdirSync(dir).find((n) => n.startsWith("run-") && existsSync(join(dir, n, "SKILL.md"))) : undefined;
+    add("run-skill", runSkill ? "ok" : "warn", runSkill ? `${RUN_SKILLS}/${runSkill}` : "no run skill, so agents cannot see the app run: run /run-skill-generator");
   } else {
     add("repo", "warn", "not inside a GitHub clone: repo checks skipped");
   }
 
-  print(Boolean(a.flags.json), checks, () => checks.map((c) => `${c.level.padEnd(4)}  ${c.name.padEnd(12)}  ${c.detail}`).join("\n"));
+  print(a, checks, () => checks.map((c) => `${c.level.padEnd(4)}  ${c.name.padEnd(12)}  ${c.detail}`).join("\n"));
   return checks.some((c) => c.level === "fail") ? 1 : 0;
 }
 
-const HELP = `factory: deterministic helpers for the ticket → PR → merge factory
+const HELP = `factory: the facts and gates of the ticket → pull request → merge factory
 
 Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a clone.
 
-  factory doctor [--json]                     check gh, trackers, skills, repo profile, run skill
-  factory tickets next [--repo o/r|--here] [--json]
-                                              tickets labelled ${READY_LABEL} whose blockers are done
-  factory ticket show <ID> [--json]           normalized ticket: repo, autonomy, blockers, branch
-  factory ticket claim <ID> [--take-over]     claim it for this session; exit 3 if another session holds it
-  factory ticket handback <ID> --brief-file F comment the brief, swap to ${HUMAN_LABEL}, back to the queue
-  factory pr status [PR] [--repo o/r] [--json]
-                                              merge-readiness verdict; exit code encodes it
-  factory pr watch [PR] [--interval 60]       one line per change until merged or closed
-  factory pr verdict [PR] --sha SHA --result pass|fail [--summary-file F]
-                                              record an independent verdict for the SHA the reviewers
-                                              checked; exit 3 if the head has moved
+  factory doctor [--json]                       check gh, trackers, skills, the repo's tracker and run skill
+  factory inbox [--human | --agent] [--json]    what waits on you, and what an agent can pick up now
+  factory stats [--since 7d] [--json]           what got done, what went wrong, what is still open
+  factory tickets next [--repo o/r | --here] [--dispatch] [--json]
+                                                tickets labelled ${READY_LABEL} whose blockers are done;
+                                                --dispatch starts a background session for each, in this clone
+  factory tickets show <ID> [--json]            the ticket, its phase, its claim and its contract
+  factory tickets claim <ID> [--take-over]      label it ${CLAIMED_LABEL} for this session; exit 3 if another holds it
+  factory tickets revise <ID> --body-file F     post a "Revised ·" report, which joins the contract
+  factory tickets handback <ID> --body-file F   post a "Handed back ·" report and relabel it ${HUMAN_LABEL}
+  factory pr status [PR] [--repo o/r] [--json]  conflicts, checks, reviews and open threads
+  factory pr watch [PR] [--interval 60]         one line per change until merged or closed
   factory pr reply [PR] --comment ID (--body TEXT | --body-file F) [--resolve]
-                                              reply in a review comment's thread, with the Claude Code
-                                              footer; --resolve also resolves the thread
-  factory pr resolve [PR] --comment ID        resolve the review thread holding the comment
-  factory pr merge [PR] [--ticket ID] [--human-approved]
-                                              merge only if the gate allows it; exit 3 with reasons if not.
-                                              The ticket must be one the PR names (branch or Closes line)
-  factory brief [--json]                      portfolio: needs you, running, queued, landed
+                                                reply in a review comment's thread, with the Claude Code
+                                                footer; --resolve also resolves the thread
+  factory pr resolve [PR] --comment ID          resolve the review thread holding the comment
+  factory pr merge [PR]                         merge if nothing blocks it, else exit 3 with what does
 
-Trackers: Linear when LINEAR_API_KEY is set (or \`linear auth login\` locally); GitHub Issues
-for the repos in FACTORY_GITHUB_REPOS and any repo whose .agents/factory.md names GitHub.
-
-Exit codes for pr status: READY 0, CONFLICT 2, THREADS 3, CI_FAILING 4, CHANGES_REQUESTED 5,
-DRAFT 6, BEHIND 7, CI_PENDING 10, COMPUTING 11, AWAITING_REVIEW 12, MERGED 20, CLOSED 21.`;
+Trackers: Linear when LINEAR_API_KEY is set (or \`linear auth login\` locally); GitHub Issues for
+the repos in FACTORY_GITHUB_REPOS, and for a repo whose CLAUDE.md or AGENTS.md says
+"Tracker: GitHub Issues" in its "## Agent skills" block.`;
 
 export async function main(argv: string[]): Promise<number> {
   const a = parseArgs(argv);
   const [group, sub] = a._;
   const routes: Record<string, (a: Args) => Promise<number>> = {
     doctor,
-    brief,
+    inbox,
+    stats,
     "tickets next": ticketsNext,
-    "ticket show": ticketShow,
-    "ticket claim": ticketClaim,
-    "ticket handback": ticketHandback,
+    "tickets show": ticketsShow,
+    "tickets claim": ticketsClaim,
+    "tickets revise": ticketsRevise,
+    "tickets handback": ticketsHandback,
     "pr status": prStatus,
     "pr watch": prWatch,
-    "pr verdict": prVerdict,
     "pr reply": prReply,
     "pr resolve": prResolve,
     "pr merge": prMerge,

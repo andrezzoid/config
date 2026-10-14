@@ -3,8 +3,8 @@
 // GitHub has no workflow states: an open issue labelled in-progress is
 // started, any other open issue is queued.
 
-import { api, paginate, viewer as forgeViewer } from "../forge.ts";
-import { HUMAN_LABEL, READY_LABEL, STARTED_LABEL, slug } from "../tickets.ts";
+import { api, comments, paginate, viewer as forgeViewer } from "../forge.ts";
+import { CLAIMED_LABEL, FACTORY_LABELS, HUMAN_LABEL, READY_LABEL, slug } from "../tickets.ts";
 import type { Ticket, TicketComment, TicketRef, Tracker } from "./types.ts";
 
 export class GithubError extends Error {}
@@ -15,7 +15,6 @@ export function parseId(id: string): { repo: string; number: number } {
   return { repo: m[1].toLowerCase(), number: Number(m[2]) };
 }
 
-const FACTORY_LABELS = [READY_LABEL, HUMAN_LABEL, STARTED_LABEL];
 const BLOCKED_BY_LINE = /^[ \t>*_-]*blocked[ -]by\b[*_]*\s*:?(.*)$/i;
 const ISSUE_REF = /(?:https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/|(?<![\w/])(?:([\w.-]+\/[\w.-]+))?#)(\d+)\b/g;
 
@@ -27,7 +26,7 @@ function repoOfUrl(url: string | undefined, fallback: string): string {
 export function toTicket(issue: any, repo: string, blockers: TicketRef[] = [], me: string | null = null): Ticket {
   const labels: string[] = (issue.labels ?? []).map((l: any) => String(typeof l === "string" ? l : l.name).toLowerCase());
   const closed = issue.state === "closed";
-  const started = !closed && labels.includes(STARTED_LABEL);
+  const started = !closed && labels.includes(CLAIMED_LABEL);
   const subs = issue.sub_issues_summary;
   return {
     id: `${repo}#${issue.number}`,
@@ -36,7 +35,7 @@ export function toTicket(issue: any, repo: string, blockers: TicketRef[] = [], m
     body: issue.body ?? "",
     url: issue.html_url,
     state: closed ? (issue.state_reason === "not_planned" ? "canceled" : "done") : started ? "started" : "queued",
-    stateName: closed ? "closed" : started ? STARTED_LABEL : "open",
+    stateName: closed ? "closed" : started ? CLAIMED_LABEL : "open",
     labels,
     repo,
     branchName: `issue-${issue.number}-${slug(issue.title)}`,
@@ -128,10 +127,18 @@ export class GithubTracker implements Tracker {
     return paginate<any>(`repos/${repo}/issues?${query}`).filter((i) => !i.pull_request);
   }
 
-  async ready(): Promise<Ticket[]> {
+  async open(): Promise<Ticket[]> {
+    const me = forgeViewer();
     const out: Ticket[] = [];
     for (const repo of this.repos) {
-      for (const i of this.issues(repo, `state=open&labels=${READY_LABEL}`)) out.push(this.full(repo, i));
+      const prs = paginate<any>(`repos/${repo}/pulls?state=open`);
+      for (const i of this.issues(repo, "state=open")) {
+        let t = toTicket(i, repo, [], me);
+        if (t.labels.length > 0 && !t.labels.some((l) => FACTORY_LABELS.includes(l))) continue;
+        if (t.state === "queued" && t.labels.includes(READY_LABEL)) t = this.full(repo, i);
+        t.prs = prs.filter((p) => closedIssue(p) === i.number).map((p) => p.html_url);
+        out.push(t);
+      }
     }
     return out;
   }
@@ -140,55 +147,46 @@ export class GithubTracker implements Tracker {
     const { repo, number } = parseId(id);
     const issue = api<any>(`repos/${repo}/issues/${number}`);
     if (issue.pull_request) throw new GithubError(`${id} is a pull request, not an issue`);
-    const comments = paginate<any>(`repos/${repo}/issues/${number}/comments`).map((c) => ({
-      id: String(c.id),
-      body: c.body ?? "",
-      createdAt: c.created_at,
-    }));
-    return { ticket: this.full(repo, issue), comments };
+    return { ticket: this.full(repo, issue), comments: comments(repo, number) };
   }
 
   async start(t: Ticket): Promise<void> {
     const { repo, number } = parseId(t.id);
     if (t.assignees.length === 0) api(`repos/${repo}/issues/${number}/assignees`, { method: "POST", body: { assignees: [await this.viewer()] } });
-    if (!t.labels.includes(STARTED_LABEL)) api(`repos/${repo}/issues/${number}/labels`, { method: "POST", body: { labels: [STARTED_LABEL] } });
+    if (!t.labels.includes(CLAIMED_LABEL)) api(`repos/${repo}/issues/${number}/labels`, { method: "POST", body: { labels: [CLAIMED_LABEL] } });
   }
 
-  async comment(id: string, body: string): Promise<string> {
+  async comment(id: string, body: string): Promise<void> {
     const { repo, number } = parseId(id);
-    return String(api<any>(`repos/${repo}/issues/${number}/comments`, { method: "POST", body: { body } }).id);
-  }
-
-  async deleteComment(id: string, commentId: string): Promise<void> {
-    api(`repos/${parseId(id).repo}/issues/comments/${commentId}`, { method: "DELETE" });
+    api(`repos/${repo}/issues/${number}/comments`, { method: "POST", body: { body } });
   }
 
   async handBack(id: string): Promise<{ labelled: boolean }> {
+    await this.release(id);
     const { repo, number } = parseId(id);
-    for (const label of [READY_LABEL, STARTED_LABEL]) {
+    api(`repos/${repo}/issues/${number}/labels`, { method: "POST", body: { labels: [HUMAN_LABEL] } });
+    return { labelled: true };
+  }
+
+  async release(id: string): Promise<void> {
+    const { repo, number } = parseId(id);
+    for (const label of [READY_LABEL, CLAIMED_LABEL]) {
       try {
         api(`repos/${repo}/issues/${number}/labels/${label}`, { method: "DELETE" });
       } catch {
         // not on the issue
       }
     }
-    api(`repos/${repo}/issues/${number}/labels`, { method: "POST", body: { labels: [HUMAN_LABEL] } });
-    return { labelled: true };
   }
 
-  async portfolio(): Promise<Ticket[]> {
-    const since = new Date(Date.now() - 14 * 864e5).toISOString();
-    const out: Ticket[] = [];
+  async done(since: string): Promise<{ ticket: Ticket; readyAt: string | null }[]> {
+    const me = forgeViewer();
+    const out: { ticket: Ticket; readyAt: string | null }[] = [];
     for (const repo of this.repos) {
-      const prs = paginate<any>(`repos/${repo}/pulls?state=open`);
-      const touched = [...this.issues(repo, "state=open"), ...this.issues(repo, `state=closed&since=${since}`)];
-      for (const i of touched) {
-        let t = toTicket(i, repo, [], forgeViewer());
-        if (!t.labels.some((l) => FACTORY_LABELS.includes(l))) continue;
-        // The brief counts ready tickets the way `tickets next` does.
-        if (t.state === "queued" && t.labels.includes(READY_LABEL)) t = this.full(repo, i);
-        t.prs = prs.filter((p) => closedIssue(p) === i.number).map((p) => p.html_url);
-        out.push(t);
+      for (const i of this.issues(repo, `state=closed&since=${since}`)) {
+        if (i.state_reason === "not_planned" || Date.parse(i.closed_at) < Date.parse(since)) continue;
+        const labelled = paginate<any>(`repos/${repo}/issues/${i.number}/events`).filter((e) => e.event === "labeled" && e.label?.name?.toLowerCase() === READY_LABEL);
+        out.push({ ticket: toTicket(i, repo, [], me), readyAt: labelled.at(-1)?.created_at ?? null });
       }
     }
     return out;

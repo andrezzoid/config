@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { parseProfile } from "../scripts/profile.ts";
-import { autonomy, byPriority, claimBody, claimWinner, contract, currentClaim, nextTickets, phaseOf, readiness, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
+import { byPriority, claimant, claimLog, contract, latestClaim, latestReport, nextTickets, phaseOf, readiness, report, slug, ticketFromBranch, ticketsOfPr } from "../scripts/tickets.ts";
 import { blockedByRefs, closedIssue, toTicket as githubTicket } from "../scripts/trackers/github.ts";
-import { normalizeId, trackerOf } from "../scripts/trackers/index.ts";
+import { normalizeId, trackerLine, trackerOf } from "../scripts/trackers/index.ts";
 import { repoOf, toTicket as linearTicket } from "../scripts/trackers/linear.ts";
 import { expect } from "./expect.ts";
 import { githubIssue, linearIssue, ticket } from "./fixtures.ts";
@@ -16,6 +15,7 @@ describe("readiness", () => {
 
   test("each missing condition names itself", () => {
     expect(readiness(ticket({ labels: [] }))).toEqual({ ready: false, reason: "no ready-for-agent label" });
+    expect(readiness(ticket({ labels: ["ready-for-agent", "in-progress"] }))).toEqual({ ready: false, reason: "claimed (in-progress)" });
     expect(readiness(ticket({ state: "started", stateName: "In Progress" }))).toEqual({ ready: false, reason: "state is In Progress" });
     expect(readiness(ticket({ repo: null }))).toEqual({ ready: false, reason: "no repository: add a Repo: owner/name line" });
   });
@@ -40,17 +40,7 @@ describe("readiness", () => {
   });
 });
 
-describe("autonomy", () => {
-  test("flat label, label group, or default", () => {
-    expect(autonomy(ticket({ labels: ["autonomy:merge"] }))).toBe("merge");
-    const grouped = { ...linearIssue(), labels: { nodes: [{ name: "Merge", parent: { name: "Autonomy" } }] } };
-    expect(autonomy(linearTicket(grouped))).toBe("merge");
-    expect(autonomy(ticket({ labels: ["autonomy:pr"] }))).toBe("pr");
-    expect(autonomy(ticket())).toBe("pr");
-  });
-});
-
-describe("ordering and claims", () => {
+describe("ordering and branches", () => {
   test("urgent first, no-priority last, then oldest", () => {
     const a = ticket({ id: "A", priority: 0 });
     const b = ticket({ id: "B", priority: 1 });
@@ -58,23 +48,6 @@ describe("ordering and claims", () => {
     const d = ticket({ id: "D", priority: 3, createdAt: "2026-02-01T00:00:00Z" });
     expect([a, d, c, b].sort(byPriority).map((t) => t.id)).toEqual(["B", "C", "D", "A"]);
     expect(nextTickets([a, ticket({ id: "X", labels: [] })]).skipped).toEqual([{ id: "X", reason: "no ready-for-agent label" }]);
-  });
-
-  test("the oldest claim inside the race window wins", () => {
-    const comments = [
-      { id: "mine", body: claimBody(null, "local"), createdAt: "2026-10-01T10:00:01Z" },
-      { id: "theirs", body: claimBody("https://claude.ai/code/session_x", "cloud"), createdAt: "2026-10-01T10:00:00Z" },
-      { id: "c0", body: "unrelated", createdAt: "2026-10-01T09:00:00Z" },
-    ];
-    expect(claimWinner(comments, "mine")).toBe("theirs");
-  });
-
-  test("a claim left by an earlier attempt never beats a new one", () => {
-    const comments = [
-      { id: "stale", body: claimBody(null, "cloud"), createdAt: "2026-09-01T10:00:00Z" },
-      { id: "mine", body: claimBody(null, "local"), createdAt: "2026-10-01T10:00:00Z" },
-    ];
-    expect(claimWinner(comments, "mine")).toBe("mine");
   });
 
   for (const [branch, repo, expected] of [
@@ -103,41 +76,85 @@ describe("ordering and claims", () => {
 });
 
 describe("claims", () => {
-  const now = Date.parse("2026-10-07T12:00:00Z");
-  const ago = (hours: number) => new Date(now - hours * 3600_000).toISOString();
-  const claim = (id: string, hours: number) => ({ id, body: claimBody(null, "cloud"), createdAt: ago(hours) });
+  const log = (id: string, createdAt: string, session: string) => ({ id, createdAt, body: claimLog(session, null) });
 
-  test("no claim, nobody holds the ticket", () => {
-    expect(currentClaim([])).toBe(null);
-  });
-
-  test("a claim holds however old it is, and reports its last activity", () => {
-    expect(currentClaim([claim("c", 50)])?.claim.id).toBe("c");
-    expect(currentClaim([claim("c", 50)])?.lastActivity).toBe(ago(50));
-    expect(currentClaim([claim("c", 5), { id: "x", body: "Deviation", createdAt: ago(1) }, { id: "y", body: "older", createdAt: ago(9) }])?.lastActivity).toBe(ago(1));
-  });
-
-  test("the winner of the newest race holds the ticket", () => {
-    expect(currentClaim([claim("old", 9), claim("new", 1)])?.claim.id).toBe("new");
-    expect(currentClaim([claim("first", 1), { ...claim("second", 1), createdAt: new Date(now - 3600_000 + 60_000).toISOString() }])?.claim.id).toBe("first");
+  test("the latest claim log names the session holding the ticket", () => {
+    const comments = [
+      log("a", "2026-10-01T10:00:00Z", "[a cloud session](https://claude.ai/code/session_a)"),
+      { id: "x", createdAt: "2026-10-03T10:00:00Z", body: "Unrelated, mentions Claimed by in passing" },
+      log("b", "2026-10-02T10:00:00Z", "local session 1234 on andre-mac.local"),
+    ];
+    expect(latestClaim(comments)?.id).toBe("b");
+    expect(claimant(latestClaim(comments)!)).toBe("local session 1234 on andre-mac.local");
+    expect(claimant(comments[0])).toBe("[a cloud session](https://claude.ai/code/session_a)");
+    expect(latestClaim([])).toBe(null);
   });
 
   test("a takeover names the claim it replaces", () => {
-    expect(claimBody(null, "local", "a cloud session, quiet since 2026-10-07 07:00")).toContain("Takes over from a cloud session, quiet since 2026-10-07 07:00.");
+    expect(claimLog("a local session on mac", "a cloud session, claimed 2026-10-07 07:00")).toBe("Claimed by a local session on mac. Takes over from a cloud session, claimed 2026-10-07 07:00.");
+  });
+});
+
+describe("reports", () => {
+  const at = "2026-10-05T00:00:00Z";
+
+  for (const [title, kind] of [
+    ["## Handed back · acceptance line 2 cannot hold", "Handed back"],
+    ["**Revised · the export drops archived rows**", "Revised"],
+    ["Deviation - kept the old endpoint", "Deviation"],
+    ["### unverified: the iOS layout", "Unverified"],
+  ]) {
+    test(`"${title}" is a ${kind} report`, () => {
+      expect(report({ id: "r", createdAt: at, body: `${title}\n\nExpected: x` })?.kind).toBe(kind);
+    });
+  }
+
+  test("other comments are not reports, and Needs you marks the ones only André can move", () => {
+    expect(report({ id: "r", createdAt: at, body: "Revised the plan, see below" })).toBe(null);
+    expect(report({ id: "r", createdAt: at, body: "Claimed by a cloud session." })).toBe(null);
+    expect(report({ id: "r", createdAt: at, body: "## Deviation · x\n\n**Needs you:** pick one" })?.needsYou).toBe(true);
+    expect(report({ id: "r", createdAt: at, body: "## Deviation · x\n\n### Needs you\n\nPick one" })?.needsYou).toBe(true);
+    expect(report({ id: "r", createdAt: at, body: "## Deviation · x\n\nNothing needs you." })?.needsYou).toBe(false);
+  });
+
+  test("the latest report wins, whatever order the comments arrive in", () => {
+    const comments = [
+      { id: "b", createdAt: "2026-10-06T00:00:00Z", body: "## Handed back · second" },
+      { id: "a", createdAt: "2026-10-05T00:00:00Z", body: "## Handed back · first" },
+    ];
+    expect(latestReport(comments)?.title).toBe("Handed back · second");
+    expect(comments[0].id).toBe("b");
   });
 });
 
 describe("contract", () => {
   const brief = (id: string, createdAt: string, text: string) => ({ id, createdAt, body: `> *This was generated by AI during triage.*\n\n## Agent Brief\n\n${text}` });
+  const revised = (id: string, createdAt: string, text: string) => ({ id, createdAt, body: `## Revised · ${text}` });
 
   test("the body is the contract until triage posts an agent brief", () => {
-    expect(contract(ticket(), [{ id: "c", createdAt: "2026-10-02T00:00:00Z", body: "Deviation: none" }])).toEqual({ source: "body", text: ticket().body });
+    expect(contract(ticket(), [{ id: "c", createdAt: "2026-10-02T00:00:00Z", body: "Deviation: none" }])).toEqual([{ kind: "body", at: ticket().createdAt, text: ticket().body }]);
   });
 
   test("the latest agent brief wins over the body and older briefs", () => {
     const c = contract(ticket(), [brief("old", "2026-10-02T00:00:00Z", "first"), brief("new", "2026-10-03T00:00:00Z", "second"), { id: "x", createdAt: "2026-10-04T00:00:00Z", body: "Mentions ## Agent Brief inline" }]);
-    expect(c.source).toBe("brief");
-    expect(c.text).toContain("second");
+    expect(c).toHaveLength(1);
+    expect(c[0].kind).toBe("brief");
+    expect(c[0].text).toContain("second");
+  });
+
+  test("revisions after the latest brief join it, oldest first; a newer brief replaces older revisions", () => {
+    const comments = [
+      revised("r0", "2026-10-02T12:00:00Z", "before the brief"),
+      brief("b", "2026-10-03T00:00:00Z", "the brief"),
+      revised("r2", "2026-10-05T00:00:00Z", "second"),
+      revised("r1", "2026-10-04T00:00:00Z", "first"),
+    ];
+    expect(contract(ticket(), comments).map((p) => [p.kind, p.at])).toEqual([
+      ["brief", "2026-10-03T00:00:00Z"],
+      ["revised", "2026-10-04T00:00:00Z"],
+      ["revised", "2026-10-05T00:00:00Z"],
+    ]);
+    expect(contract(ticket(), [revised("r", "2026-10-04T00:00:00Z", "no brief")]).map((p) => p.kind)).toEqual(["body", "revised"]);
   });
 });
 
@@ -157,7 +174,7 @@ describe("phase", () => {
   });
 
   test("a ticket handed back with its pull request still open waits on the human", () => {
-    expect(phaseOf(ticket({ labels: ["ready-for-human", "autonomy:merge"], state: "started" }), ["https://github.com/o/r/pull/7"])).toBe("shape");
+    expect(phaseOf(ticket({ labels: ["ready-for-human"], state: "started" }), ["https://github.com/o/r/pull/7"])).toBe("shape");
   });
 });
 
@@ -167,6 +184,15 @@ describe("ticket ids", () => {
     expect(trackerOf("andrezzoid/app#12")).toBe("github");
     expect(trackerOf("#12")).toBe("github");
     expect(trackerOf("12")).toBe(null);
+  });
+
+  test("a repo names its tracker in the Tracker line of its Agent skills block", () => {
+    const md = (block: string) => `# Repo\n\n## Agent skills\n\n${block}\n\n## Testing\n\nTracker: Linear, in another section`;
+    expect(trackerLine(md("Tracker: GitHub Issues\nLabels: needs-triage"))).toBe("github");
+    expect(trackerLine(md("- **Tracker:** Linear, team ENG"))).toBe("linear");
+    expect(trackerLine(md("Labels: needs-triage"))).toBe(null);
+    expect(trackerLine("Tracker: GitHub Issues")).toBe(null);
+    expect(trackerLine(null)).toBe(null);
   });
 
   test("#12 needs the repository at hand", () => {
@@ -278,50 +304,5 @@ describe("GitHub adapter", () => {
     expect(closedIssue({ body: "Small fix.\n\nCloses #12", head: { ref: "x" } })).toBe(12);
     expect(closedIssue({ body: "", head: { ref: "issue-7-thing" } })).toBe(7);
     expect(closedIssue({ body: "See #12", head: { ref: "main" } })).toBe(null);
-  });
-});
-
-describe("profile", () => {
-  // The template /setup-factory copies into each repo: if it drifts from the
-  // parser, this fails.
-  const template = readFileSync(join(import.meta.dirname, "../../setup-factory/references/profile-template.md"), "utf8");
-
-  test("reads the fields that route tickets and gate a merge from the setup-factory template", () => {
-    expect(parseProfile(template)).toEqual({
-      found: true,
-      tracker: "linear",
-      team: "ENG",
-      maxAutonomy: "pr",
-      mergeMethod: "squash",
-      gates: ["pnpm lint", "pnpm typecheck", "pnpm test"],
-      oneWayGlobs: [".agents/factory.md", "db/migrations/**", "infra/**"],
-    });
-  });
-
-  test("a GitHub Issues tracker has no team", () => {
-    expect(parseProfile("- **Tracker:** GitHub Issues")).toMatchObject({ tracker: "github", team: null });
-  });
-
-  test("an edited profile raises autonomy and changes the method", () => {
-    const edited = template.replace("**Max autonomy:** `pr`", "**Max autonomy:** `merge`").replace("`squash`", "`rebase`");
-    expect(parseProfile(edited)).toMatchObject({ maxAutonomy: "merge", mergeMethod: "rebase" });
-  });
-
-  test("no profile means the conservative defaults", () => {
-    expect(parseProfile(null)).toMatchObject({ found: false, tracker: null, maxAutonomy: "pr", mergeMethod: "squash", oneWayGlobs: [".agents/factory.md"] });
-  });
-
-  test("bare globs and an unhyphenated heading still count as doors", () => {
-    const p = parseProfile("## One way doors\n\n- db/migrations/**: schema\n- infra/** (prod)\n- `auth/**`\n");
-    expect(p.oneWayGlobs).toEqual([".agents/factory.md", "db/migrations/**", "infra/**", "auth/**"]);
-  });
-
-  test("a backticked word in a bare glob's explanation does not replace the glob", () => {
-    const p = parseProfile("## One-way doors\n\n- db/migrations/**: apply with `make migrate`, never by hand\n");
-    expect(p.oneWayGlobs).toEqual([".agents/factory.md", "db/migrations/**"]);
-  });
-
-  test("anything but an explicit merge caps autonomy at pr", () => {
-    expect(parseProfile("- Max autonomy: `yolo`").maxAutonomy).toBe("pr");
   });
 });

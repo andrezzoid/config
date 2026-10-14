@@ -226,6 +226,18 @@ export function comments(repo: string, number: number): Comment[] {
   return paginate<any>(`repos/${repo}/issues/${number}/comments`).map((c) => ({ id: String(c.id), body: c.body ?? "", createdAt: c.created_at }));
 }
 
+// The newest comment on a pull request: in its conversation, on its diff, or
+// a review's own text.
+export function lastWord(r: Repo, number: number): string | null {
+  const base = `repos/${r.owner}/${r.repo}`;
+  const all = [
+    ...paginate<any>(`${base}/issues/${number}/comments`).map((c) => ({ at: c.created_at, body: c.body })),
+    ...paginate<any>(`${base}/pulls/${number}/comments`).map((c) => ({ at: c.created_at, body: c.body })),
+    ...paginate<any>(`${base}/pulls/${number}/reviews`).filter((v) => v.body).map((v) => ({ at: v.submitted_at, body: v.body })),
+  ];
+  return all.sort((x, y) => Date.parse(x.at) - Date.parse(y.at)).at(-1)?.body ?? null;
+}
+
 export type Merged = { repo: string; number: number; url: string; title: string; mergedAt: string };
 
 // Pull requests merged since a moment, read from the 300 most recently

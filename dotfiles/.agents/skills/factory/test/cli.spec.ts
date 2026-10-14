@@ -190,7 +190,7 @@ describe("pr status", () => {
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     const s = JSON.parse(r.out);
-    expect(s).toMatchObject({ pr: 7, state: "open", draft: false, conflicts: false, unresolvedThreads: 0, checks: { failing: [], pending: [], passing: 1 } });
+    expect(s).toMatchObject({ pr: 7, state: "open", draft: false, conflicts: false, unresolvedThreads: 0, checks: { failing: [], pending: [], passing: 1 }, blockers: [] });
     expect("next" in s || "verdict" in s).toBe(false);
   });
 
@@ -201,11 +201,11 @@ describe("pr status", () => {
     expect(JSON.parse(r.out).unresolvedThreads).toBe(1);
   });
 
-  test("names a failing check and still exits 0", async () => {
+  test("names a failing check, and what blocks a merge, and still exits 0", async () => {
     routes({ [`GET repos/o/r/commits/${SHA}/check-runs`]: { check_runs: [{ id: 1, name: "lint", status: "completed", conclusion: "failure" }] } });
     const r = await run(["pr", "status", "7", "--repo", "o/r"]);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("failing: lint");
+    expect(r.out).toContain("blocks a merge: failing: lint");
   });
 });
 
@@ -334,8 +334,15 @@ describe("pr reply and resolve", () => {
     expect(graphqlCalls()).toEqual([]);
   });
 
+  test("a hand-back on the pull request turns it into a draft, with or without a Needs you", async () => {
+    routes({ "POST repos/o/r/issues/7/comments": { id: 1 }, "POST repos/o/r/pulls/7/ccr/convert_to_draft": {} });
+    const r = await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Handed back · the reviewer disputes acceptance line 2"], { CLAUDE_CODE_REMOTE: "true" });
+    expect(r.out).toContain("turned it into a draft");
+    expect(ghCalls().filter((c) => c.args[1] === "repos/o/r/pulls/7/ccr/convert_to_draft")).toHaveLength(1);
+  });
+
   test("report takes only a pull request's kinds of report", async () => {
-    expect((await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Handed back · x"])).err).toContain("goes on the ticket");
+    expect((await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Revised · x"])).err).toContain("goes on the ticket");
     expect((await run(["pr", "report", "7", "--repo", "o/r", "--body", "Some thoughts"])).code).toBe(64);
     expect(ghCalls().some((c) => c.args.includes("POST"))).toBe(false);
   });
@@ -500,6 +507,7 @@ describe("Linear tickets", () => {
     issueComments.push({ id: "c", body: claimLog("local session s1 on mac", null), createdAt: hoursAgo(1) });
     const d = JSON.parse((await run(["tickets", "show", "ENG-1", "--json"])).out);
     expect(d).toMatchObject({ phase: "iterate", openPrs: [], claimedBy: "local session s1 on mac" });
+    expect(d.comments.map((c: any) => c.body)).toEqual(["Claimed by local session s1 on mac."]);
   });
 });
 
@@ -562,7 +570,7 @@ describe("GitHub Issues tickets", () => {
     expect(doctor.out).toContain("AGENTS.md names github");
     const inbox = await run(["inbox", "--agent", "--json"], env, path);
     expect(inbox.err).toBe("");
-    expect(JSON.parse(inbox.out)).toEqual({ agent: [{ id: "o/r#12", title: "App: do the thing", url: "https://github.com/o/r/issues/12", why: "ready to build" }] });
+    expect(JSON.parse(inbox.out)).toEqual({ agent: [{ id: "o/r#12", title: "App: do the thing", url: "https://github.com/o/r/issues/12", repo: "o/r", why: "ready to build" }] });
   });
 
   test("claim assigns the viewer, labels it in-progress and logs the session", async () => {
@@ -611,7 +619,8 @@ describe("GitHub Issues tickets", () => {
     const claude = join(dir, "claude");
     writeFileSync(claude, `#!/bin/sh\nprintf '%s\\n' "$@" > "${join(dir, "claude-args")}"\necho "started abc123"\n`);
     chmodSync(claude, 0o755);
-    const r = await run(["tickets", "next", "--dispatch"], { ...gh, FACTORY_CLAUDE: claude }, clone());
+    routes({ ...current(), "GET repos/o/r/issues?state=open": [githubIssue({ number: 12 }), githubIssue({ number: 17, title: "Later", created_at: "2026-10-05T00:00:00Z" })], "GET repos/o/r/issues/17/sub_issues": [] });
+    const r = await run(["tickets", "next", "--dispatch", "--max", "1"], { ...gh, FACTORY_CLAUDE: claude }, clone());
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(r.out).toBe("dispatched o/r#12: started abc123\n");
@@ -680,9 +689,10 @@ describe("inbox", () => {
       ["ENG-8", "a draft pull request: Deviation · kept the old endpoint", "https://github.com/o/r/pull/8", "local session s8 on mac"],
     ]);
     expect(d.agent.map((i: any) => [i.id, i.why, i.pr ?? null, i.session ?? null])).toEqual([
-      ["ENG-1", "ready to build", null, null],
       ["ENG-9", "its pull request fails test, quiet for over 3h", "https://github.com/o/r/pull/9", "local session s9 on mac"],
+      ["ENG-1", "ready to build", null, null],
     ]);
+    expect(d.agent[1].repo).toBe("andrezzoid/app");
   });
 
   test("--human and --agent each show one list", async () => {
@@ -691,7 +701,40 @@ describe("inbox", () => {
     expect(human.out).toContain("- ENG-7 T7: ready to merge · https://github.com/o/r/pull/7 · local session s7 on mac");
     expect(human.out).not.toContain("## For agents");
     const agent = await run(["inbox", "--agent"]);
-    expect(agent.out).toBe("## For agents\n- ENG-1 T1: ready to build\n- ENG-9 T9: its pull request fails test, quiet for over 3h · https://github.com/o/r/pull/9 · local session s9 on mac\n");
+    expect(agent.out).toBe("## For agents\n- ENG-9 T9: its pull request fails test, quiet for over 3h · https://github.com/o/r/pull/9 · local session s9 on mac\n- ENG-1 T1: ready to build\n");
+  });
+
+  test("an open thread counts against a quiet pull request only when someone else spoke last", async () => {
+    const quietPr = (n: number) => pull(n, { updated_at: hoursAgo(5), head: { sha: SHA, ref: `andre/eng-${n}` } });
+    linearIssues = [claimed("ENG-7", 7, pr(7)), claimed("ENG-10", 10, pr(10))];
+    commentsFor = { "ENG-7": [], "ENG-10": [] };
+    routes({
+      "GET repos/o/r/pulls/7": quietPr(7),
+      "GET repos/o/r/pulls/10": quietPr(10),
+      "GET repos/o/r/pulls/7/reviews": [],
+      "GET repos/o/r/pulls/10/reviews": [],
+      GRAPHQL: { data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: false }] } } } } },
+      "GET repos/o/r/issues/7/comments": [],
+      "GET repos/o/r/pulls/7/comments": [{ created_at: hoursAgo(9), body: "Why not reuse the parser?" }, { created_at: hoursAgo(6), body: "Asked the author.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_" }],
+      "GET repos/o/r/issues/10/comments": [],
+      "GET repos/o/r/pulls/10/comments": [{ created_at: hoursAgo(6), body: "Why not reuse the parser?" }],
+    });
+    const d = JSON.parse((await run(["inbox", "--agent", "--json"])).out);
+    expect(d.agent.map((i: any) => [i.id, i.why])).toEqual([["ENG-10", "its pull request has 1 open thread(s) waiting on an answer, quiet for over 3h"]]);
+  });
+
+  test("a pull request behind its base goes to an agent; one waiting on a required review goes to André", async () => {
+    linearIssues = [claimed("ENG-7", 7, pr(7)), claimed("ENG-10", 10, pr(10))];
+    commentsFor = { "ENG-7": [], "ENG-10": [] };
+    routes({
+      "GET repos/o/r/pulls/7": pull(7, { updated_at: hoursAgo(5), mergeable_state: "behind" }),
+      "GET repos/o/r/pulls/10": pull(10, { mergeable_state: "blocked", head: { sha: SHA, ref: "andre/eng-10" } }),
+      "GET repos/o/r/pulls/7/reviews": [],
+      "GET repos/o/r/pulls/10/reviews": [],
+    });
+    const d = JSON.parse((await run(["inbox", "--json"])).out);
+    expect(d.agent.map((i: any) => [i.id, i.why])).toEqual([["ENG-7", "its pull request is behind main, quiet for over 3h"]]);
+    expect(d.human.map((i: any) => [i.id, i.why])).toEqual([["ENG-10", "its pull request waits on a required review"]]);
   });
 
   test("with no tracker configured, says how to configure one", async () => {

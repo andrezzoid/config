@@ -208,6 +208,22 @@ async function prResolve(a: Args) {
   return 0;
 }
 
+const PR_REPORT_USAGE = "usage: factory pr report [PR] --body-file <report>";
+
+// Reports on the work go on its pull request. One that needs André also turns
+// the pull request back into a draft: the inbox lists drafts as his.
+async function prReport(a: Args) {
+  const body = bodyArg(a, PR_REPORT_USAGE);
+  const r = report({ id: "", body, createdAt: "" });
+  if (r?.kind === "Handed back" || r?.kind === "Revised") throw new Exit(64, `a ${r.kind} report goes on the ticket: factory tickets ${r.kind === "Revised" ? "revise" : "handback"}`);
+  if (!r) throw new Exit(64, `the report must start with its title line, "Deviation · <subject>" or "Unverified · <subject>"`);
+  const ref = forge.resolvePr(a._[2], str(a.flags.repo));
+  forge.comment(ref, ref.number, body);
+  if (r.needsYou) forge.convertToDraft(ref, ref.number);
+  console.log(`posted the report on #${ref.number}${r.needsYou ? ", and turned it into a draft: it needs André" : ""}`);
+  return 0;
+}
+
 // Merges only a pull request whose facts allow it, at the head it checked,
 // then takes the factory's labels off the tickets it names.
 async function prMerge(a: Args) {
@@ -580,6 +596,8 @@ Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a c
                                                 reply in a review comment's thread, with the Claude Code
                                                 footer; --resolve also resolves the thread
   factory pr resolve [PR] --comment ID          resolve the review thread holding the comment
+  factory pr report [PR] --body-file F          post a "Deviation ·" or "Unverified ·" report; one that
+                                                needs you turns the pull request into a draft
   factory pr merge [PR]                         merge if nothing blocks it, else exit 3 with what does
 
 Trackers: Linear when LINEAR_API_KEY is set (or \`linear auth login\` locally); GitHub Issues for
@@ -603,6 +621,7 @@ export async function main(argv: string[]): Promise<number> {
     "pr watch": prWatch,
     "pr reply": prReply,
     "pr resolve": prResolve,
+    "pr report": prReport,
     "pr merge": prMerge,
   };
   const route = routes[`${group} ${sub}`] ?? routes[group ?? ""];

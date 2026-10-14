@@ -130,23 +130,9 @@ export function unresolvedThreads(r: Repo, number: number): number | null {
   return null;
 }
 
-const THREAD_OF_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved comments(first:100){nodes{databaseId}}}}}}}`;
-const RESOLVE_MUTATION = `mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`;
-
-// Resolves the review thread holding a comment, by the same routes
-// unresolvedThreads reads: the ccr route first in a cloud session, GraphQL
-// first locally.
-export function resolveThread(r: Repo, number: number, commentId: number): void {
-  const viaCcr = () => {
-    api(`repos/${r.owner}/${r.repo}/pulls/${number}/ccr/comments/${commentId}/resolve`, { method: "POST" });
-  };
-  const viaGraphql = () => {
-    const out = JSON.parse(gh(["api", "graphql", "-f", `query=${THREAD_OF_QUERY}`, "-f", `owner=${r.owner}`, "-f", `name=${r.repo}`, "-F", `number=${number}`]));
-    const threads: any[] = out?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-    const thread = threads.find((t) => t?.comments?.nodes?.some((c: any) => c?.databaseId === commentId));
-    if (!thread) throw new GhError("no review thread holds it");
-    if (!thread.isResolved) gh(["api", "graphql", "-f", `query=${RESOLVE_MUTATION}`, "-f", `id=${thread.id}`]);
-  };
+// A write REST does not expose: the ccr route first in a cloud session, which
+// blocks GraphQL, and GraphQL first locally, each the other's fallback.
+function eitherRoute(what: string, viaCcr: () => void, viaGraphql: () => void): void {
   const order = process.env.CLAUDE_CODE_REMOTE === "true" ? [viaCcr, viaGraphql] : [viaGraphql, viaCcr];
   const failures: string[] = [];
   for (const attempt of order) {
@@ -157,7 +143,42 @@ export function resolveThread(r: Repo, number: number, commentId: number): void 
       failures.push((e as Error).message);
     }
   }
-  throw new GhError(`could not resolve the thread of comment ${commentId}: ${failures.join("; ")}`);
+  throw new GhError(`could not ${what}: ${failures.join("; ")}`);
+}
+
+const THREAD_OF_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved comments(first:100){nodes{databaseId}}}}}}}`;
+const RESOLVE_MUTATION = `mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`;
+
+// Resolves the review thread holding a comment.
+export function resolveThread(r: Repo, number: number, commentId: number): void {
+  eitherRoute(
+    `resolve the thread of comment ${commentId}`,
+    () => api(`repos/${r.owner}/${r.repo}/pulls/${number}/ccr/comments/${commentId}/resolve`, { method: "POST" }),
+    () => {
+      const out = JSON.parse(gh(["api", "graphql", "-f", `query=${THREAD_OF_QUERY}`, "-f", `owner=${r.owner}`, "-f", `name=${r.repo}`, "-F", `number=${number}`]));
+      const threads: any[] = out?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+      const thread = threads.find((t) => t?.comments?.nodes?.some((c: any) => c?.databaseId === commentId));
+      if (!thread) throw new GhError("no review thread holds it");
+      if (!thread.isResolved) gh(["api", "graphql", "-f", `query=${RESOLVE_MUTATION}`, "-f", `id=${thread.id}`]);
+    },
+  );
+}
+
+const DRAFT_MUTATION = `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}`;
+
+// Turns a pull request back into a draft, the factory's sign that it waits on
+// André.
+export function convertToDraft(r: Repo, number: number): void {
+  eitherRoute(
+    `turn #${number} into a draft`,
+    () => api(`repos/${r.owner}/${r.repo}/pulls/${number}/ccr/convert_to_draft`, { method: "POST" }),
+    () => gh(["api", "graphql", "-f", `query=${DRAFT_MUTATION}`, "-f", `id=${api<any>(`repos/${r.owner}/${r.repo}/pulls/${number}`).node_id}`]),
+  );
+}
+
+// Posts a comment on a pull request or issue, with the Claude Code footer.
+export function comment(r: Repo, number: number, body: string): void {
+  api(`repos/${r.owner}/${r.repo}/issues/${number}/comments`, { method: "POST", body: { body: attributed(body) } });
 }
 
 // Replies in the review thread of a comment, with the Claude Code footer.

@@ -315,6 +315,31 @@ describe("pr reply and resolve", () => {
     expect(r.err).toContain("comment 55");
   });
 
+  test("report posts with the footer; one that needs André turns the PR into a draft, through GraphQL locally", async () => {
+    routes({ "POST repos/o/r/issues/7/comments": { id: 1 }, GRAPHQL: { data: { convertPullRequestToDraft: { pullRequest: { isDraft: true } } } }, "GET repos/o/r/pulls/7": { ...pull(7), node_id: "PR_7" } });
+    const plain = await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Deviation · kept the old endpoint\n\n**Why:** x"]);
+    expect(plain.err).toBe("");
+    expect(sent("POST", "repos/o/r/issues/7/comments")).toEqual([{ body: `## Deviation · kept the old endpoint\n\n**Why:** x${FOOTER}` }]);
+    expect(graphqlCalls()).toEqual([]);
+    const needs = await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Unverified · the iOS layout\n\n**Needs you:** check it on a phone"]);
+    expect(needs.out).toContain("turned it into a draft");
+    expect(graphqlCalls().find((c) => c.includes("convertPullRequestToDraft"))).toContain("id=PR_7");
+  });
+
+  test("report turns the PR into a draft through the ccr route in a cloud session", async () => {
+    routes({ "POST repos/o/r/issues/7/comments": { id: 1 }, "POST repos/o/r/pulls/7/ccr/convert_to_draft": {} });
+    const r = await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Deviation · x\n\n**Needs you:** pick one"], { CLAUDE_CODE_REMOTE: "true" });
+    expect(r.err).toBe("");
+    expect(ghCalls().filter((c) => c.args[1] === "repos/o/r/pulls/7/ccr/convert_to_draft")).toHaveLength(1);
+    expect(graphqlCalls()).toEqual([]);
+  });
+
+  test("report takes only a pull request's kinds of report", async () => {
+    expect((await run(["pr", "report", "7", "--repo", "o/r", "--body", "## Handed back · x"])).err).toContain("goes on the ticket");
+    expect((await run(["pr", "report", "7", "--repo", "o/r", "--body", "Some thoughts"])).code).toBe(64);
+    expect(ghCalls().some((c) => c.args.includes("POST"))).toBe(false);
+  });
+
   test("reply needs a comment and a body", async () => {
     expect((await run(["pr", "reply", "7", "--repo", "o/r", "--body", "x"])).code).toBe(64);
     expect((await run(["pr", "reply", "7", "--repo", "o/r", "--comment", "55"])).code).toBe(64);

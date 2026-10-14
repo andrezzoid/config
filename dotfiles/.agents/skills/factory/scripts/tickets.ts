@@ -9,9 +9,11 @@ export const TRIAGE_LABEL = "needs-triage";
 export const INFO_LABEL = "needs-info";
 export const READY_LABEL = "ready-for-agent";
 export const HUMAN_LABEL = "ready-for-human";
+export const WONTFIX_LABEL = "wontfix";
 export const CLAIMED_LABEL = "in-progress";
-// A ticket with none of these and no other label is new: nobody triaged it.
-export const FACTORY_LABELS = [TRIAGE_LABEL, INFO_LABEL, READY_LABEL, HUMAN_LABEL, CLAIMED_LABEL];
+// A ticket with none of these is new, whatever else it carries: a reporter's
+// `bug` label is not triage.
+export const FACTORY_LABELS = [TRIAGE_LABEL, INFO_LABEL, READY_LABEL, HUMAN_LABEL, WONTFIX_LABEL, CLAIMED_LABEL];
 
 export type Readiness = { ready: true } | { ready: false; reason: string };
 

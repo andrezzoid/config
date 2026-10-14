@@ -4,7 +4,7 @@
 // started, any other open issue is queued.
 
 import { api, comments, paginate, viewer as forgeViewer } from "../forge.ts";
-import { CLAIMED_LABEL, FACTORY_LABELS, HUMAN_LABEL, READY_LABEL, slug } from "../tickets.ts";
+import { CLAIMED_LABEL, HUMAN_LABEL, READY_LABEL, slug } from "../tickets.ts";
 import type { Ticket, TicketComment, TicketRef, Tracker } from "./types.ts";
 
 export class GithubError extends Error {}
@@ -134,7 +134,6 @@ export class GithubTracker implements Tracker {
       const prs = paginate<any>(`repos/${repo}/pulls?state=open`);
       for (const i of this.issues(repo, "state=open")) {
         let t = toTicket(i, repo, [], me);
-        if (t.labels.length > 0 && !t.labels.some((l) => FACTORY_LABELS.includes(l))) continue;
         if (t.state === "queued" && t.labels.includes(READY_LABEL)) t = this.full(repo, i);
         t.prs = prs.filter((p) => closedIssue(p) === i.number).map((p) => p.html_url);
         out.push(t);

@@ -42,7 +42,7 @@ export type TicketComment = { id: string; body: string; createdAt: string };
 export interface Tracker {
   readonly name: TrackerName;
   // Open tickets the factory reads: those with a factory label, and new ones
-  // with no label at all. Ready tickets come with their blockers and children.
+  // with none. Ready tickets come with their blockers and children.
   open(): Promise<Ticket[]>;
   get(id: string): Promise<{ ticket: Ticket; comments: TicketComment[] }>;
   // The claim: label it in-progress, mark it started where the tracker has

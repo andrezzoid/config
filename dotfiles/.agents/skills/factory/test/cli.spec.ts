@@ -553,6 +553,11 @@ describe("GitHub Issues tickets", () => {
     ]);
   });
 
+  test("an issue a reporter labelled bug is still new until triage gives it a state", async () => {
+    const d = JSON.parse((await run(["inbox", "--human", "--json"], gh)).out);
+    expect(d.human.map((i: any) => [i.id, i.why])).toEqual([["o/r#16", "new, needs triage"]]);
+  });
+
   test("a repo whose CLAUDE.md names GitHub Issues joins without FACTORY_GITHUB_REPOS", async () => {
     routes({ ...current(), "GET repos/o/r/contents/CLAUDE.md": agentSkills("GitHub Issues") });
     const r = await run(["tickets", "next", "--repo", "o/r", "--json"], { LINEAR_API_KEY: "" });

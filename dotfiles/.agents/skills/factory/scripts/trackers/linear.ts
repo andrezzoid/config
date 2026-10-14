@@ -57,14 +57,17 @@ fragment IssueFields on Issue {
 }`;
 
 // Open tickets the factory reads: labelled with one of its labels, or new,
-// with no label at all, and filed by or assigned to the viewer.
+// with none of them, and filed by or assigned to the viewer.
 export const OPEN_QUERY = `
 query FactoryOpen($labels: [String!], $after: String) {
   issues(first: 50, after: $after, filter: {
     state: { type: { nin: ["completed", "canceled"] } }
     or: [
       { labels: { some: { name: { in: $labels } } } }
-      { labels: { length: { eq: 0 } }, or: [{ creator: { isMe: { eq: true } } }, { assignee: { isMe: { eq: true } } }] }
+      { and: [
+        { or: [{ labels: { length: { eq: 0 } } }, { labels: { every: { name: { nin: $labels } } } }] }
+        { or: [{ creator: { isMe: { eq: true } } }, { assignee: { isMe: { eq: true } } }] }
+      ] }
     ]
   }) { nodes { ...IssueFields } pageInfo { hasNextPage endCursor } }
 }

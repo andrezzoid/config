@@ -342,6 +342,22 @@ async function ticketsRevise(a: Args) {
   return 0;
 }
 
+const NEW_USAGE = "usage: factory tickets new --from <ID> --title <title> (--body <text> | --body-file <path>)";
+
+// A follow-up found while working a ticket: a new ticket beside it, with no
+// labels, so the next triage picks it up.
+async function ticketsNew(a: Args) {
+  const from = str(a.flags.from);
+  const title = str(a.flags.title);
+  if (!from || !title) throw new Exit(64, NEW_USAGE);
+  const body = bodyArg(a, NEW_USAGE);
+  const id = normalizeId(from, repoArg(a));
+  const tracker = trackerFor(id);
+  const { ticket } = await tracker.get(id);
+  console.log(`filed ${await tracker.create(ticket, title, `${body}\n\nFollow-up of ${id}.`)}, a follow-up of ${id}, for triage`);
+  return 0;
+}
+
 const HANDBACK_USAGE = "usage: factory tickets handback <ID> --body-file <report>";
 
 async function ticketsHandback(a: Args) {
@@ -550,6 +566,8 @@ Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a c
                                                 --dispatch starts a background session for each, in this clone
   factory tickets show <ID> [--json]            the ticket, its phase, its claim and its contract
   factory tickets claim <ID> [--take-over]      label it ${CLAIMED_LABEL} for this session; exit 3 if another holds it
+  factory tickets new --from <ID> --title T --body-file F
+                                                file a follow-up beside the ticket, unlabelled, for triage
   factory tickets revise <ID> --body-file F     post a "Revised ·" report, which joins the contract
   factory tickets handback <ID> --body-file F   post a "Handed back ·" report and relabel it ${HUMAN_LABEL}
   factory pr status [PR] [--repo o/r] [--json]  conflicts, checks, reviews and open threads
@@ -574,6 +592,7 @@ export async function main(argv: string[]): Promise<number> {
     "tickets next": ticketsNext,
     "tickets show": ticketsShow,
     "tickets claim": ticketsClaim,
+    "tickets new": ticketsNew,
     "tickets revise": ticketsRevise,
     "tickets handback": ticketsHandback,
     "pr status": prStatus,

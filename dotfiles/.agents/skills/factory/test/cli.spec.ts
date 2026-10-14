@@ -62,6 +62,8 @@ function answer(op: string, variables: any): { status: number; body: unknown } {
       return data({ commentCreate: { success: true, comment: { id: "c" } } });
     case "FactoryLabel":
       return data({ issueLabels: { nodes: missingLabels.includes(variables.name) ? [] : [{ id: `lbl-${variables.name}`, name: variables.name, team: null }] } });
+    case "FactoryCreate":
+      return data({ issueCreate: { success: true, issue: { identifier: "ENG-50" } } });
     case "FactoryRemoveLabel":
       return data({ issueRemoveLabel: { success: true } });
     case "FactoryAddLabel":
@@ -450,6 +452,14 @@ describe("Linear tickets", () => {
     expect(d.contract[1].text).toContain("drop the CSV export");
   });
 
+  test("new files an unlabelled follow-up in the ticket's team, linked back to it", async () => {
+    const r = await run(["tickets", "new", "--from", "ENG-1", "--title", "Drop the dead flag", "--body", "No caller reads it."]);
+    expect(r.err).toBe("");
+    expect(r.out).toContain("filed ENG-50, a follow-up of ENG-1");
+    expect(ops("FactoryCreate")).toEqual([{ input: { teamId: "team-1", title: "Drop the dead flag", description: "No caller reads it.\n\nFollow-up of ENG-1." } }]);
+    expect((await run(["tickets", "new", "--from", "ENG-1", "--body", "x"])).code).toBe(64);
+  });
+
   test("show names the phase, the open pull requests and the claim", async () => {
     linearIssues = [linearIssue({ identifier: "ENG-1", labels: ["ready-for-agent", "in-progress"] })];
     issueComments.push({ id: "c", body: claimLog("local session s1 on mac", null), createdAt: hoursAgo(1) });
@@ -552,6 +562,14 @@ describe("GitHub Issues tickets", () => {
     expect(ghCalls().filter((c) => c.args.includes("DELETE")).map((c) => c.args[1])).toEqual(["repos/o/r/issues/12/labels/ready-for-agent", "repos/o/r/issues/12/labels/in-progress"]);
     expect(sent("POST", "repos/o/r/issues/12/labels")).toEqual([{ labels: ["ready-for-human"] }]);
     expect(sent("POST", "repos/o/r/issues/12/comments")[0].body).toBe("**Handed back · acceptance line 2 cannot hold**");
+  });
+
+  test("new files the follow-up in the ticket's repository", async () => {
+    routes({ ...current(), "POST repos/o/r/issues": { number: 31 } });
+    const r = await run(["tickets", "new", "--from", "o/r#12", "--title", "Drop the dead flag", "--body", "No caller reads it."], gh);
+    expect(r.err).toBe("");
+    expect(r.out).toContain("filed o/r#31, a follow-up of o/r#12");
+    expect(sent("POST", "repos/o/r/issues")).toEqual([{ title: "Drop the dead flag", body: "No caller reads it.\n\nFollow-up of o/r#12." }]);
   });
 
   test("next --dispatch starts a background session per ready ticket of this clone", async () => {

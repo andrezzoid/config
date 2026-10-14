@@ -161,6 +161,11 @@ export class GithubTracker implements Tracker {
     api(`repos/${repo}/issues/${number}/comments`, { method: "POST", body: { body } });
   }
 
+  async create(from: Ticket, title: string, body: string): Promise<string> {
+    const { repo } = parseId(from.id);
+    return `${repo}#${api<any>(`repos/${repo}/issues`, { method: "POST", body: { title, body } }).number}`;
+  }
+
   async handBack(id: string): Promise<{ labelled: boolean }> {
     await this.release(id);
     const { repo, number } = parseId(id);

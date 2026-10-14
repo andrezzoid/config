@@ -50,6 +50,9 @@ export interface Tracker {
   // stays the human's.
   start(t: Ticket): Promise<void>;
   comment(id: string, body: string): Promise<void>;
+  // A new ticket beside `from`, in its repository or team, with no labels.
+  // Returns its id.
+  create(from: Ticket, title: string, body: string): Promise<string>;
   // Back to the queue for a human: ready-for-human instead of ready-for-agent
   // and in-progress.
   handBack(id: string): Promise<{ labelled: boolean }>;

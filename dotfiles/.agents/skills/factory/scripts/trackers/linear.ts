@@ -122,6 +122,11 @@ mutation FactoryComment($issueId: String!, $body: String!) {
   commentCreate(input: { issueId: $issueId, body: $body }) { success comment { id } }
 }`;
 
+export const CREATE_ISSUE = `
+mutation FactoryCreate($input: IssueCreateInput!) {
+  issueCreate(input: $input) { success issue { identifier } }
+}`;
+
 type Ref = { identifier: string; title?: string; state: { type: string; name?: string } };
 export type LinearIssue = {
   id: string;
@@ -267,6 +272,12 @@ export class LinearTracker implements Tracker {
   async comment(id: string, body: string): Promise<void> {
     const i = this.raw.get(id) ?? (await this.issue(id));
     await linear(CREATE_COMMENT, { issueId: i.id, body });
+  }
+
+  async create(from: Ticket, title: string, body: string): Promise<string> {
+    const i = this.raw.get(from.id) ?? (await this.issue(from.id));
+    const d = await linear<{ issueCreate: { issue: { identifier: string } } }>(CREATE_ISSUE, { input: { teamId: i.team.id, title, description: body } });
+    return d.issueCreate.issue.identifier;
   }
 
   async handBack(id: string): Promise<{ labelled: boolean }> {

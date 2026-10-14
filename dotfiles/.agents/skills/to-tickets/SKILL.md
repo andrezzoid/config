@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-factory`.
+The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/factory setup`.
 
 ## Process
 
@@ -97,7 +97,7 @@ Iterate until the user approves the breakdown. Ask the shape question first, bec
 
 ### 7. Publish the tickets to the configured tracker
 
-Publish the approved tickets. **How** depends on the tracker `/setup-factory` configured; the tickets are the same either way, only the shape of the blocking edges changes:
+Publish the approved tickets. **How** depends on the tracker `/factory setup` configured; the tickets are the same either way, only the shape of the blocking edges changes:
 
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
 - **A real issue tracker (GitHub, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Write each body from `references/ticket-template.md`. Use the platform's native blocking / sub-issue relationship where it has one; otherwise set each ticket's "Blocked by" to the blocking issues. Do NOT apply the `ready-for-agent` label: approval is the user's.

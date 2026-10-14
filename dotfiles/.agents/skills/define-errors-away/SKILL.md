@@ -93,4 +93,4 @@ For invariant violations, resource exhaustion and corrupted state, fail with the
 ## References
 
 - [references/examples.md](references/examples.md): longer before/after examples for an HTTP handler, a file pipeline, a cache with a fallback, and idempotent state transitions.
-- `deep-module-design`: fewer exceptions make a deeper interface.
+- `codebase-design`: fewer exceptions make a deeper interface.

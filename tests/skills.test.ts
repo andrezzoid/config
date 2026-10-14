@@ -116,7 +116,7 @@ for (const name of own) {
     });
 
     test("names no retired skill or command", () => {
-      for (const retired of ["ddd2", "setup-factory-skills", "check-pr", "find-unknowns", "quiz-me", "visualize", "design-it-twice", "worktrunk", "zellij", "docs/agents/factory.md", "create-verification-skill", "maintain-verification-skill"]) {
+      for (const retired of ["ddd2", "setup-factory-skills", "check-pr", "find-unknowns", "quiz-me", "visualize", "design-it-twice", "worktrunk", "zellij", "docs/agents/factory.md", "create-verification-skill", "maintain-verification-skill", "setup-factory", "deep-module-design", ".agents/factory.md", "factory ticket", "factory brief", "factory pr verdict", "autonomy:merge", "briefing.md", "dispositions.md"]) {
         assert.ok(!new RegExp(`[\`/"]${retired}[\`"\\s]`).test(text), `mentions ${retired}`);
       }
     });
@@ -125,7 +125,7 @@ for (const name of own) {
 
 test("skills that other skills chain are model-invocable; human entry points are not", () => {
   for (const chained of ["implement", "babysit-pr", "poke-holes", "complexity-red-flags"]) assert.ok(modelInvocable(chained), chained);
-  for (const entry of ["to-spec", "to-tickets", "triage", "factory", "setup-factory", "hillclimb"]) assert.ok(!modelInvocable(entry), entry);
+  for (const entry of ["to-spec", "to-tickets", "triage", "factory", "hillclimb"]) assert.ok(!modelInvocable(entry), entry);
 });
 
 describe("layout", () => {

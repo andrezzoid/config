@@ -116,4 +116,4 @@ Done when you checked all eight flags and grouped the findings by flag, each wit
 ## References
 
 - [references/examples.md](references/examples.md) has a full audit of a real codebase that fixes every flag it finds, and a quick-reference table of common patterns.
-- `deep-module-design` applies the same principles while you design a module. This skill audits code that exists.
+- `codebase-design` holds the vocabulary for designing a module. This skill audits code that exists.

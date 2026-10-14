@@ -51,7 +51,7 @@ everything regresses to a book report.
 ### 1. Spawn
 
 Spawn one reviewer per angle with the Agent tool, all in one message, each with
-this brief and nothing else:
+this prompt and nothing else:
 
     You are the <angle> reviewer for poke-holes. Read <this skill's folder>/SKILL.md
     and follow the Rules and the <angle> angle under "A <plan or solution>".
@@ -59,8 +59,9 @@ this brief and nothing else:
     The plan, verbatim:
     <the spec, the ticket's contract or the instruction, exactly as written>
 
-The problem-only brief carries the problem statement in place of the plan. Your
-summary, your suspicions and your reading of the plan stay out of every brief,
+The problem-only prompt carries the problem statement in place of the plan.
+Your summary, your suspicions and your reading of the plan stay out of every
+prompt,
 because they carry the guesses this review exists to catch. Done when every
 reviewer has replied.
 
@@ -119,8 +120,8 @@ and every finding has a decision.
    report that no review ran and stop. A narrated review is worse than none,
    because it looks like one.
 6. **Scale to the work, out loud, never to zero.** A small solution earns a
-   single Territory reviewer. The angles named above the table put the
-   reduction on the record; a silent skip never is.
+   single reviewer running the Territory and Scope angles. The angles named
+   above the table put the reduction on the record; a silent skip never is.
 7. **Await what you spawn.** A session that ends while a reviewer is still
    running loses the findings yet looks like a completed check. Wait for it,
    or record the reduction.

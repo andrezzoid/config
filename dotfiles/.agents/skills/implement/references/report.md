@@ -1,13 +1,13 @@
 # Reports
 
 A report tells André what happened where the work met something its contract
-didn't settle. Every report is one comment in the same shape, so he reads them
-all the same way. Anything that changes the contract goes on the ticket;
-anything that describes the work goes on the pull request.
+didn't settle. Every report is a comment, or one part of a comment, in the same
+shape, so he reads them all the same way. Anything that changes the contract
+goes on the ticket; anything that describes the work goes on the pull request.
 
 | Kind | Write one when | Post it with |
 |---|---|---|
-| `Handed back` | you stop: the contract can't hold, or only André can decide | `factory tickets handback <ID> --body-file <file>` |
+| `Handed back` | you stop: the contract can't hold, only André can decide, or a check fails three times running | before the pull request opens, `factory tickets handback <ID> --body-file <file>`; after, `factory pr report <PR> --body-file <file>` |
 | `Revised` | André agreed in the session to change the contract | `factory tickets revise <ID> --body-file <file>` |
 | `Deviation` | the work departs from the contract and acceptance still holds | `factory pr report <PR> --body-file <file>` |
 | `Unverified` | a claim that neither a test nor a run could prove | `factory pr report <PR> --body-file <file>` |
@@ -26,9 +26,10 @@ anything that describes the work goes on the pull request.
 
 The title line comes first, with the kind spelled as in the table: the CLI
 refuses a report without it, and the inbox finds reports by it. Write Needs you
-only when André must act: on a pull request, it also turns the pull request
-back into a draft. Two or more reports in one comment follow each other, each
-with its own title line.
+only when André must act. On a pull request, a hand-back or a report with
+Needs you turns the pull request back into a draft. Two or more reports in one
+comment follow each other, each with its own title line, the one that needs
+André first: the inbox shows the first title.
 
 ## Writing it
 

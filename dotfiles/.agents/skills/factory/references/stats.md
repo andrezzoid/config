@@ -15,10 +15,8 @@ time from ready to done. Name the outliers.
 
 Group the hand-backs, the reports that needed André, the reverts and the
 review comments into mistakes that repeat: a mistake counts once it happened
-twice, each time with its link. For each, propose the most enforceable fix:
-code that makes it impossible, then types or a lint whose error names the fix,
-then a test, and last a skill or doc line. Done when every repeated mistake
-has a proposal.
+twice, each time with its link. Done when every repeated mistake has its
+occurrences.
 
 ### 3. Still open
 
@@ -28,6 +26,6 @@ every open ticket has its line.
 ### 4. Ask
 
 Send it all in one message, ending with the question of which mistakes to fix.
-End the turn, so the routine's notification carries it. For each one
-André picks, follow [the correct skill](../../correct/SKILL.md) in the repo it
-happened in.
+End the turn, so the routine's notification carries it. For each one André
+picks, follow [the correct skill](../../correct/SKILL.md) in the repo it
+happened in: it proposes the fix.

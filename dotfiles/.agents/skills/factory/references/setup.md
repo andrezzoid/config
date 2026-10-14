@@ -1,7 +1,8 @@
 # Setup
 
-Make the repo you are in ready for the factory, or wire the cloud side once.
-Find the facts yourself and put the decisions to André in one round, each with
+Make the repo you are in ready for the factory, or, with `cloud`, go straight to
+the cloud side. `factory doctor`'s `fail` and `warn` lines are the gaps this
+closes. Find the facts yourself and put the decisions to André in one round, each with
 your recommended answer, the way the grilling skill does. Write nothing until
 he confirms.
 
@@ -53,7 +54,7 @@ Commit the block on a branch and open a pull request.
   cloud environment.
 - Without a run skill, tell André to run `/run-skill-generator` in the repo and
   commit what it records: agents start the app through it with `/run`.
-- Run `factory doctor` and show the result.
+- Run `factory doctor` again and show the result.
 
 ## The cloud, once
 

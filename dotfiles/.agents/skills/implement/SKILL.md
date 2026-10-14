@@ -27,18 +27,22 @@ so hand the ticket back.
 
 ### 3. Build
 
-Branch from the fresh base as the ticket's `branchName`. Build test-first with
-`/tdd`. The acceptance lines are the test list, at the seams the ticket's
-Testing line names. Add other tests only where an acceptance test can't reach
-the logic. When an interface's shape is in question, call the Skill tool with
-"codebase-design". Done when every acceptance test passes.
+Branch from the fresh base as the ticket's `branchName`, with `-2` added when
+an earlier attempt already pushed that name. Build test-first with `/tdd`. The
+acceptance lines are the test list, at the seams the ticket's Testing line
+names. Add other tests only where an acceptance test can't reach the logic.
+With no Testing line, test at the highest seam the code already has. When an
+interface's shape is in question, call the Skill tool with "codebase-design".
+Done when every acceptance test passes.
 
 ### 4. Prove
 
 Run the gates CI runs. For each acceptance line whose test stops short of the
 app's own interface, call the Skill tool with "run" and drive the line the way
-a user would. Then call the Skill tool with "poke-holes" on the solution. Done
-when every finding has a decision.
+a user would. When the diff reshapes a module or may break the repo's own
+standards, call the Skill tool with "code-review" or "complexity-red-flags" on
+it. Then call the Skill tool with "poke-holes" on the solution. Done when every
+finding has a decision.
 
 ### 5. Ship
 
@@ -50,17 +54,21 @@ couldn't prove. Done when the pull request is open and every report is up.
 
 ## Hand back
 
-At any step, when the contract can't hold or only André can decide, post a
-`Handed back ·` report with `factory tickets handback <ID> --body-file <report>`
-and stop. When André is in the session, ask him instead, and post a contract
-change he agrees with `factory tickets revise <ID> --body-file <report>` before
-you go on.
+Once you hold the claim, every stop before the pull request opens is a
+hand-back, or the ticket sits claimed with nobody on it. Hand back when the
+contract can't hold, when only André can decide, or when the same check fails
+three times running: post a `Handed back ·` report with `factory tickets
+handback <ID> --body-file <report>` and stop. When André is in the session, ask
+him instead, and post a contract change he agrees with `factory tickets revise
+<ID> --body-file <report>` before you go on.
 
 ## Rules
 
 - Claim before your first write.
 - Write only comments on the ticket: its body and brief are André's.
 - Hand back rather than guess at intent.
+- An acceptance test holds only while it asserts what its line says: weakening
+  one breaks acceptance.
 - Extend a pattern only when you'd want it copied again. When the nearest
   example is a workaround, follow the paved path and file the example as a
   follow-up.

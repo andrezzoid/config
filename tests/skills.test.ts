@@ -123,6 +123,15 @@ for (const name of own) {
   });
 }
 
+// A command that files tickets or merges has one owner, so a skill can't
+// quietly take over another's job.
+test("only the factory files follow-ups and merges", () => {
+  for (const name of own.filter((n) => n !== "factory")) {
+    const text = readFileSync(join(SKILLS, name, "SKILL.md"), "utf8").replace(/\s+/g, " ");
+    for (const command of ["factory tickets new", "factory pr merge"]) assert.ok(!text.includes(command), `${name} runs ${command}, which is the factory's`);
+  }
+});
+
 test("skills that other skills chain are model-invocable; human entry points are not", () => {
   for (const chained of ["implement", "babysit-pr", "poke-holes", "complexity-red-flags"]) assert.ok(modelInvocable(chained), chained);
   for (const entry of ["to-spec", "to-tickets", "triage", "factory", "hillclimb"]) assert.ok(!modelInvocable(entry), entry);

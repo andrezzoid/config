@@ -87,9 +87,8 @@ Give every failing row and every finding a decision:
 - **Fix now**: repair it before the work moves on. Then re-check with a fresh
   pass over the repaired area plus the acceptance checks, rather than walking
   the table again: confirming a list is how the list gets gamed.
-- **Follow up**: real, and out of scope here. When the work has a ticket, file
-  it at once with `factory tickets new --from <ID> --title <title> --body-file
-  <file>`, which leaves it for triage; otherwise list it for André.
+- **Follow up**: real, and out of scope here. List it with a title and what
+  the reviewer found, for whoever runs the work to file.
 - **Reject**: with the reason. Rejecting is a normal outcome.
 
 Anything that touches intent is André's to decide. The table stays in this

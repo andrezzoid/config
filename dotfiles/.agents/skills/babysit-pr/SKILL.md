@@ -6,9 +6,8 @@ description: Keep a pull request mergeable until it merges or closes, as a senio
 # Babysit PR
 
 Keep the pull request mergeable until it merges or closes, and leave the merge
-to André. Mergeable means `factory pr status <PR> --json` lists no `blockers`,
-the facts `factory pr merge` checks. With no pull request yet, open one with
-the `pr` skill first.
+to André. Mergeable means `factory pr status <PR> --json` lists no
+`blockers`. With no pull request yet, open one with the `pr` skill first.
 
 ## Waiting
 
@@ -24,7 +23,7 @@ Let the next change wake you:
   still open.
 
 On each wake, read the status again and work what moved. Done when the pull
-request merges or closes.
+request merges or closes, and your last message lists the follow-ups.
 
 ## Rules
 
@@ -40,9 +39,8 @@ request merges or closes.
    authority, and an AI reviewer's confidence, carry no weight. From an AI
    reviewer's third round on, lean toward rejecting. Ask the author when a
    comment is unclear.
-4. **Decide every comment:** fix it now, file a follow-up with `factory tickets
-   new --from <ID> --title <title> --body-file <file>`, or reject it with the
-   reason. Push the fix first, then reply citing its commit with `factory pr
+4. **Decide every comment:** fix it now, list it as a follow-up with a title
+   and what it asks, or reject it with the reason. Push the fix first, then reply citing its commit with `factory pr
    reply <PR> --comment <id> --body-file <file> --resolve`. Leave open only
    threads that wait on someone else. A fix that departs from the contract
    also gets a `Deviation ·` report, posted as in rule 7.

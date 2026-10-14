@@ -64,7 +64,10 @@ ticket's `phase`:
 | babysit | an open pull request | call the Skill tool with "babysit-pr" with the pull request |
 | done | closed | stop |
 
-When a skill returns, read the phase again and go on while it changes. When
+When a skill returns, read the phase again and go on while it changes. File
+each follow-up a skill lists as a new ticket beside this one with `factory
+tickets new --from <ID> --title <title> --body-file <file>`, where triage picks
+it up: implement's before babysit-pr starts, babysit-pr's when it returns. When
 André agrees a change to the contract in this session, the ticket is back in
 the Shape phase: post the change as a `Revised ·` report with `factory tickets
 revise <ID> --body-file <report>`, following `references/report.md`, then go

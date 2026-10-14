@@ -7,8 +7,8 @@ goes on the ticket; anything that describes the work goes on the pull request.
 
 | Kind | Write one when | Post it with |
 |---|---|---|
-| `Handed back` | you stop: the contract can't hold, only André can decide, or a check fails three times running | before the pull request opens, `factory tickets handback <ID> --body-file <file>`; after, `factory pr report <PR> --body-file <file>` |
-| `Revised` | André agreed in the session to change the contract | `factory tickets revise <ID> --body-file <file>` |
+| `Handed back` | you stop: the contract can't hold, only André can decide, or a check fails three times running | before the pull request opens, `factory tickets handback <ID> --body-file <file>`, or the session when there is no ticket; after, `factory pr report <PR> --body-file <file>` |
+| `Revised` | André agreed in the session to change the contract | `factory tickets revise <ID> --body-file <file>`, or an edit to the spec when there is no ticket |
 | `Deviation` | the work departs from the contract and acceptance still holds | `factory pr report <PR> --body-file <file>` |
 | `Unverified` | a claim that neither a test nor a run could prove | `factory pr report <PR> --body-file <file>` |
 

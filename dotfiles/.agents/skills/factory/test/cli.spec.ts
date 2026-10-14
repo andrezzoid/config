@@ -415,6 +415,16 @@ describe("Linear tickets", () => {
     expect(r.err).toContain("no ready-for-agent label");
   });
 
+  test("claim refuses a ticket with an open blocker or open children", async () => {
+    linearIssues = [linearIssue({ identifier: "ENG-1", inverseRelations: { nodes: [{ type: "blocks", issue: { identifier: "ENG-0", state: { type: "started" } } }] } })];
+    const blocked = await run(["tickets", "claim", "ENG-1"]);
+    expect(blocked.code).toBe(3);
+    expect(blocked.err).toContain("blocked by ENG-0");
+    linearIssues = [linearIssue({ identifier: "ENG-1", children: { nodes: [{ identifier: "ENG-2", state: { type: "unstarted" } }] } })];
+    expect((await run(["tickets", "claim", "ENG-1"])).err).toContain("parent of 1 open ticket(s)");
+    expect([...ops("FactoryAddLabel"), ...ops("FactoryComment")]).toEqual([]);
+  });
+
   test("claim fails before writing anything when Linear has no in-progress label", async () => {
     missingLabels = ["in-progress"];
     const r = await run(["tickets", "claim", "ENG-1"]);

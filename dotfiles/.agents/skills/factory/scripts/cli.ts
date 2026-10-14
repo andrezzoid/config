@@ -315,6 +315,9 @@ async function ticketsClaim(a: Args) {
   const { ticket, comments } = await tracker.get(id);
   if (ticket.state === "done" || ticket.state === "canceled") throw new Exit(3, `${id} is ${ticket.stateName}`);
   if (!ticket.labels.includes(READY_LABEL)) throw new Exit(3, `${id} has no ${READY_LABEL} label`);
+  const blockers = ticket.blockers.filter((b) => !b.done).map((b) => b.id);
+  if (blockers.length) throw new Exit(3, `${id} is blocked by ${blockers.join(", ")}`);
+  if (ticket.openChildren > 0) throw new Exit(3, `${id} is the parent of ${ticket.openChildren} open ticket(s): build those instead`);
   const me = session();
   let replaces: string | null = null;
   if (ticket.labels.includes(CLAIMED_LABEL)) {
@@ -565,7 +568,8 @@ Tickets are ENG-123 (Linear), owner/repo#123 (GitHub Issues), or #123 inside a c
                                                 tickets labelled ${READY_LABEL} whose blockers are done;
                                                 --dispatch starts a background session for each, in this clone
   factory tickets show <ID> [--json]            the ticket, its phase, its claim and its contract
-  factory tickets claim <ID> [--take-over]      label it ${CLAIMED_LABEL} for this session; exit 3 if another holds it
+  factory tickets claim <ID> [--take-over]      label it ${CLAIMED_LABEL} for this session; exit 3 if another session
+                                                holds it, or it is blocked or not ready-for-agent
   factory tickets new --from <ID> --title T --body-file F
                                                 file a follow-up beside the ticket, unlabelled, for triage
   factory tickets revise <ID> --body-file F     post a "Revised ·" report, which joins the contract

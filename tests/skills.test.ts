@@ -5,10 +5,11 @@
 
 import assert from "node:assert/strict";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { describe, test } from "node:test";
 
-const DOTFILES = join(import.meta.dirname, "..", "dotfiles");
+const ROOT = join(import.meta.dirname, "..");
+const DOTFILES = join(ROOT, "dotfiles");
 const AGENTS = join(DOTFILES, ".agents");
 const SKILLS = join(AGENTS, "skills");
 const CLAUDE = join(DOTFILES, ".claude");
@@ -131,18 +132,24 @@ describe("layout", () => {
   // Claude Code reads ~/.claude/skills; other harnesses read ~/.agents/skills.
   // Stow links both, and cloud-setup.sh copies the same links into a cloud
   // home, so one edit in .agents/skills reaches every harness.
-  test("every skill has a relative link in .claude/skills and no link dangles", () => {
-    // Claude Code-only mods, such as prose-lint, live there as real folders.
-    const entries = readdirSync(join(CLAUDE, "skills"));
-    const mods = entries.filter((n) => !lstatSync(join(CLAUDE, "skills", n)).isSymbolicLink());
-    for (const m of mods) assert.ok(existsSync(join(CLAUDE, "skills", m, ".claude-plugin", "plugin.json")), `${m} is a real folder but not a mod`);
-    const links = entries.filter((n) => !mods.includes(n));
-    assert.deepEqual(links.sort(), [...all].sort());
-    for (const n of links) {
-      const path = join(CLAUDE, "skills", n);
-      assert.ok(lstatSync(path).isSymbolicLink(), `${n} is not a symlink`);
-      assert.equal(readlinkSync(path), `../../.agents/skills/${n}`);
+  test("every skill has a relative link in .claude/skills, and everything else there is a mod", () => {
+    // Claude Code-only mods live there too: a real folder, or a link to one
+    // kept in another repo (prose-lint, in newsroom). That link dangles until
+    // the other repo is cloned beside this one.
+    const dir = join(CLAUDE, "skills");
+    const skills: string[] = [];
+    for (const n of readdirSync(dir)) {
+      const path = join(dir, n);
+      if (!lstatSync(path).isSymbolicLink()) {
+        assert.ok(existsSync(join(path, ".claude-plugin", "plugin.json")), `${n} is a real folder but not a mod`);
+      } else if (resolve(dir, readlinkSync(path)).startsWith(ROOT + sep)) {
+        assert.equal(readlinkSync(path), `../../.agents/skills/${n}`);
+        skills.push(n);
+      } else if (existsSync(path)) {
+        assert.ok(existsSync(join(path, ".claude-plugin", "plugin.json")), `${n} links outside this repo to a folder that is not a mod`);
+      }
     }
+    assert.deepEqual(skills.sort(), [...all].sort());
   });
 
   test("CLAUDE.md is AGENTS.md", () => {

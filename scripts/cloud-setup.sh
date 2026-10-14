@@ -36,9 +36,15 @@ else
 fi
 
 # Links $2 to the final target of $1. A real file or folder already at $2 is
-# someone's own: it stays, with a warning, as stow would refuse it too.
+# someone's own: it stays, with a warning, as stow would refuse it too. A mod
+# kept in another repo, such as prose-lint in newsroom, links to that repo
+# cloned beside this one, so it dangles here until someone clones it: skipped.
 linked=0
 link() {
+  if [ ! -e "$1" ]; then
+    echo "cloud-setup: $1 points at $(readlink "$1"), which is missing; skipped" >&2
+    return
+  fi
   if [ -e "$2" ] && [ ! -L "$2" ]; then
     echo "cloud-setup: $2 is a real file or folder, left alone" >&2
     return

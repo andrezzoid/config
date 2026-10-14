@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -29,13 +29,19 @@ test("links every skill, every agent and CLAUDE.md into ~/.claude, and ~/.agents
   const skills = readdirSync(join(clone, ".claude", "skills"));
   assert.ok(skills.includes("factory") && skills.includes("implement"));
   for (const s of skills) {
+    const source = join(clone, ".claude", "skills", s);
     const link = join(home, ".claude", "skills", s);
+    // A mod kept in another repo dangles until that repo is cloned beside this one.
+    if (!existsSync(source)) {
+      assert.throws(() => lstatSync(link), s);
+      continue;
+    }
     assert.ok(lstatSync(link).isSymbolicLink(), s);
-    // A Claude Code-only mod lives in .claude/skills itself; a skill is a link
-    // there to its folder in .agents/skills.
-    const mod = !lstatSync(join(clone, ".claude", "skills", s)).isSymbolicLink();
-    assert.equal(readlinkSync(link), realpathSync(join(clone, mod ? ".claude" : ".agents", "skills", s)));
-    assert.ok(existsSync(join(link, mod ? ".claude-plugin/plugin.json" : "SKILL.md")), s);
+    assert.equal(readlinkSync(link), realpathSync(source));
+    // A skill links to its folder in .agents/skills; a Claude Code-only mod is
+    // anything else there.
+    const skill = existsSync(join(clone, ".agents", "skills", s, "SKILL.md"));
+    assert.ok(existsSync(join(link, skill ? "SKILL.md" : ".claude-plugin/plugin.json")), s);
   }
   for (const a of readdirSync(join(clone, ".claude", "agents"))) assert.ok(existsSync(join(home, ".claude", "agents", a)), a);
   assert.equal(readlinkSync(join(home, ".claude", "CLAUDE.md")), realpathSync(join(clone, ".agents", "AGENTS.md")));
@@ -51,6 +57,17 @@ test("links every skill, every agent and CLAUDE.md into ~/.claude, and ~/.agents
   rmSync(join(clone, ".claude", "skills", "grill-me"));
   setup(home);
   assert.ok(!existsSync(join(home, ".claude", "skills", "grill-me")));
+  assert.ok(existsSync(join(home, ".claude", "skills", "implement", "SKILL.md")));
+  rmSync(home, { recursive: true, force: true });
+});
+
+test("skips a link whose target is missing, and says so", () => {
+  const home = mkdtempSync(join(tmpdir(), "cloud-home-"));
+  setup(home);
+  symlinkSync("../../../../elsewhere/mods/ghost", join(home, ".agent-config", "dotfiles", ".claude", "skills", "ghost"));
+  const r = setup(home);
+  assert.throws(() => lstatSync(join(home, ".claude", "skills", "ghost")));
+  assert.match(r.stderr, /skills\/ghost points at \.\.\/\.\.\/\.\.\/\.\.\/elsewhere\/mods\/ghost, which is missing; skipped/);
   assert.ok(existsSync(join(home, ".claude", "skills", "implement", "SKILL.md")));
   rmSync(home, { recursive: true, force: true });
 });

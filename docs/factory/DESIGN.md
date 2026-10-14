@@ -89,14 +89,15 @@ act, Needs you. The template lives in
 
 | Kind | Goes on | Posted with | When |
 |---|---|---|---|
-| `Handed back` | the ticket | `factory tickets handback` | the contract can't hold, or only André can decide |
+| `Handed back` | the ticket, or its open pull request | `factory tickets handback`, or `factory pr report` | the contract can't hold, only André can decide, or a check fails three times running |
 | `Revised` | the ticket | `factory tickets revise` | André agreed a contract change in a session |
 | `Deviation` | the pull request | `factory pr report` | the work departs from the contract and acceptance still holds |
 | `Unverified` | the pull request | `factory pr report` | neither a test nor a run could prove a claim |
 
-A report with Needs you turns its pull request back into a draft, which
-`factory inbox` lists as André's. Marking it ready for review hands it back to
-the agent. poke-holes' review table stays in the session.
+On a pull request, a hand-back or a report with Needs you turns the pull
+request back into a draft, which `factory inbox` lists as André's. Marking it
+ready for review hands it back to the agent. poke-holes' review table stays in
+the session.
 
 ## A ticket's life
 
@@ -217,8 +218,11 @@ polls. `/factory setup` gives each routine's schedule and prompt.
   the wall.
 - Two sessions that claim one ticket at the same moment can both win. That's
   accepted: one hourly routine does the dispatching.
-- `factory inbox` takes three quiet hours to mean a session is gone. A session
-  that waits longer for CI looks gone too.
+- `factory inbox` takes three quiet hours to mean a session is gone, and an
+  open thread counts against it only when someone other than an agent spoke
+  last. A session that waits longer than that for CI looks gone too.
+- A merged pull request whose `Closes` line missed its ticket leaves the ticket
+  open with no labels, and the inbox then lists it as new.
 - A cloud environment whose setup script does not run `cloud-setup.sh` gives
   its sessions no harness: no skills, no `factory` CLI, no mod.
 - The cloud review-thread route (`ccr/review_threads`) returned an empty list

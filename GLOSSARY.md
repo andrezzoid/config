@@ -66,11 +66,11 @@ What a ticket asks for: its latest agent brief, or its body until one exists, pl
 _Avoid_: Spec (the document `to-spec` writes)
 
 **Report**:
-A comment that tells André what happened where the work met something its contract didn't settle. Its kind titles it: Handed back or Revised on the ticket, Deviation or Unverified on the pull request.
+A comment that tells André what happened where the work met something its contract didn't settle, titled by its kind: Handed back, Revised, Deviation or Unverified.
 _Avoid_: Brief, briefing, summary
 
 **Hand-back**:
-A report that returns a held ticket to André, relabelled ready-for-human, when the agent cannot go on without his decision.
+A report that returns work to André when the agent cannot go on without his decision: on the ticket, relabelled ready-for-human, or on its open pull request, turned back into a draft.
 _Avoid_: Escalation, block
 
 **Revision**:

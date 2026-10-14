@@ -67,9 +67,10 @@ update one with `npx skills add <owner/repo> --skill <name> -g -a claude-code -y
 and review the diff.
 
 The factory skills and the `factory` CLI turn approved tickets into merged PRs.
-[docs/factory/DESIGN.md](docs/factory/DESIGN.md) explains the system;
-`/setup-factory cloud` gives the cloud environment and routines, and
-`scripts/cloud-setup.sh` is the environment's setup script.
+[docs/factory/DESIGN.md](docs/factory/DESIGN.md) explains the system.
+`/factory setup` gives the cloud environment and its two routines, an hourly
+`/factory` and a weekly `/factory stats`, and `scripts/cloud-setup.sh` is the
+environment's setup script.
 
 Tests need only Node 22.18 or later:
 

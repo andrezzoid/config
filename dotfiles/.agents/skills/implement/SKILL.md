@@ -40,12 +40,13 @@ Done when every acceptance test passes.
 
 ### 4. Prove
 
-Run the gates CI runs. For each acceptance line whose test stops short of the
-app's own interface, call the Skill tool with "run" and drive the line the way
-a user would. When the diff reshapes a module or may break the repo's own
-standards, call the Skill tool with "code-review" or "complexity-red-flags" on
-it. Then call the Skill tool with "poke-holes" on the solution. Done when every
-finding has a decision.
+Run the gates CI runs. Call the Skill tool with "code-review" on the diff
+against the base, for bugs and the repo's own rules, and with
+"complexity-red-flags", which judges the design. For each acceptance line whose
+test stops short of the app's own interface, call the Skill tool with "run"
+and drive the line the way a user would. Then call the Skill tool with
+"poke-holes" on the solution, last, since it reviews the commit you ship. Done
+when every finding has a decision.
 
 ### 5. Ship
 

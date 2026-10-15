@@ -42,7 +42,7 @@ flowchart LR
 | Phase | Driven by | Skills | Produces |
 |---|---|---|---|
 | Shape | André, interviewed | grilling, grill-with-docs, to-spec, poke-holes, to-tickets, triage | tickets with acceptance criteria and blocking edges, labelled `ready-for-agent` |
-| Iterate | a session per ticket | implement, tdd, codebase-design, run, poke-holes, pr | a pull request whose acceptance runs as tests, and its reports |
+| Iterate | a session per ticket | implement, tdd, codebase-design, code-review, complexity-red-flags, run, poke-holes, pr | a pull request whose acceptance runs as tests, and its reports |
 | Babysit | the same session | babysit-pr | a mergeable pull request, or a draft that says what André must do |
 | Upkeep | routines, or André | factory, retro, hillclimb, correct | dispatched sessions, merges André picked, the brief, the weekly stats |
 
@@ -134,7 +134,7 @@ sequenceDiagram
 | Which ticket is next | CLI | `factory tickets next`, `factory inbox --agent` |
 | Who works it | CLI | `factory tickets claim`: the `in-progress` label; it refuses a ticket another session holds, unless told `--take-over` |
 | Whose ticket it is | André, or the colleague assigned | the assignee, which the factory fills only when empty |
-| Whether it works | the session, then fresh agents | acceptance tests, the gates, `/run`, poke-holes |
+| Whether it works | the session, then fresh agents | acceptance tests, the gates, `code-review`, `complexity-red-flags`, `/run`, poke-holes |
 | Whether it can merge | CLI | `factory pr merge`: no conflicts, every check green, no changes requested, no open thread, not a draft, no handed-back ticket |
 | Whether it merges | André | he picks from the hourly run's list |
 | What needs André | CLI, then agent | `factory inbox --human`, written up by the hourly `/factory` |

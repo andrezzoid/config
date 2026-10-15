@@ -53,8 +53,8 @@ two skills were removed. Nothing keeps a feature map yet.
 the checkout button actually check out"; engineering skills answer whether the
 code is any good. [T 12:30–14:00]
 **Here:** acceptance tests and live proof answer correctness; `codebase-design`
-while building, and `complexity-red-flags` or `code-review` when a diff calls
-for them, answer quality.
+while building, then `code-review` and `complexity-red-flags` on every diff,
+answer quality.
 
 **5. Autonomy is bounded by verifiability: one-way and two-way doors.** Matt
 asks about one-way doors; poteto: "for domains where the work is verifiable ...

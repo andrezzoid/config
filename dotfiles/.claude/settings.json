@@ -36,13 +36,22 @@
   "enableArtifact": false,
   "enableWorkflows": false,
   "workflowKeywordTriggerEnabled": false,
+  "extraKnownMarketplaces": {
+    "claude-community": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-community"
+      }
+    }
+  },
   "sandbox": {
     "enabled": true,
     "allowUnsandboxedCommands": false,
     "network": {
       "allowedDomains": [
-        "github.com",
-        "api.github.com"
+        "api.github.com",
+        "api.linear.app",
+        "registry.npmjs.org"
       ],
       "allowUnixSockets": [
         "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
@@ -52,7 +61,8 @@
     "filesystem": {
       "allowWrite": [
         "/tmp",
-        "/private/tmp"
+        "/private/tmp",
+        "~/.npm"
       ],
       "denyWrite": [
         "**/.git/hooks",
@@ -64,7 +74,10 @@
         "~/.config/gcloud",
         "~/.zsh_history"
       ]
-    }
+    },
+    "excludedCommands": [
+      "claude --bg *"
+    ]
   },
   "effortLevel": "high",
   "modelSettings": {
@@ -88,13 +101,5 @@
   "autoCompactEnabled": false,
   "remoteControlAtStartup": false,
   "agentPushNotifEnabled": true,
-  "voiceEnabled": true,
-  "extraKnownMarketplaces": {
-    "claude-community": {
-      "source": {
-        "source": "github",
-        "repo": "anthropics/claude-plugins-community"
-      }
-    }
-  }
+  "voiceEnabled": true
 }

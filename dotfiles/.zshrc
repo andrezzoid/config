@@ -104,28 +104,6 @@ lfg() {
     rm -f "$tmpfile"
 }
 
-# Recover magicnas shares when SMB wedges the automounts (ops fail with
-# EPERM or "No locks available"). Two failure modes, both handled:
-#  - dead mounted session: owner can force-unmount without sudo, autofs
-#    remounts fresh on the re-trigger;
-#  - kernel session zombie-looping in reconnect (boot/wake races): automount
-#    triggers keep joining the zombie and failing, so establish a fresh
-#    session via the NetFS path (same door Finder uses), which the
-#    re-triggered automounts then ride. Unmount the /Volumes side only
-#    after re-triggering, so the healthy session stays referenced.
-nasfix() {
-    local s
-    for s in home Family Singular; do
-        diskutil unmount force "$HOME/magicnas/$s" 2>/dev/null
-    done
-    osascript -e 'mount volume "smb://andre@magicnas._smb._tcp.local/home"' >/dev/null 2>&1
-    for s in home Family Singular; do
-        command ls "$HOME/magicnas/$s" >/dev/null 2>&1 \
-            && echo "$s: mounted" || echo "$s: FAILED (NAS down?)"
-    done
-    diskutil unmount /Volumes/home >/dev/null 2>&1
-}
-
 # Claude Code on Codex models via CLIProxyAPI (needs `brew services start cliproxyapi`).
 # Override the model per-call (`claude-codex --model gpt-5.5`) or mid-session (`/model`).
 # Effort dial: gpt-5.6-sol-{low,medium,high,xhigh} aliases defined in cliproxyapi.conf;

@@ -37,31 +37,6 @@ if [ -f defaults.sh ]; then
   bash defaults.sh
 fi
 
-# NAS automount + SMB client config (mc_on=no — see etc/nsmb.conf for why)
-echo "Configuring NAS automount..."
-sudo cp etc/auto_magicnas /etc/auto_magicnas
-sudo cp etc/nsmb.conf /etc/nsmb.conf
-if ! grep -q "auto_magicnas" /etc/auto_master; then
-  echo '/Users/andrejonas/magicnas    auto_magicnas' | sudo tee -a /etc/auto_master
-fi
-
-# Seed SMB credentials into login keychain so automountd can mount unattended.
-# `-r "smb "` is the FourCC Finder uses; automountd launches mount_smbfs, hence the -T grant.
-# The -s server name must match etc/auto_magicnas byte-for-byte.
-if ! security find-internet-password -a andre -s magicnas._smb._tcp.local -r "smb " &>/dev/null; then
-  echo "Enter SMB password for andre@magicnas (stored in login keychain):"
-  security add-internet-password \
-    -a andre \
-    -s magicnas._smb._tcp.local \
-    -r "smb " \
-    -l "magicnas._smb._tcp.local (andre)" \
-    -T /sbin/mount_smbfs \
-    -U \
-    -w
-fi
-
-sudo automount -vc
-
 # CLIProxyAPI (Codex models in Claude Code via claude-codex)
 # Client API key is generated per-machine and injected at deploy time; it lives
 # untracked in ~/.cli-proxy-api/.local-api-key (read by the claude-codex function).
@@ -88,4 +63,3 @@ echo "  3. Sign into: browsers, Slack, Discord, Figma, Notion, etc."
 echo "  4. Sign into CLIs: td login, etc."
 echo "  5. Codex login for claude-codex: cliproxyapi --codex-login"
 echo "  6. Set default apps"
-echo "  7. Grant Ghostty 'Local Network' permission (System Settings > Privacy & Security > Local Network) — required for NAS access from the terminal"
